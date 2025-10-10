@@ -1,0 +1,28 @@
+{
+  "name": "crowdpm",
+  "private": true,
+  "workspaces": [
+    "functions",
+    "frontend"
+  ],
+  "packageManager": "pnpm@10.18.1",
+  "engines": {
+    "node": "^24.0.0"
+  },
+  "scripts": {
+    "predev": "pnpm --filter crowdpm-functions build",
+    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\"",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "eslint \"{functions,frontend}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
+    "deploy": "firebase deploy"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.37.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.0"
+  }
+}

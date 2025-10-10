@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info: { title: CrowdPM API, version: 0.1.0 }
+paths:
+  /health: { get: { responses: { "200": { description: ok } } } }
+  /v1/devices:
+    get: { responses: { "200": { description: list } } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string } }, required: [name] }
+      responses: { "201": { description: created } }
+  /v1/measurements:
+    get:
+      parameters:
+        - { in: query, name: device_id, schema: { type: string } }
+        - { in: query, name: pollutant, schema: { type: string, enum: [pm25] } }
+        - { in: query, name: t0, schema: { type: string, format: date-time } }
+        - { in: query, name: t1, schema: { type: string, format: date-time } }
+        - { in: query, name: limit, schema: { type: integer, default: 1000 } }
+      responses: { "200": { description: results } }
+  /v1/admin/devices/{id}/suspend:
+    post: { responses: { "204": { description: updated } } }

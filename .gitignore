@@ -1,0 +1,15 @@
+.env
+.env.*
+node_modules/
+pnpm-debug.log
+npm-debug.log
+
+# Build artifacts
+functions/lib/
+frontend/dist/
+shared/dist/
+
+# Firebase emulator outputs
+firebase-debug.log
+firestore-debug.log
+pubsub-debug.log
