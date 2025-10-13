@@ -80,14 +80,23 @@ This installs the dependencies for `frontend` and `functions` in a single step. 
 ---
 
 ## 6. Create Local Environment Files
-You need two `.env.local` files—one for the frontend and one for Cloud Functions. Do not commit these files.
+You need two `.env.local` files—one for the frontend and one for Cloud Functions. Do not commit these files. 
+
+We will be using individual API keys (should be within the free tier of use).
 
 ### 6.1 `frontend/.env.local`
 ```bash
 cp frontend/.env.example frontend/.env.local
 ```
 - Update `VITE_GOOGLE_MAPS_API_KEY` with your valid key.
-- Set `VITE_GOOGLE_MAP_ID` to a vector map style ID from the Google Cloud Console (required for WebGL overlays).
+- Set `VITE_GOOGLE_MAP_ID` to a vector map style ID from the Google Cloud Console (required for WebGL overlays). See below for specifics.
+   - In the Google Maps Platform -> Map management -> Create map ID
+   - Fill in the name and optional description.
+   - Map type: Javascript -> Vector.
+   - Optionally allow Tilt and Rotation.
+   - Save and copy the Map ID (looks like abcd1234efgh5678).
+
+
 - Restart the Vite dev server after editing; Vite reads env variables only at startup.
 
 ### 6.2 `functions/.env.local`
