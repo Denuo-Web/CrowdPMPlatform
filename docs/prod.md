@@ -31,12 +31,12 @@ Double-check the project ID. Abort immediately if the wrong project appears.
 ## 3. Verify Cloud Function Secrets
 Production secrets should already exist, but confirm before deploying.
 ```bash
-firebase functions:env:list --project production
+firebase functions:config:get ingest --project production
 ```
-Ensure required keys (`INGEST_HMAC_SECRET`, `INGEST_TOPIC`, etc.) match the values recorded in the ops playbook. Update only if officially rotated:
+Ensure required keys (`ingest.hmac_secret`, `ingest.topic`, etc.) match the values recorded in the ops playbook. Update only if officially rotated:
 ```bash
-firebase functions:env:set INGEST_HMAC_SECRET="<prod-secret>" --project production
-firebase functions:env:set INGEST_TOPIC="ingest.raw" --project production
+firebase functions:config:set ingest.hmac_secret="<prod-secret>" --project production
+firebase functions:config:set ingest.topic="ingest.raw" --project production
 ```
 Document any change in the release notes and access log.
 

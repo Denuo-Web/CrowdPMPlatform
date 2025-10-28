@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { ingestPayload, type IngestBody } from "../services/ingestGateway.js";
+import { getIngestSecret } from "../lib/runtimeConfig.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
@@ -51,7 +52,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
     const payload: IngestBody = { points };
 
-    const secret = process.env.INGEST_HMAC_SECRET;
+    const secret = getIngestSecret();
     if (!secret) {
       return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
     }

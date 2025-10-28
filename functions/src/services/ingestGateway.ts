@@ -3,10 +3,11 @@ import { PubSub } from "@google-cloud/pubsub";
 import crypto from "node:crypto";
 import { bucket, db } from "../lib/fire.js";
 import { verifyHmac } from "../lib/crypto.js";
+import { getIngestTopic } from "../lib/runtimeConfig.js";
 import type { Request } from "firebase-functions/v2/https";
 
 const pubsub = new PubSub();
-const TOPIC = process.env.INGEST_TOPIC || "ingest.raw";
+const TOPIC = getIngestTopic();
 
 type RequestWithRawBody = Request & { rawBody?: Buffer | string };
 type IngestPoint = {

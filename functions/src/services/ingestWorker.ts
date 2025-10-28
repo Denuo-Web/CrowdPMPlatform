@@ -1,9 +1,10 @@
 import { onMessagePublished } from "firebase-functions/v2/pubsub";
 import { bucket, db, hourBucket } from "../lib/fire.js";
 import { IngestBatch } from "../lib/validation.js";
+import { getIngestTopic } from "../lib/runtimeConfig.js";
 
 export const ingestWorker = onMessagePublished(
-  { topic: process.env.INGEST_TOPIC || "ingest.raw" },
+  { topic: getIngestTopic() },
   async (event) => {
     const msg = event.data.message.json as { deviceId: string; batchId: string; path: string };
     const [buf] = await bucket().file(msg.path).download();

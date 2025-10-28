@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-export function verifyHmac(raw: string, sig?: string, secret = process.env.INGEST_HMAC_SECRET || "") {
+import { getIngestSecret } from "./runtimeConfig.js";
+
+export function verifyHmac(raw: string, sig?: string, secret = getIngestSecret()) {
   const mac = crypto.createHmac("sha256", secret).update(raw).digest("hex");
   if (!sig) {
     const error = Object.assign(new Error("bad signature"), { statusCode: 401 });

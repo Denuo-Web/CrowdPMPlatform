@@ -36,8 +36,8 @@ Confirm the active project ID matches the expected demo project. If it does not,
 ## 3. Update Cloud Function Secrets (when values change)
 Only run these commands if a secret rotation occurred. Otherwise skip to the next section.
 ```bash
-firebase functions:env:set INGEST_HMAC_SECRET="<demo-secret>" --project demo
-firebase functions:env:set INGEST_TOPIC="ingest.raw" --project demo
+firebase functions:config:set ingest.hmac_secret="<demo-secret>" --project demo
+firebase functions:config:set ingest.topic="ingest.raw" --project demo
 ```
 Record any secret changes in the team changelog.
 
@@ -113,7 +113,7 @@ Inform the team immediately and document the reason for rollback.
 ## 10. Helpful Commands
 ```bash
 firebase hosting:channel:deploy pr-<id> --project demo   # temporary preview channel for QA
-firebase functions:env:list --project demo               # inspect secrets
+firebase functions:config:get ingest --project demo      # inspect runtime config
 firebase functions:log --project demo --only ingestWorker
 ```
 
