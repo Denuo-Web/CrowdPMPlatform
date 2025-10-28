@@ -20,7 +20,15 @@ function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
 
 export default function MapPage() {
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
-  const [deviceId, setDeviceId] = useState<string>("");
+  const [deviceId, setDeviceId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem("crowdpm:lastSmokeTestDevice") ?? "";
+    } catch (err) {
+      console.warn(err);
+      return "";
+    }
+  });
   const [rows, setRows] = useState<MeasurementRecord[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [pendingSmoke, setPendingSmoke] = useState(false);
@@ -28,11 +36,6 @@ export default function MapPage() {
   useEffect(() => { pendingSmokeRef.current = pendingSmoke; }, [pendingSmoke]);
 
   useEffect(() => { listDevices().then(setDevices).catch(() => setDevices([])); }, []);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("crowdpm:lastSmokeTestDevice");
-    if (stored) setDeviceId(stored);
-  }, []);
 
   useEffect(() => {
     if (!deviceId) return;
