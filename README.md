@@ -1,7 +1,7 @@
 # CrowdPM Platform
 
 Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
-
+[![Deploy Demo Firebase](https://github.com/Denuo-Web/CrowdPMPlatform/actions/workflows/demo-deploy.yml/badge.svg?branch=main)](https://github.com/Denuo-Web/CrowdPMPlatform/actions/workflows/demo-deploy.yml)
 ## Highlights
 - HMAC-validated ingest gateway stores raw payloads in Cloud Storage and pushes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
 - Pub/Sub-driven worker normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
