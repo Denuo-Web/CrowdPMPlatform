@@ -59,10 +59,13 @@ jobs:
         run: firebase projects:list | grep "$FIREBASE_PROJECT_ID"
 
       - name: Sync Cloud Function secrets
-        if: ${{ secrets.DEMO_INGEST_HMAC_SECRET }}
         env:
           INGEST_HMAC_SECRET: ${{ secrets.DEMO_INGEST_HMAC_SECRET }}
         run: |
+          if [ -z "$INGEST_HMAC_SECRET" ]; then
+            echo "DEMO_INGEST_HMAC_SECRET not set; skipping secret sync."
+            exit 0
+          fi
           firebase functions:env:set INGEST_HMAC_SECRET="$INGEST_HMAC_SECRET" --project "$FIREBASE_PROJECT_ID"
           firebase functions:env:set INGEST_TOPIC="$INGEST_TOPIC" --project "$FIREBASE_PROJECT_ID"
 
