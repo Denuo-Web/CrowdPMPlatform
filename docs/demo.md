@@ -15,6 +15,13 @@ This guide explains how to deploy the CrowdPM stack to the shared **demo Firebas
 - Node 24, pnpm 10, Firebase CLI installed and authenticated (`firebase login`).
 - Secrets for the demo environment available (see team password manager).
 
+### Service Account for GitHub Deployments
+1. Open the Google Cloud Console for the demo project: *IAM & Admin → Service Accounts → Create Service Account*.
+2. Name the account (for example `demo-deployer`) and grant it at minimum the `Editor` and `Firebase Admin` roles. Add `Service Account Token Creator` only if you later switch to Workload Identity.
+3. After creation, choose *Manage keys → Add key → JSON*. Download the JSON once and store it in a secure location.
+4. In GitHub, go to *Settings → Secrets and variables → Actions → New secret*, name it `DEMO_SERVICE_ACCOUNT_JSON`, and paste the JSON content.
+5. Delete the downloaded JSON file locally. If the key is ever exposed, revoke and recreate it immediately.
+
 ---
 
 ## 2. Select the Demo Project
