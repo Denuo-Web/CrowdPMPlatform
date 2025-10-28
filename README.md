@@ -6,20 +6,20 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 - HMAC-validated ingest gateway stores raw payloads in Cloud Storage and pushes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
 - Pub/Sub-driven worker normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
 - Fastify-based HTTPS API (`crowdpmApi`) exposes device, measurement, and admin endpoints consumed by the frontend and integration partners.
-- React + Vite client renders Google Maps WebGL overlays via Three.js to visualise particulate data and provides a basic admin table for device management.
+- React + Vite client renders Google Maps WebGL overlays via deck.gl to visualise particulate data and provides a basic admin table for device management.
 - pnpm-managed TypeScript monorepo keeps frontend and backend code in sync, with shared tooling for linting, builds, and testing.
 
 ## System Architecture
 - **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function guarded by `verifyHmac`, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
 - **Processing** (`functions/src/services/ingestWorker.ts`): Firebase Pub/Sub Function downloads batches, applies calibration data from `devices/{deviceId}` (if present), and writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}` with deterministic sorting.
 - **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, and `/v1/admin/devices/:id/suspend`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
-- **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and an admin table (`AdminPage`). Uses the Maps JavaScript API and @googlemaps/three integration for overlay rendering.
+- **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and an admin table (`AdminPage`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
 - [Firebase Cloud Functions](https://firebase.google.com/docs/functions) with [Fastify](https://fastify.dev/)
 - [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/docs) and [Cloud Storage](https://cloud.google.com/storage/docs) backends
 - [Cloud Firestore](https://firebase.google.com/docs/firestore) for device + measurement persistence
-- [React 19.2](https://react.dev/), [Vite 5](https://vitejs.dev/), [Three.js](https://threejs.org/), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
+- [React 19.2](https://react.dev/), [Vite 5](https://vitejs.dev/), [deck.gl](https://deck.gl), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
 - [pnpm 10](https://pnpm.io/), [TypeScript 5](https://www.typescriptlang.org/), [ESLint 9](https://eslint.org/), and [Vitest 2](https://vitest.dev/) for tooling
 - [GitHub Actions](https://github.com/features/actions) workflow (`infra/github-ci.yml`) running workspace builds on push and PR
 
