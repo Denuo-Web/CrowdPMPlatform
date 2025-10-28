@@ -146,63 +146,17 @@ If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fi
 ## 9. Optional: Ingest Pipeline Smoke Test
 Run this whenever you change ingest code or schemas.
 
-Before sending data, seed the device document in the Firestore emulator. The emulator enforces the production security rules (which block unauthenticated writes), so use the Admin SDK locally. From the repo root:
-```bash
-(cd functions && \
-  FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
-  node - <<'NODE'
-(async () => {
-  const admin = require("firebase-admin");
-  if (!admin.apps.length) admin.initializeApp({ projectId: "demo-crowdpm" });
-  const db = admin.firestore();
-  await db.collection("devices").doc("device-123").set({
-    status: "ACTIVE",
-    name: "Test Device",
-    ownerUserId: "local-seed",
-    createdAt: new Date().toISOString()
-  });
-  console.log("Seeded device device-123");
-})().catch(err => {
-  console.error(err);
-  process.exitCode = 1;
-});
-NODE
-)
+1. Launch the local stack with `pnpm dev` (Functions emulator must have `INGEST_HMAC_SECRET` in `functions/.env.local`).
+2. Visit `http://localhost:5173`, open the **Admin** tab, and click **Run Smoke Test**.
+3. The UI seeds `device-123`, submits a signed payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
+4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:
+   - Storage: `ingest/device-123/<batchId>.json`.
+   - Firestore: `devices/device-123/measures/<hourBucket>/rows`.
+   - Functions logs: look for `ingestWorker` processing the batch.
 
-```
+> Prefer a raw cURL workflow or custom payload? Call `POST /v1/admin/ingest-smoke-test` from the API directly with your overrides, or adapt the previous manual script (kept in repo history) for advanced debugging.
 
-1. Create `payload.json` (adjust values as needed):
-   ```json
-   {
-     "points": [
-       {
-         "device_id": "device-123",
-         "pollutant": "pm25",
-         "value": 12.3,
-         "unit": "µg/m³",
-         "lat": 40.7128,
-         "lon": -74.0060,
-         "timestamp": "2024-01-01T00:00:00.000Z"
-       }
-     ]
-   }
-   ```
-2. Generate a matching HMAC signature and send the request:
-   ```bash
-   export INGEST_HMAC_SECRET=replace-with-hmac-secret
-   BODY=payload.json
-   SIG=$(BODY=$BODY node -e "const c=require('crypto');const fs=require('fs');const raw=fs.readFileSync(process.env.BODY);process.stdout.write(c.createHmac('sha256', process.env.INGEST_HMAC_SECRET).update(raw).digest('hex'))")
-   curl -X POST \
-     -H "Content-Type: application/json" \
-     -H "x-signature: $SIG" \
-     --data-binary @"$BODY" \
-     "http://127.0.0.1:5001/demo-crowdpm/us-central1/ingestGateway"
-   ```
-3. Confirm results:
-   - HTTP 202 response with `{ "accepted": true, "batchId": "..." }`.
-   - Storage emulator shows `ingest/device-123/<batchId>.json`.
-   - Firestore emulator has documents under `devices/device-123/measures/<hourBucket>/rows`.
-   - Function logs in the emulator window show `ingestWorker` activity.
+Need to reset the environment? Use **Delete Smoke Test Data** in the Admin tab, which clears the seeded device, storage batches, and map state so you can run the scenario again.
 
 ---
 

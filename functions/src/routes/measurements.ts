@@ -77,7 +77,9 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
         .get();
       snap.forEach((doc) => {
         const data = doc.data() as MeasurementDoc;
-        out.push({ id: doc.id, ...data });
+        const ms = timestampToMillis(data.timestamp);
+        const timestamp = Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
+        out.push({ id: doc.id, ...data, timestamp });
       });
     }
     out.sort((a, b) => timestampToMillis(a.timestamp) - timestampToMillis(b.timestamp));

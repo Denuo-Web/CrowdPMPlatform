@@ -21,9 +21,19 @@ type IngestPoint = {
   timestamp: string;
   flags?: number;
 };
-type IngestBody = {
+export type IngestBody = {
   device_id?: string;
   points?: IngestPoint[];
+};
+
+type IngestOptions = {
+  signature?: string;
+  deviceId?: string;
+};
+
+const HTTPError = (statusCode: number, message: string) => {
+  const error = Object.assign(new Error(message), { statusCode });
+  return error;
 };
 
 function pickFirstQueryParam(value: unknown) {
@@ -32,26 +42,41 @@ function pickFirstQueryParam(value: unknown) {
   return undefined;
 }
 
-export const ingestGateway = onRequest({ cors: true }, async (req, res) => {
-  const requestWithRawBody = req as RequestWithRawBody;
-  const rawBody = requestWithRawBody.rawBody;
-  const raw = typeof rawBody === "string"
-    ? rawBody
-    : rawBody?.toString() ?? JSON.stringify(req.body ?? {});
-  try { verifyHmac(raw, req.header("x-signature") || undefined); }
-  catch { res.status(401).send("unauthorized"); return; }
+export async function ingestPayload(raw: string, body: IngestBody, options: IngestOptions = {}) {
+  const { signature, deviceId: deviceIdOverride } = options;
+  verifyHmac(raw, signature);
 
-  const body = (req.body ?? {}) as IngestBody;
-  const deviceId = pickFirstQueryParam(req.query["device_id"]) || body.points?.[0]?.device_id || body.device_id;
-  if (!deviceId) { res.status(400).send("missing device_id"); return; }
+  const deviceId = deviceIdOverride || body.points?.[0]?.device_id || body.device_id;
+  if (!deviceId) throw HTTPError(400, "missing device_id");
 
   const dev = await db().collection("devices").doc(deviceId).get();
-  if (!dev.exists || dev.get("status") === "SUSPENDED") { res.status(403).send("device not allowed"); return; }
+  if (!dev.exists || dev.get("status") === "SUSPENDED") throw HTTPError(403, "device not allowed");
 
   const batchId = crypto.randomUUID();
   const path = `ingest/${deviceId}/${batchId}.json`;
   await bucket().file(path).save(raw, { contentType: "application/json" });
   await pubsub.topic(TOPIC).publishMessage({ json: { deviceId, batchId, path } });
 
-  res.status(202).json({ accepted: true, batchId });
+  return { accepted: true, batchId, deviceId, storagePath: path };
+}
+
+export const ingestGateway = onRequest({ cors: true }, async (req, res) => {
+  const requestWithRawBody = req as RequestWithRawBody;
+  const rawBody = requestWithRawBody.rawBody;
+  const raw = typeof rawBody === "string"
+    ? rawBody
+    : rawBody?.toString() ?? JSON.stringify(req.body ?? {});
+  const body = (req.body ?? {}) as IngestBody;
+  try {
+    const result = await ingestPayload(raw, body, {
+      signature: req.header("x-signature") || undefined,
+      deviceId: pickFirstQueryParam(req.query["device_id"]),
+    });
+    res.status(202).json(result);
+  }
+  catch (err) {
+    const statusCode = typeof err === "object" && err && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : undefined;
+    const message = err instanceof Error ? err.message : "unexpected error";
+    res.status(statusCode && statusCode >= 100 ? statusCode : 500).send(message);
+  }
 });
