@@ -115,16 +115,3 @@ jobs:
         if: ${{ env.FUNCTIONS_HEALTH_URL }}
         run: |
           curl --fail --silent --show-error "$FUNCTIONS_HEALTH_URL"
-
-      - name: Post deploy Slack notification
-        if: ${{ secrets.DEMO_SLACK_WEBHOOK }}
-        env:
-          SLACK_WEBHOOK: ${{ secrets.DEMO_SLACK_WEBHOOK }}
-        run: |
-          payload=$(jq -n \
-            --arg sha "${GITHUB_SHA}" \
-            --arg repo "${GITHUB_REPOSITORY}" \
-            --arg url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}" \
-            --arg status "Deployment to demo completed on $(date -u +"%Y-%m-%d %H:%M:%SZ")" \
-            '{text: "[demo] " + $repo + "@" + ($sha[0:7]) + ": " + $status + " — " + $url }')
-          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
