@@ -1,4 +1,55 @@
-const BASE = import.meta.env.VITE_API_BASE;
+const rawBase = import.meta.env.VITE_API_BASE as string | undefined;
+const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "";
+
+function ensureBase(): string {
+  if (!BASE) {
+    throw new Error("VITE_API_BASE is not configured. Set it to your Functions API (see README).");
+  }
+  return BASE;
+}
+
+function buildUrl(path: string): string {
+  const base = ensureBase();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = buildUrl(path);
+  const response = await fetch(url, init);
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const bodyText = await response.text().catch(() => "");
+
+  if (!response.ok) {
+    const errorBody = bodyText.trim();
+    throw new Error(errorBody || `Request to ${url} failed with status ${response.status}`);
+  }
+
+  if (!contentType.includes("application/json")) {
+    const host = (() => {
+      try {
+        return new URL(url).host;
+      }
+      catch {
+        return url;
+      }
+    })();
+    const snippet = bodyText.trim().replace(/\s+/g, " ").slice(0, 160);
+    const hint = host.includes(".web.app") || host.includes(".firebaseapp.com")
+      ? "Ensure VITE_API_BASE points to your Functions endpoint instead of the Hosting URL."
+      : "Ensure VITE_API_BASE points to your Functions endpoint.";
+    const responsePreview = snippet ? ` Response starts with: ${snippet}` : "";
+    throw new Error(`Expected JSON from ${host} but received ${contentType || "unknown content"}. ${hint}${responsePreview}`);
+  }
+
+  try {
+    return JSON.parse(bodyText) as T;
+  }
+  catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Unable to parse JSON payload from ${url}: ${message}`);
+  }
+}
 
 export type DeviceSummary = {
   id: string;
@@ -53,37 +104,23 @@ export type IngestSmokeTestResponse = {
 };
 
 export async function listDevices(): Promise<DeviceSummary[]> {
-  const r = await fetch(`${BASE}/v1/devices`);
-  if (!r.ok) throw new Error("api");
-  return r.json() as Promise<DeviceSummary[]>;
+  return requestJson<DeviceSummary[]>("/v1/devices");
 }
 export async function fetchMeasurements(q: {
   device_id: string; pollutant?: "pm25"; t0: string; t1: string; limit?: number;
 }): Promise<MeasurementRecord[]> {
   const qs = new URLSearchParams(Object.entries(q).map(([k,v])=>[k,String(v)]));
-  const r = await fetch(`${BASE}/v1/measurements?${qs}`);
-  if (!r.ok) throw new Error("api");
-  return r.json() as Promise<MeasurementRecord[]>;
+  return requestJson<MeasurementRecord[]>(`/v1/measurements?${qs}`);
 }
 
 export async function runIngestSmokeTest(): Promise<IngestSmokeTestResponse> {
-  const r = await fetch(`${BASE}/v1/admin/ingest-smoke-test`, { method: "POST" });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(text || `Smoke test failed with status ${r.status}`);
-  }
-  return r.json() as Promise<IngestSmokeTestResponse>;
+  return requestJson<IngestSmokeTestResponse>("/v1/admin/ingest-smoke-test", { method: "POST" });
 }
 
 export async function cleanupIngestSmokeTest(deviceId?: string): Promise<{ clearedDeviceId: string }> {
-  const r = await fetch(`${BASE}/v1/admin/ingest-smoke-test/cleanup`, {
+  return requestJson<{ clearedDeviceId: string }>("/v1/admin/ingest-smoke-test/cleanup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(deviceId ? { deviceId } : {})
   });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(text || `Cleanup failed with status ${r.status}`);
-  }
-  return r.json() as Promise<{ clearedDeviceId: string }>;
 }
