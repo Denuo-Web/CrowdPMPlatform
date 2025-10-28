@@ -65,12 +65,15 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     const points: NonNullable<IngestBody["points"]> = providedPoints?.length
       ? providedPoints.map((point, idx) => {
         const fallbackTimestamp = new Date(Date.now() - (providedPoints.length - idx - 1) * 1000).toISOString();
-        return {
-          pollutant: point.pollutant || "pm25",
-          device_id: point.device_id || requestedDeviceId,
-          timestamp: point.timestamp || fallbackTimestamp,
+        const normalizedPoint = {
           ...point,
           ...pointOverrides,
+        };
+        return {
+          ...normalizedPoint,
+          pollutant: normalizedPoint.pollutant ?? "pm25",
+          device_id: normalizedPoint.device_id ?? requestedDeviceId,
+          timestamp: normalizedPoint.timestamp ?? fallbackTimestamp,
         };
       })
       : buildDefaultPoints(requestedDeviceId);
