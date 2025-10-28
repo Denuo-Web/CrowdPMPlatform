@@ -91,12 +91,17 @@ export type IngestSmokeTestPoint = {
   flags?: number;
 };
 
+export type IngestSmokeTestPayload = {
+  points: IngestSmokeTestPoint[];
+};
+
 export type IngestSmokeTestResponse = {
   accepted: boolean;
   batchId: string;
   deviceId: string;
   storagePath: string;
   seededDeviceId: string;
+  seededDeviceIds?: string[];
   payload?: {
     points?: IngestSmokeTestPoint[];
   };
@@ -113,14 +118,22 @@ export async function fetchMeasurements(q: {
   return requestJson<MeasurementRecord[]>(`/v1/measurements?${qs}`);
 }
 
-export async function runIngestSmokeTest(): Promise<IngestSmokeTestResponse> {
-  return requestJson<IngestSmokeTestResponse>("/v1/admin/ingest-smoke-test", { method: "POST" });
-}
-
-export async function cleanupIngestSmokeTest(deviceId?: string): Promise<{ clearedDeviceId: string }> {
-  return requestJson<{ clearedDeviceId: string }>("/v1/admin/ingest-smoke-test/cleanup", {
+export async function runIngestSmokeTest(payload?: IngestSmokeTestPayload): Promise<IngestSmokeTestResponse> {
+  const body = payload ? { payload } : {};
+  return requestJson<IngestSmokeTestResponse>("/v1/admin/ingest-smoke-test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(deviceId ? { deviceId } : {})
+    body: JSON.stringify(body),
+  });
+}
+
+export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Promise<{ clearedDeviceId: string | null; clearedDeviceIds?: string[] }> {
+  const payload = Array.isArray(deviceId)
+    ? (deviceId.length ? { deviceIds: deviceId } : {})
+    : (deviceId ? { deviceId } : {});
+  return requestJson<{ clearedDeviceId: string | null; clearedDeviceIds?: string[] }>("/v1/admin/ingest-smoke-test/cleanup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
   });
 }
