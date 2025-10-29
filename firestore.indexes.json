@@ -14,7 +14,8 @@
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "pollutant", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "ASCENDING" }
+        { "fieldPath": "timestamp", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
     }
   ]
