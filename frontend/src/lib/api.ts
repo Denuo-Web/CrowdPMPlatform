@@ -22,6 +22,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const errorBody = bodyText.trim();
+    if (errorBody) {
+      try {
+        const parsed = JSON.parse(errorBody) as { error?: unknown; message?: unknown };
+        const parsedMessage = typeof parsed.error === "string"
+          ? parsed.error
+          : typeof parsed.message === "string"
+            ? parsed.message
+            : null;
+        if (parsedMessage) {
+          throw new Error(parsedMessage);
+        }
+      }
+      catch {
+        // fall through to raw body handling
+      }
+    }
     throw new Error(errorBody || `Request to ${url} failed with status ${response.status}`);
   }
 

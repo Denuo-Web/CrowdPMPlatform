@@ -50,6 +50,9 @@ gcloud pubsub topics create ingest.raw --project $(firebase use --project)
 ```
 If you do not have `gcloud`, verify the topic via the Firebase Console instead.
 
+### Enable Cloud Firestore (first run only)
+For a new demo project you must enable the Firestore API before any Functions call will succeed. Visit https://console.cloud.google.com/flows/enableapi?apiid=firestore.googleapis.com&project=crowdpmplatform and enable the API (or enable it via **Firebase Console → Build → Firestore Database**). Give the change a minute or two to propagate before continuing.
+
 ---
 
 ## 5. Build Fresh Artifacts
