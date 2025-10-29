@@ -53,6 +53,12 @@ If you do not have `gcloud`, verify the topic via the Firebase Console instead.
 ### Enable Cloud Firestore (first run only)
 For a new demo project you must enable the Firestore API before any Functions call will succeed. Visit https://console.cloud.google.com/flows/enableapi?apiid=firestore.googleapis.com&project=crowdpmplatform and enable the API (or enable it via **Firebase Console → Build → Firestore Database**). Give the change a minute or two to propagate before continuing.
 
+### Provision the Firestore database
+After the API is enabled, open **Firebase Console → Build → Firestore Database** and click **Create database**. Use *Native* mode and confirm the location (the default is usually fine). Wait until the database finishes provisioning—Functions will return 5 NOT_FOUND errors until this step is complete.
+
+### Create the default Storage bucket
+The ingest smoke test writes raw payloads to Cloud Storage. Open **Firebase Console → Build → Storage**, click **Get started**, choose the same region used for Functions/Firestore (for example `us-central`), and finish the wizard. This provisions the default Firebase Storage bucket (either `gs://<project-id>.appspot.com` or the newer `gs://<project-id>.firebasestorage.app`). The smoke test will time out with 504 errors until this bucket exists.
+
 ---
 
 ## 5. Build Fresh Artifacts
