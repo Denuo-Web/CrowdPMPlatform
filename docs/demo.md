@@ -33,8 +33,8 @@ Confirm the active project ID matches the expected demo project. If it does not,
 
 ---
 
-## 3. Update Cloud Function Secrets (when values change)
-Only run these commands if a secret rotation occurred. Otherwise skip to the next section.
+## 3. Update Cloud Function Secrets (first deployment and rotations)
+Smoke tests and ingest flows require the shared HMAC secret. Run these commands before the first deploy on a new project **and** whenever the secret rotates. If you need to confirm the current value, inspect it with `firebase functions:config:get ingest --project demo`.
 ```bash
 firebase functions:config:set ingest.hmac_secret="<demo-secret>" --project demo
 firebase functions:config:set ingest.topic="ingest.raw" --project demo

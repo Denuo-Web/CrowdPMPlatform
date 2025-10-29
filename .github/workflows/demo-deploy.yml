@@ -66,8 +66,8 @@ jobs:
           INGEST_HMAC_SECRET: ${{ secrets.DEMO_INGEST_HMAC_SECRET }}
         run: |
           if [ -z "$INGEST_HMAC_SECRET" ]; then
-            echo "DEMO_INGEST_HMAC_SECRET not set; skipping secret sync."
-            exit 0
+            echo "::error::Set the DEMO_INGEST_HMAC_SECRET GitHub secret before deploying; ingest smoke tests require it."
+            exit 1
           fi
           firebase functions:config:set ingest.hmac_secret="$INGEST_HMAC_SECRET" --project "$FIREBASE_PROJECT_ID"
           firebase functions:config:set ingest.topic="$INGEST_TOPIC" --project "$FIREBASE_PROJECT_ID"
