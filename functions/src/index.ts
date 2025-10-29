@@ -2,6 +2,7 @@ import * as https from "firebase-functions/v2/https";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
+import { Readable } from "node:stream";
 import { app as adminApp } from "./lib/fire.js";
 import { devicesRoutes } from "./routes/devices.js";
 import { measurementsRoutes } from "./routes/measurements.js";
@@ -9,6 +10,36 @@ import { adminRoutes } from "./routes/admin.js";
 adminApp();
 
 const api = Fastify({ logger: true });
+
+const parseJsonBody = (req: unknown, body: unknown, done: (err: Error | null, value?: unknown) => void) => {
+  try {
+    const text = typeof body === "string" ? body : body ? (body as Buffer).toString("utf8") : "";
+    api.log.info(
+      { parser: "json", contentType: (req as { headers?: Record<string, unknown> })?.headers?.["content-type"], length: typeof text === "string" ? text.length : undefined },
+      "json parser invoked"
+    );
+    done(null, text ? JSON.parse(text) : {});
+  }
+  catch (err) {
+    done(err as Error);
+  }
+};
+
+api.removeContentTypeParser("application/json");
+api.addContentTypeParser("application/json", { parseAs: "string" }, parseJsonBody);
+api.addContentTypeParser(/^application\/(?:.+\+)?json(?:\s*;.*)?$/i, { parseAs: "string" }, parseJsonBody);
+
+api.addHook("preParsing", (request, reply, payload, done) => {
+  const rawBody = (request.raw as RequestWithRawBody).rawBody;
+  if (rawBody === undefined) {
+    done(null, payload);
+    return;
+  }
+  const buffer = typeof rawBody === "string" ? Buffer.from(rawBody, "utf8") : rawBody;
+  const stream = Readable.from(buffer);
+  done(null, stream);
+});
+
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
 const apiSetup = (async () => {
   await api.register(cors, { origin: true });

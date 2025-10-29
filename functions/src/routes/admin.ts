@@ -20,6 +20,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   };
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
+    fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     await requireUser(req).catch(() => ({})); // allow unauthenticated usage when desired
 
     const defaultDeviceId = "device-123";
@@ -105,11 +106,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         createdAt: new Date().toISOString(),
       }, { merge: true });
     }));
+    fastify.log.info({ deviceIds: seedTargets }, "ingest smoke test seeded devices");
 
     const raw = JSON.stringify(payload);
     const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
     try {
       const result = await ingestPayload(raw, payload, { signature, deviceId: primaryDeviceId });
+      fastify.log.info({ batchId: result.batchId, deviceId: result.deviceId }, "ingest smoke test completed");
       return rep.code(200).send({
         ...result,
         payload,
@@ -119,6 +122,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
     catch (err) {
+      fastify.log.error({ err }, "ingest smoke test failed");
       const statusCode = typeof err === "object" && err && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : undefined;
       const message = err instanceof Error ? err.message : "unexpected error";
       return rep.code(statusCode && statusCode >= 100 ? statusCode : 500).send({ error: message });
