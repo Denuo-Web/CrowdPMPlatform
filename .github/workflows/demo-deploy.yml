@@ -87,8 +87,8 @@ jobs:
       - name: Build functions
         run: pnpm --filter crowdpm-functions build
 
-      - name: Detect Firestore rules changes
-        id: firestore
+      - name: Determine diff base
+        id: diffbase
         env:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
@@ -100,10 +100,50 @@ jobs:
               before_ref="$(git rev-list --max-parents=0 HEAD)"
             fi
           fi
-          if git diff --name-only "$before_ref" HEAD | grep -q '^firestore.rules$'; then
+          echo "sha=$before_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Detect Firestore rules changes
+        id: firestore
+        run: |
+          if git diff --name-only "${{ steps.diffbase.outputs.sha }}" HEAD | grep -q '^firestore.rules$'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect Firestore index changes
+        id: firestore_indexes
+        run: |
+          if git diff --name-only "${{ steps.diffbase.outputs.sha }}" HEAD | grep -q '^firestore.indexes.json$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy Firestore indexes
+        if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID"
+
+      - name: Wait for Firestore indexes
+        if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        run: |
+          echo "Waiting for Firestore indexes to finish building..."
+          end=$((SECONDS + 900))
+          while [ $SECONDS -lt $end ]; do
+            states="$(gcloud firestore indexes composite list --project "$FIREBASE_PROJECT_ID" --format='value(state)' | sort -u)"
+            if [ -z "$states" ]; then
+              echo "No composite indexes found; skipping wait."
+              break
+            fi
+            if ! echo "$states" | grep -q 'CREATING'; then
+              echo "All indexes are ready."
+              break
+            fi
+            echo "Indexes still building (states: $states); checking again in 30s..."
+            sleep 30
+          done
+          if [ $SECONDS -ge $end ]; then
+            echo "::warning::Timed out waiting for Firestore indexes to finish building. Check the Firebase console for progress."
           fi
 
       - name: Deploy hosting and functions
