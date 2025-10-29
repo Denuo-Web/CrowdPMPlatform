@@ -69,6 +69,7 @@ jobs:
             echo "::error::Set the DEMO_INGEST_HMAC_SECRET GitHub secret before deploying; ingest smoke tests require it."
             exit 1
           fi
+          printf '%s' "$INGEST_HMAC_SECRET" | firebase functions:secrets:set INGEST_HMAC_SECRET --project "$FIREBASE_PROJECT_ID" --data-file -
           firebase functions:config:set ingest.hmac_secret="$INGEST_HMAC_SECRET" --project "$FIREBASE_PROJECT_ID"
           firebase functions:config:set ingest.topic="$INGEST_TOPIC" --project "$FIREBASE_PROJECT_ID"
 
