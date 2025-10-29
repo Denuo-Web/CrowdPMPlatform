@@ -7,6 +7,7 @@ import { app as adminApp } from "./lib/fire.js";
 import { devicesRoutes } from "./routes/devices.js";
 import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
+import { ingestHmacSecret } from "./lib/runtimeConfig.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -57,7 +58,7 @@ const apiSetup = (async () => {
   throw err;
 });
 
-export const crowdpmApi = https.onRequest({ cors: true }, (req, res) => {
+export const crowdpmApi = https.onRequest({ cors: true, secrets: [ingestHmacSecret] }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   requestWithRawBody.rawBody = requestWithRawBody.rawBody ?? undefined;
   apiSetup.then(() => api.server.emit("request", req, res));
