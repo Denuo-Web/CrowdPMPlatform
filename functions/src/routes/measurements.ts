@@ -69,7 +69,6 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
     const out: MeasurementRecord[] = [];
     for (const bucketId of hours) {
       const snap = await base.doc(bucketId).collection("rows")
-        .where("pollutant", "==", pollutant)
         .where("timestamp", ">=", t0)
         .where("timestamp", "<=", t1)
         .orderBy("timestamp", "asc")
@@ -77,6 +76,7 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
         .get();
       snap.forEach((doc) => {
         const data = doc.data() as MeasurementDoc;
+        if (pollutant && data.pollutant !== pollutant) return;
         const ms = timestampToMillis(data.timestamp);
         const timestamp = Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
         out.push({ id: doc.id, ...data, timestamp });
