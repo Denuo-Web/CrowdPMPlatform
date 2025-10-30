@@ -14,9 +14,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   type SmokeTestBody = {
-    deviceId?: string;
     payload?: IngestBody;
-    pointOverrides?: Partial<NonNullable<IngestBody["points"]>[number]>;
   };
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
@@ -25,7 +23,6 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     const defaultDeviceId = "device-123";
     const body = req.body ?? {};
-    const pointOverrides = body.pointOverrides ?? {};
 
     function buildDefaultPoints(deviceId: string) {
       const baseLat = 40.7128;
@@ -50,31 +47,25 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           timestamp: ts.toISOString(),
           precision,
           altitude: Number(altitude.toFixed(1)),
-          ...pointOverrides,
         };
       });
     }
 
     const providedPoints = body.payload?.points;
-    const requestedDeviceId =
-      body.deviceId ||
-      body.pointOverrides?.device_id ||
+    const requestedDeviceId = (
       providedPoints?.[0]?.device_id ||
       body.payload?.device_id ||
-      defaultDeviceId;
+      defaultDeviceId
+    ) ?? defaultDeviceId;
 
     const points: NonNullable<IngestBody["points"]> = providedPoints?.length
       ? providedPoints.map((point, idx) => {
         const fallbackTimestamp = new Date(Date.now() - (providedPoints.length - idx - 1) * 1000).toISOString();
-        const normalizedPoint = {
-          ...point,
-          ...pointOverrides,
-        };
         return {
-          ...normalizedPoint,
-          pollutant: normalizedPoint.pollutant ?? "pm25",
-          device_id: normalizedPoint.device_id ?? requestedDeviceId,
-          timestamp: normalizedPoint.timestamp ?? fallbackTimestamp,
+          ...point,
+          pollutant: point.pollutant ?? "pm25",
+          device_id: point.device_id ?? requestedDeviceId,
+          timestamp: point.timestamp ?? fallbackTimestamp,
         };
       })
       : buildDefaultPoints(requestedDeviceId);
