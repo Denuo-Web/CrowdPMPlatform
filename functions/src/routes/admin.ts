@@ -14,7 +14,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   type SmokeTestBody = {
+    deviceId?: string;
     payload?: IngestBody;
+    pointOverrides?: Partial<NonNullable<IngestBody["points"]>[number]>;
   };
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
@@ -23,6 +25,16 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     const defaultDeviceId = "device-123";
     const body = req.body ?? {};
+    const overridesRaw = body.pointOverrides ?? {};
+    const pointOverrides = Object.fromEntries(
+      Object.entries(overridesRaw).filter(([, value]) => value !== undefined)
+    ) as Partial<NonNullable<IngestBody["points"]>[number]>;
+    const overrideDeviceId = typeof pointOverrides.device_id === "string" && pointOverrides.device_id.trim();
+
+    const ensureDeviceId = (candidate: unknown, fallback: string) => {
+      const trimmed = typeof candidate === "string" ? candidate.trim() : "";
+      return trimmed || fallback;
+    };
 
     function buildDefaultPoints(deviceId: string) {
       const baseLat = 40.7128;
@@ -37,7 +49,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         const altitude = 25 + Math.sin(progress * Math.PI * 6) * 5 + Math.random() * 2;
         const baseValue = 15 + Math.sin(progress * Math.PI * 4) * 10 + Math.random();
         const precision = 5 + Math.round(Math.abs(Math.cos(progress * Math.PI * 2)) * 20);
-        return {
+        const basePoint = {
           device_id: deviceId,
           pollutant: "pm25",
           value: Math.round(baseValue * 10) / 10,
@@ -48,24 +60,34 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           precision,
           altitude: Number(altitude.toFixed(1)),
         };
+        const merged = { ...basePoint, ...pointOverrides };
+        return {
+          ...merged,
+          device_id: ensureDeviceId(pointOverrides.device_id, basePoint.device_id),
+          pollutant: merged.pollutant ?? "pm25",
+          timestamp: merged.timestamp ?? basePoint.timestamp,
+        };
       });
     }
 
     const providedPoints = body.payload?.points;
-    const requestedDeviceId = (
+    const requestedDeviceId = ensureDeviceId(
+      body.deviceId ||
+      overrideDeviceId ||
       providedPoints?.[0]?.device_id ||
-      body.payload?.device_id ||
+      body.payload?.device_id,
       defaultDeviceId
-    ) ?? defaultDeviceId;
+    );
 
     const points: NonNullable<IngestBody["points"]> = providedPoints?.length
       ? providedPoints.map((point, idx) => {
         const fallbackTimestamp = new Date(Date.now() - (providedPoints.length - idx - 1) * 1000).toISOString();
+        const merged = { ...point, ...pointOverrides };
         return {
-          ...point,
-          pollutant: point.pollutant ?? "pm25",
-          device_id: point.device_id ?? requestedDeviceId,
-          timestamp: point.timestamp ?? fallbackTimestamp,
+          ...merged,
+          pollutant: merged.pollutant ?? "pm25",
+          device_id: ensureDeviceId(merged.device_id, requestedDeviceId),
+          timestamp: merged.timestamp ?? fallbackTimestamp,
         };
       })
       : buildDefaultPoints(requestedDeviceId);
