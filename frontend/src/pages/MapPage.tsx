@@ -37,39 +37,51 @@ export default function MapPage() {
 
   useEffect(() => { listDevices().then(setDevices).catch(() => setDevices([])); }, []);
 
-  const loadMeasurements = useCallback(async () => {
-    if (!deviceId) return false;
-    const now = new Date();
-    const t1 = now.toISOString();
-    const windowSizes = pendingSmokeRef.current ? [1] : [1, 6, 24];
-    for (const hours of windowSizes) {
-      const t0 = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-      try {
-        const records = await fetchMeasurements({ device_id: deviceId, pollutant: "pm25", t0, t1, limit: 2000 });
-        if (records.length) {
-          setPendingSmoke(false);
-          setRows(records);
-          setSelectedIndex(records.length - 1);
-          return true;
-        }
-      }
-      catch (err) {
-        console.warn("Failed to load measurements", err);
-        if (hours === windowSizes[windowSizes.length - 1] && !pendingSmokeRef.current) {
-          setRows([]);
-          setSelectedIndex(0);
-        }
-        return false;
-      }
+  const applyRecords = useCallback((records: MeasurementRecord[]) => {
+    if (records.length) {
+      setPendingSmoke(false);
+      setRows(records);
+      setSelectedIndex(records.length - 1);
+      return true;
     }
     if (!pendingSmokeRef.current) {
       setRows([]);
       setSelectedIndex(0);
     }
     return false;
+  }, []);
+
+  const loadMeasurements = useCallback(async () => {
+    if (!deviceId) return [];
+    const now = new Date();
+    const t1 = now.toISOString();
+    const windowSizes = pendingSmokeRef.current ? [1] : [1, 6, 24];
+    for (const hours of windowSizes) {
+      const t0 = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
+      const records = await fetchMeasurements({ device_id: deviceId, pollutant: "pm25", t0, t1, limit: 2000 });
+      if (records.length) return records;
+    }
+    return [];
   }, [deviceId]);
 
-  useEffect(() => { loadMeasurements(); }, [loadMeasurements]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const records = await loadMeasurements();
+        if (!cancelled) applyRecords(records);
+      }
+      catch (err) {
+        if (cancelled) return;
+        console.warn("Failed to load measurements", err);
+        if (!pendingSmokeRef.current) {
+          setRows([]);
+          setSelectedIndex(0);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loadMeasurements, applyRecords]);
 
   useEffect(() => {
     if (!pendingSmoke || !deviceId) return;
@@ -79,7 +91,21 @@ export default function MapPage() {
     const poll = async () => {
       if (cancelled) return;
       attempt += 1;
-      const fulfilled = await loadMeasurements();
+      let fulfilled = false;
+      try {
+        const records = await loadMeasurements();
+        if (cancelled) return;
+        fulfilled = applyRecords(records);
+      }
+      catch (err) {
+        if (!cancelled) {
+          console.warn("Failed to load measurements", err);
+          if (!pendingSmokeRef.current) {
+            setRows([]);
+            setSelectedIndex(0);
+          }
+        }
+      }
       if (cancelled || fulfilled || attempt >= 6) return;
       timer = window.setTimeout(poll, 4000);
     };
@@ -88,7 +114,7 @@ export default function MapPage() {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [pendingSmoke, deviceId, loadMeasurements]);
+  }, [pendingSmoke, deviceId, loadMeasurements, applyRecords]);
 
   useEffect(() => {
     const handler = (event: Event) => {
