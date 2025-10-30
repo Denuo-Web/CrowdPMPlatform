@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map3D from "../components/Map3D";
 import {
   fetchMeasurements,
@@ -37,31 +37,58 @@ export default function MapPage() {
 
   useEffect(() => { listDevices().then(setDevices).catch(() => setDevices([])); }, []);
 
-  useEffect(() => {
-    if (!deviceId) return;
+  const loadMeasurements = useCallback(async () => {
+    if (!deviceId) return false;
     const now = new Date();
     const t1 = now.toISOString();
-    const t0 = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
-    fetchMeasurements({ device_id: deviceId, pollutant: "pm25", t0, t1, limit: 2000 })
-      .then((records) => {
-        if (!records.length) {
-          if (!pendingSmokeRef.current) {
-            setRows([]);
-            setSelectedIndex(0);
-          }
-          return;
+    const windowSizes = pendingSmokeRef.current ? [1] : [1, 6, 24];
+    for (const hours of windowSizes) {
+      const t0 = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
+      try {
+        const records = await fetchMeasurements({ device_id: deviceId, pollutant: "pm25", t0, t1, limit: 2000 });
+        if (records.length) {
+          setPendingSmoke(false);
+          setRows(records);
+          setSelectedIndex(records.length - 1);
+          return true;
         }
-        setPendingSmoke(false);
-        setRows(records);
-        setSelectedIndex(records.length - 1);
-      })
-      .catch(() => {
-        if (!pendingSmokeRef.current) {
+      }
+      catch (err) {
+        console.warn("Failed to load measurements", err);
+        if (hours === windowSizes[windowSizes.length - 1] && !pendingSmokeRef.current) {
           setRows([]);
           setSelectedIndex(0);
         }
-      });
+        return false;
+      }
+    }
+    if (!pendingSmokeRef.current) {
+      setRows([]);
+      setSelectedIndex(0);
+    }
+    return false;
   }, [deviceId]);
+
+  useEffect(() => { loadMeasurements(); }, [loadMeasurements]);
+
+  useEffect(() => {
+    if (!pendingSmoke || !deviceId) return;
+    let cancelled = false;
+    let attempt = 0;
+    let timer: number | null = null;
+    const poll = async () => {
+      if (cancelled) return;
+      attempt += 1;
+      const fulfilled = await loadMeasurements();
+      if (cancelled || fulfilled || attempt >= 6) return;
+      timer = window.setTimeout(poll, 4000);
+    };
+    timer = window.setTimeout(poll, 4000);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [pendingSmoke, deviceId, loadMeasurements]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -71,6 +98,7 @@ export default function MapPage() {
       if (newDevice) {
         setDeviceId(newDevice);
         setPendingSmoke(Boolean(detail.points?.length));
+        try { localStorage.setItem("crowdpm:lastSmokeTestDevice", newDevice); } catch (err) { console.warn(err); }
         if (detail.points?.length) {
           const provisionalRows: MeasurementRecord[] = detail.points.map((point, idx) => ({
             id: `smoke-${detail.batchId}-${idx}`,
@@ -125,6 +153,13 @@ export default function MapPage() {
     setRows([]);
     setSelectedIndex(0);
     setDeviceId(value);
+    try {
+      if (value) window.localStorage.setItem("crowdpm:lastSmokeTestDevice", value);
+      else window.localStorage.removeItem("crowdpm:lastSmokeTestDevice");
+    }
+    catch (err) {
+      console.warn(err);
+    }
   }
 
   return (

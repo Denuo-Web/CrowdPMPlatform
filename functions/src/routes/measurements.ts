@@ -82,6 +82,7 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
         out.push({ id: doc.id, ...data, timestamp });
       });
     }
+
     out.sort((a, b) => timestampToMillis(a.timestamp) - timestampToMillis(b.timestamp));
     return out.slice(0, limit);
   });

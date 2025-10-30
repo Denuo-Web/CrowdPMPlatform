@@ -13,6 +13,15 @@
       "collectionGroup": "rows",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
+        { "fieldPath": "deviceId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rows",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
         { "fieldPath": "pollutant", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" },
         { "fieldPath": "__name__", "order": "ASCENDING" }
