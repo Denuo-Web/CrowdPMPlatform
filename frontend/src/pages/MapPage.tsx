@@ -35,7 +35,34 @@ export default function MapPage() {
   const pendingSmokeRef = useRef(pendingSmoke);
   useEffect(() => { pendingSmokeRef.current = pendingSmoke; }, [pendingSmoke]);
 
-  useEffect(() => { listDevices().then(setDevices).catch(() => setDevices([])); }, []);
+  const resetRows = useCallback(() => {
+    setRows([]);
+    setSelectedIndex(0);
+  }, []);
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const list = await listDevices();
+      setDevices(list);
+    }
+    catch {
+      setDevices([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listDevices();
+        if (!cancelled) setDevices(list);
+      }
+      catch {
+        if (!cancelled) setDevices([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const applyRecords = useCallback((records: MeasurementRecord[]) => {
     if (records.length) {
@@ -45,11 +72,10 @@ export default function MapPage() {
       return true;
     }
     if (!pendingSmokeRef.current) {
-      setRows([]);
-      setSelectedIndex(0);
+      resetRows();
     }
     return false;
-  }, []);
+  }, [resetRows]);
 
   const loadMeasurements = useCallback(async () => {
     if (!deviceId) return [];
@@ -75,13 +101,12 @@ export default function MapPage() {
         if (cancelled) return;
         console.warn("Failed to load measurements", err);
         if (!pendingSmokeRef.current) {
-          setRows([]);
-          setSelectedIndex(0);
+          resetRows();
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [loadMeasurements, applyRecords]);
+  }, [loadMeasurements, applyRecords, resetRows]);
 
   useEffect(() => {
     if (!pendingSmoke || !deviceId) return;
@@ -101,8 +126,7 @@ export default function MapPage() {
         if (!cancelled) {
           console.warn("Failed to load measurements", err);
           if (!pendingSmokeRef.current) {
-            setRows([]);
-            setSelectedIndex(0);
+            resetRows();
           }
         }
       }
@@ -114,7 +138,7 @@ export default function MapPage() {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [pendingSmoke, deviceId, loadMeasurements, applyRecords]);
+  }, [pendingSmoke, deviceId, loadMeasurements, applyRecords, resetRows]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -142,14 +166,13 @@ export default function MapPage() {
           setRows(provisionalRows);
           setSelectedIndex(provisionalRows.length ? provisionalRows.length - 1 : 0);
         }
-        listDevices().then(setDevices).catch(() => setDevices([]));
+        refreshDevices();
       }
     };
     window.addEventListener("ingest-smoke-test:completed", handler);
     const cleanupHandler = () => {
       setPendingSmoke(false);
-      setRows([]);
-      setSelectedIndex(0);
+      resetRows();
       setDeviceId("");
       try { localStorage.removeItem("crowdpm:lastSmokeTestDevice"); } catch (err) { console.warn(err); }
     };
@@ -158,7 +181,7 @@ export default function MapPage() {
       window.removeEventListener("ingest-smoke-test:completed", handler);
       window.removeEventListener("ingest-smoke-test:cleared", cleanupHandler);
     };
-  }, []);
+  }, [refreshDevices, resetRows]);
 
   const data = useMemo(
     () => rows.map((r) => ({
@@ -176,8 +199,7 @@ export default function MapPage() {
   const selectedMoment = selectedPoint ? new Date(normaliseTimestamp(selectedPoint.timestamp)) : null;
   function handleDeviceSelect(value: string) {
     setPendingSmoke(false);
-    setRows([]);
-    setSelectedIndex(0);
+    resetRows();
     setDeviceId(value);
     try {
       if (value) window.localStorage.setItem("crowdpm:lastSmokeTestDevice", value);

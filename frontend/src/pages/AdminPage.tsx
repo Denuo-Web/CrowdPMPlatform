@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   cleanupIngestSmokeTest,
   listDevices,
@@ -116,7 +116,17 @@ export default function AdminPage() {
   const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>(restoreSmokeHistory);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
-  useEffect(() => { listDevices().then(setDevices).catch(() => setDevices([])); }, []);
+  const refreshDevices = useCallback(async () => {
+    try {
+      const list = await listDevices();
+      setDevices(list);
+    }
+    catch {
+      setDevices([]);
+    }
+  }, []);
+
+  useEffect(() => { refreshDevices(); }, [refreshDevices]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -221,7 +231,7 @@ export default function AdminPage() {
       } else {
         setSmokeHistory([]);
       }
-      listDevices().then(setDevices).catch(()=>setDevices([]));
+      refreshDevices();
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "Cleanup failed";
@@ -251,7 +261,7 @@ export default function AdminPage() {
       if (smokeResult && uniqueDeviceIdsFromResult(smokeResult).some((id) => clearedIds.has(id))) {
         setSmokeResult(null);
       }
-      listDevices().then(setDevices).catch(()=>setDevices([]));
+      refreshDevices();
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "Cleanup failed";
