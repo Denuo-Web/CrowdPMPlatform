@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   cleanupIngestSmokeTest,
   listDevices,
@@ -114,6 +114,7 @@ export default function AdminPage() {
     }
   });
   const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>(restoreSmokeHistory);
+  const historyRef = useRef<SmokeHistoryItem[]>(smokeHistory);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
@@ -139,13 +140,7 @@ export default function AdminPage() {
   }, [smokePayload]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(smokeHistory));
-    }
-    catch (err) {
-      console.warn("Unable to store smoke history", err);
-    }
+  historyRef.current = smokeHistory;
   }, [smokeHistory]);
 
   function parsePayload(raw: string): IngestSmokeTestPayload {
@@ -166,44 +161,35 @@ export default function AdminPage() {
     setIsRunning(true);
     setSmokeError(null);
     setPayloadError(null);
-    let payload: IngestSmokeTestPayload;
     try {
-      payload = parsePayload(smokePayload);
-    }
-    catch (err) {
-      const message = err instanceof Error ? err.message : "Invalid payload";
-      setPayloadError(message);
-      setIsRunning(false);
-      return;
-    }
-    try {
+      const payload = parsePayload(smokePayload);
       const result = await runIngestSmokeTest(payload);
       setSmokeResult(result);
-      const deviceIds = uniqueDeviceIdsFromResult(result);
       const historyEntry: SmokeHistoryItem = {
         id: `${result.deviceId}:${result.batchId}`,
         createdAt: Date.now(),
-        deviceIds,
+        deviceIds: uniqueDeviceIdsFromResult(result),
         response: result,
       };
-      setSmokeHistory((prev) => {
-        const next = [historyEntry, ...prev.filter((item) => item.response.batchId !== result.batchId)];
-        return next.slice(0, 10); // keep most recent entries manageable
-      });
-      try {
-        window.localStorage.setItem("crowdpm:lastSmokeTestDevice", result.deviceId);
-        window.dispatchEvent(new CustomEvent("ingest-smoke-test:completed", { detail: result }));
-      }
-      catch (storageErr) {
-        console.warn("Unable to persist smoke test details", storageErr);
-      }
+      const updatedHistory = [
+        historyEntry, ...historyRef.current.filter((item) => item.response.batchId !== result.batchId)
+      ].slice(0, 10);
+      setSmokeHistory(updatedHistory);
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+      localStorage.setItem("crowdpm:lastSmokeTestDevice", result.deviceId);
+      // Notify MapPage
+      window.dispatchEvent(new CustomEvent("ingest-smoke-test:completed", { detail: result }));
     }
     catch (err) {
-      const message = err instanceof Error ? err.message : "Smoke test failed";
-      setSmokeError(message);
-      setSmokeResult(null);
-    }
-    finally {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      // Check if it's a parsing error vs API error
+      if (err instanceof Error && err.message.includes("payload")) {
+        setPayloadError(message);
+      } else {
+        setSmokeError(message);
+        setSmokeResult(null);
+      }
+    } finally {
       setIsRunning(false);
     }
   }
