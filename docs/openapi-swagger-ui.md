@@ -8,18 +8,18 @@ You’ll get a fully interactive API documentation page that runs locally in you
 ## 🐳 Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed and running  
-- A valid `openapi.yaml` file in your project directory (e.g., `./openapi.yaml`)
+- A valid `openapi.yaml` file in your project.
 
 ---
 
 ## 🚀 Run Swagger UI with Docker
 
-From the root of your project (where your `openapi.yaml` lives), run:
+From the root of your project, run:
 
 ```bash
 docker pull swaggerapi/swagger-ui
 
-docker run -p 8080:8080 \
+docker run --rm -p 8080:8080 \
   -e SWAGGER_JSON=/openapi.yaml \
-  -v $(pwd)/openapi.yaml:/openapi.yaml \
+  -v ./functions/src/openapi.yaml:/openapi.yaml:ro \
   swaggerapi/swagger-ui
