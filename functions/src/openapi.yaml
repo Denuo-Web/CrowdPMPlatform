@@ -7,7 +7,7 @@ info:
     and retrieving measurement data.
 
 servers:
-  - url: https://api.crowdpm.com/v1
+  - url: https://crowdpmplatform.web.app/
     description: Production
   - url: http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi
     description: Local development
