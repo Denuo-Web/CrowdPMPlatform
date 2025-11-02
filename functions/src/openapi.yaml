@@ -19,7 +19,7 @@ paths:
         '200': 
           description: ok
  
-# TODO: POST /v1/devices and admin endpoints require Authorization: Bearer headers
+# POST /v1/devices and admin endpoints require Authorization: Bearer headers
   /v1/admin/devices/{id}/suspend:
     post:
       responses: 
@@ -60,7 +60,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/Device'
 
-  /measurements:
+  /v1/measurements:
     get:
       summary: Most recent measurement for each device
       description: |
@@ -69,6 +69,25 @@ paths:
         of devices returned.
       operationId: getLatestMeasurementsAllDevices
       parameters:
+        - name: device_id, 
+          in: query, 
+          schema: 
+            type: string
+        - name: pollutant, 
+          in: query, 
+          schema: 
+            type: string
+            enum: [pm25]
+        - name: t0
+          in: query
+          schema: 
+            type: string
+            format: date-time
+        - name: t1
+          in: query
+          schema: 
+            type: string
+            format: date-time
         - name: limit
           in: query
           required: false
