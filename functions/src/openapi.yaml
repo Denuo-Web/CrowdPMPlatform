@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Describe Your API Reference
+  title: CrowdPM API
   version: 1.0.0
   description: |
     API for registering CrowdPM pollution monitoring devices, sending sensor measurements,
