@@ -1,24 +1,469 @@
 openapi: 3.0.3
-info: { title: CrowdPM API, version: 0.1.0 }
+info:
+  title: CrowdPM API
+  version: 1.0.0
+  description: >
+    API used by CrowdPM to manage devices and retrieve pollution measurements.
+  license:
+    name: Proprietary
+    url: https://crowdpmplatform.web.app
+servers:
+  - url: https://crowdpmplatform.web.app
+    description: Production
+  - url: http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi
+    description: Local development (Firebase emulator)
+security: []
 paths:
-  /health: { get: { responses: { "200": { description: ok } } } }
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      description: Returns 200 when the API is ready to receive traffic.
+      security: []
+      responses:
+        '200':
+          description: Service is healthy.
+        '400':
+          description: Malformed request.
   /v1/devices:
-    get: { responses: { "200": { description: list } } }
+    get:
+      operationId: listDevices
+      summary: List devices
+      description: >
+        Returns all registered devices. Authentication is required in production,
+        but emulator builds may allow anonymous access for convenience.
+      security: []
+      responses:
+        '200':
+          description: Devices returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          description: Authentication required.
     post:
+      summary: Register a device
+      description: >
+        Registers a new device for the authenticated user. The device inherits the
+        requesting user's Firebase UID as its owner.
+      operationId: registerDevice
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, properties: { name: { type: string } }, required: [name] }
-      responses: { "201": { description: created } }
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '201':
+          description: Device registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRegistrationResponse'
+        '400':
+          description: Invalid request payload.
+        '401':
+          description: Missing or invalid bearer token.
   /v1/measurements:
     get:
+      operationId: getDeviceMeasurements
+      summary: Query measurements
+      description: >
+        Returns measurements for a device within an inclusive time window. Missing or invalid
+        parameters result in an empty array.
+      security: []
       parameters:
-        - { in: query, name: device_id, schema: { type: string } }
-        - { in: query, name: pollutant, schema: { type: string, enum: [pm25] } }
-        - { in: query, name: t0, schema: { type: string, format: date-time } }
-        - { in: query, name: t1, schema: { type: string, format: date-time } }
-        - { in: query, name: limit, schema: { type: integer, default: 1000 } }
-      responses: { "200": { description: results } }
+        - name: device_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Identifier of the device being queried.
+        - name: pollutant
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pm25]
+            default: pm25
+          description: Pollutant filter. Only `pm25` is currently supported.
+        - name: t0
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive start timestamp in ISO-8601 format.
+        - name: t1
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive end timestamp in ISO-8601 format.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 2000
+          description: >
+            Maximum number of measurements to return. Higher values may be truncated.
+      responses:
+        '200':
+          description: Matching measurements.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Measurement'
+        '400':
+          description: Invalid combination of query parameters. Currently returns an empty array.
   /v1/admin/devices/{id}/suspend:
-    post: { responses: { "204": { description: updated } } }
+    post:
+      operationId: suspendDevice
+      summary: Suspend a device
+      description: >
+        Marks a device as suspended. Suspended devices cannot submit new measurements.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the device to suspend.
+      responses:
+        '204':
+          description: Device suspended.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to suspend the device.
+  /v1/admin/ingest-smoke-test:
+    post:
+      operationId: runIngestSmokeTest
+      summary: Run ingest smoke test
+      description: >
+        Seeds synthetic measurements and invokes the ingest pipeline for diagnostics.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestSmokeTestRequest'
+      responses:
+        '200':
+          description: Smoke test completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestSmokeTestResponse'
+        '400':
+          description: Invalid smoke test request.
+        '500':
+          description: Smoke test failed.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to run smoke tests.
+  /v1/admin/ingest-smoke-test/cleanup:
+    post:
+      operationId: cleanupIngestSmokeTest
+      summary: Clean up ingest smoke test devices
+      description: >
+        Removes seeded measurement data and deletes generated ingest files.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestCleanupRequest'
+      responses:
+        '200':
+          description: Cleanup completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestCleanupResponse'
+        '400':
+          description: Invalid cleanup request.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to clean up smoke tests.
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    DeviceStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - SUSPENDED
+    Device:
+      type: object
+      description: A registered CrowdPM device.
+      properties:
+        id:
+          type: string
+          description: Device identifier.
+        name:
+          type: string
+          description: Friendly name supplied by the owner.
+        ownerUserId:
+          type: string
+          description: Firebase UID of the device owner.
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the device record was created.
+        location:
+          $ref: '#/components/schemas/Location'
+      required:
+        - id
+        - name
+        - ownerUserId
+        - status
+        - createdAt
+    Location:
+      type: object
+      description: Latitude and longitude in decimal degrees.
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+      required:
+        - latitude
+        - longitude
+    RegisterDeviceRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: CrowdPM Sensor - Home
+          description: Friendly name to display in dashboards.
+    DeviceRegistrationResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Newly generated device identifier.
+    Measurement:
+      type: object
+      description: Individual measurement captured for a device.
+      properties:
+        id:
+          type: string
+          description: Measurement document identifier.
+        deviceId:
+          type: string
+          description: Device identifier.
+        pollutant:
+          type: string
+          enum: [pm25]
+        value:
+          type: number
+          format: float
+        unit:
+          type: string
+          nullable: true
+          description: Units reported by the sensor (for example `µg/m³`).
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        altitude:
+          type: number
+          format: double
+          nullable: true
+        precision:
+          type: integer
+          nullable: true
+          description: Sensor precision indicator when provided.
+        timestamp:
+          type: string
+          format: date-time
+          description: Measurement timestamp in ISO-8601 format.
+        flags:
+          type: integer
+          nullable: true
+          description: Optional quality flags bitmask.
+      required:
+        - id
+        - deviceId
+        - pollutant
+        - value
+        - lat
+        - lon
+        - timestamp
+    IngestPoint:
+      type: object
+      required:
+        - device_id
+        - pollutant
+        - value
+        - timestamp
+      properties:
+        device_id:
+          type: string
+        pollutant:
+          type: string
+          enum: [pm25]
+        value:
+          type: number
+          format: float
+        unit:
+          type: string
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        altitude:
+          type: number
+          format: double
+          nullable: true
+        precision:
+          type: integer
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        flags:
+          type: integer
+          nullable: true
+    IngestBody:
+      type: object
+      properties:
+        device_id:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestPoint'
+    IngestPointOverrides:
+      type: object
+      description: Overrides applied to each generated point.
+      additionalProperties: false
+      properties:
+        device_id:
+          type: string
+        pollutant:
+          type: string
+          enum: [pm25]
+        value:
+          type: number
+          format: float
+        unit:
+          type: string
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        altitude:
+          type: number
+          format: double
+          nullable: true
+        precision:
+          type: integer
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        flags:
+          type: integer
+          nullable: true
+    IngestSmokeTestRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          description: Device identifier to seed; defaults to a generated ID.
+        payload:
+          $ref: '#/components/schemas/IngestBody'
+        pointOverrides:
+          $ref: '#/components/schemas/IngestPointOverrides'
+    IngestSmokeTestResponse:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+          description: Indicates whether the payload was accepted for processing.
+        batchId:
+          type: string
+        deviceId:
+          type: string
+        storagePath:
+          type: string
+        payload:
+          $ref: '#/components/schemas/IngestBody'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestPoint'
+        seededDeviceId:
+          type: string
+        seededDeviceIds:
+          type: array
+          items:
+            type: string
+      required:
+        - accepted
+        - batchId
+        - deviceId
+        - storagePath
+    IngestCleanupRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        deviceIds:
+          type: array
+          items:
+            type: string
+    IngestCleanupResponse:
+      type: object
+      properties:
+        clearedDeviceId:
+          type: string
+          nullable: true
+        clearedDeviceIds:
+          type: array
+          items:
+            type: string
