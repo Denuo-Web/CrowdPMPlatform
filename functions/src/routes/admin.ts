@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { ingestPayload, type IngestBody } from "../services/ingestGateway.js";
-import { getIngestSecret } from "../lib/runtimeConfig.js";
+import { decryptDeviceSecret, encryptDeviceSecret, generateDeviceSecret, hashClaimPassphrase, type DeviceSecretRecord } from "../lib/deviceSecrets.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
@@ -12,6 +12,88 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
     return rep.code(204).send();
   });
+
+  fastify.post<{ Body: { passphrase?: string; deviceId?: string; name?: string } }>(
+    "/v1/admin/devices/unclaimed",
+    async (req, rep) => {
+      const user = await requireUser(req);
+      const { passphrase, deviceId: requestedId, name } = req.body ?? {};
+      if (typeof passphrase !== "string" || !passphrase.trim()) {
+        return rep.code(400).send({ error: "passphrase is required" });
+      }
+      let passphraseHash: string;
+      try {
+        passphraseHash = hashClaimPassphrase(passphrase);
+      }
+      catch (err) {
+        const message = err instanceof Error ? err.message : "unable to hash passphrase";
+        return rep.code(400).send({ error: message });
+      }
+
+      const devicesColl = db().collection("devices");
+      const passphraseRef = db().collection("devicePassphrases").doc(passphraseHash);
+      const nowIso = new Date().toISOString();
+      const result = await db().runTransaction(async (tx) => {
+        const passphraseDoc = await tx.get(passphraseRef);
+        if (passphraseDoc.exists) {
+          return { outcome: "CONFLICT", deviceId: passphraseDoc.get("deviceId") } as const;
+        }
+        const targetRef = requestedId ? devicesColl.doc(requestedId) : devicesColl.doc();
+        const existingTarget = await tx.get(targetRef);
+        if (existingTarget.exists) {
+          return { outcome: "CONFLICT_DEVICE", deviceId: targetRef.id } as const;
+        }
+        const secret = generateDeviceSecret();
+        const encrypted = encryptDeviceSecret(secret);
+        tx.set(targetRef, {
+          status: "UNCLAIMED",
+          name: name ?? null,
+          ownerUserId: null,
+          claimPassphraseHash: passphraseHash,
+          claimPassphraseCreatedAt: nowIso,
+          claimPassphraseConsumedAt: null,
+          createdAt: nowIso,
+          claimedAt: null,
+          deviceSecret: encrypted,
+          deviceSecretVersion: 1,
+          deviceSecretUpdatedAt: encrypted.createdAt,
+          bootstrapSecretDeliveredAt: null,
+          bootstrapSecretDeliveredBy: null,
+        }, { merge: false });
+        tx.set(passphraseRef, {
+          deviceId: targetRef.id,
+          status: "UNCLAIMED",
+          createdAt: nowIso,
+          lastUpdatedAt: nowIso,
+          provisionedBy: user.uid,
+        }, { merge: true });
+
+        return { outcome: "SUCCESS", deviceId: targetRef.id } as const;
+      });
+
+      await db().collection("deviceProvisionAudit").add({
+        createdAt: nowIso,
+        outcome: result.outcome,
+        deviceId: "deviceId" in result ? result.deviceId : undefined,
+        passphraseHash,
+        userId: user.uid,
+        ip: req.ip,
+      });
+
+      if (result.outcome === "CONFLICT") {
+        return rep.code(409).send({ error: "passphrase already assigned", deviceId: result.deviceId });
+      }
+      if (result.outcome === "CONFLICT_DEVICE") {
+        return rep.code(409).send({ error: "device id already exists", deviceId: result.deviceId });
+      }
+
+      return rep.code(201).send({
+        id: result.deviceId,
+        status: "UNCLAIMED",
+        claimPassphraseHash: passphraseHash,
+      });
+    }
+  );
 
   type SmokeTestBody = {
     deviceId?: string;
@@ -100,29 +182,67 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return rep.code(400).send({ error: "payload must include at least one point" });
     }
 
-    const secret = getIngestSecret();
-    if (!secret) {
-      return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
-    }
-
     const deviceIds = Array.from(new Set(payload.points.map((point) => point.device_id).filter((id): id is string => Boolean(id))));
     const primaryDeviceId = deviceIds[0] || requestedDeviceId;
     if (!primaryDeviceId) {
       return rep.code(400).send({ error: "unable to determine device_id for smoke test" });
     }
     const seedTargets = deviceIds.length ? deviceIds : [primaryDeviceId];
-    await Promise.all(seedTargets.map(async (deviceId) => {
-      await db().collection("devices").doc(deviceId).set({
+
+    async function ensureDevice(deviceId: string) {
+      const ref = db().collection("devices").doc(deviceId);
+      const snap = await ref.get();
+      const baseData = {
         status: "ACTIVE",
         name: "Smoke Test Device",
         ownerUserId: "smoke-test",
         createdAt: new Date().toISOString(),
+      };
+      let secretRecord = snap.exists ? (snap.get("deviceSecret") as DeviceSecretRecord | undefined) : undefined;
+      let secret: string;
+      let rotated = false;
+      if (secretRecord) {
+        try {
+          secret = decryptDeviceSecret(secretRecord);
+        }
+        catch (err) {
+          fastify.log.warn({ deviceId, err }, "failed to decrypt existing device secret; rotating");
+          secret = generateDeviceSecret();
+          secretRecord = encryptDeviceSecret(secret);
+          rotated = true;
+        }
+      }
+      else {
+        secret = generateDeviceSecret();
+        secretRecord = encryptDeviceSecret(secret);
+        rotated = true;
+      }
+      const previousVersion = snap.exists && typeof snap.get("deviceSecretVersion") === "number"
+        ? Number(snap.get("deviceSecretVersion"))
+        : 0;
+      await ref.set({
+        ...baseData,
+        deviceSecret: secretRecord,
+        deviceSecretUpdatedAt: secretRecord.createdAt,
+        deviceSecretVersion: rotated ? previousVersion + 1 : Math.max(previousVersion, 1),
       }, { merge: true });
+      return secret;
+    }
+
+    const deviceSecrets = new Map<string, string>();
+    await Promise.all(seedTargets.map(async (deviceId) => {
+      const secret = await ensureDevice(deviceId);
+      deviceSecrets.set(deviceId, secret);
     }));
     fastify.log.info({ deviceIds: seedTargets }, "ingest smoke test seeded devices");
 
     const raw = JSON.stringify(payload);
-    const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+    const primarySecret = deviceSecrets.get(primaryDeviceId);
+    if (!primarySecret) {
+      fastify.log.error({ primaryDeviceId }, "missing device secret after seeding");
+      return rep.code(500).send({ error: "device secret unavailable after seeding" });
+    }
+    const signature = crypto.createHmac("sha256", primarySecret).update(raw).digest("hex");
     try {
       const result = await ingestPayload(raw, payload, { signature, deviceId: primaryDeviceId });
       fastify.log.info({ batchId: result.batchId, deviceId: result.deviceId }, "ingest smoke test completed");

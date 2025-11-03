@@ -69,6 +69,110 @@ paths:
           description: Invalid request payload.
         '401':
           description: Missing or invalid bearer token.
+  /v1/devices/claim:
+    post:
+      operationId: claimDevice
+      summary: Claim a device
+      description: >
+        Claims an unclaimed device using its passphrase, rotates the ingest secret, and associates the device with the authenticated user.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimDeviceRequest'
+      responses:
+        '200':
+          description: Device claimed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimDeviceResponse'
+        '400':
+          description: Invalid passphrase payload.
+        '401':
+          description: Missing or invalid bearer token.
+        '404':
+          description: Passphrase not recognised or already claimed.
+        '409':
+          description: Passphrase already consumed by another user.
+        '429':
+          description: Rate limit exceeded for claim attempts.
+  /v1/devices/claims:
+    get:
+      operationId: listDeviceClaims
+      summary: List claimed devices
+      description: >
+        Returns devices claimed by the authenticated user sorted by claim time.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Claimed devices for the authenticated user.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          description: Missing or invalid bearer token.
+  /v1/devices/claims/{deviceId}:
+    delete:
+      operationId: revokeDeviceClaim
+      summary: Revoke a device claim
+      description: >
+        Removes the authenticated user's claim from the specified device and returns it to the unclaimed pool.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the claimed device to revoke.
+      responses:
+        '204':
+          description: Claim revoked successfully.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Device is owned by another user.
+        '404':
+          description: Device not found.
+  /v1/devices/bootstrap:
+    post:
+      operationId: bootstrapDevice
+      summary: Bootstrap device secret
+      description: >
+        Exchanges a device passphrase for claim status information and, when eligible, delivers the ingest secret exactly once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapRequest'
+      responses:
+        '200':
+          description: Bootstrap status response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapResponse'
+        '404':
+          description: Passphrase not recognised.
+        '409':
+          description: Provided device identifier does not match the passphrase.
+        '423':
+          description: Device is suspended.
+        '429':
+          description: Rate limit exceeded for bootstrap attempts.
+        '500':
+          description: Device secret unavailable.
   /v1/measurements:
     get:
       operationId: getDeviceMeasurements
@@ -127,6 +231,33 @@ paths:
                   $ref: '#/components/schemas/Measurement'
         '400':
           description: Invalid combination of query parameters. Currently returns an empty array.
+  /v1/admin/devices/unclaimed:
+    post:
+      operationId: provisionUnclaimedDevice
+      summary: Provision an unclaimed device
+      description: >
+        Creates an unclaimed device record with a hashed passphrase and encrypted ingest secret. Intended for factory or admin tooling.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminProvisionUnclaimedRequest'
+      responses:
+        '201':
+          description: Device provisioned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProvisionUnclaimedResponse'
+        '400':
+          description: Invalid request payload.
+        '401':
+          description: Missing or invalid bearer token.
+        '409':
+          description: Passphrase or device identifier already in use.
   /v1/admin/devices/{id}/suspend:
     post:
       operationId: suspendDevice
@@ -215,6 +346,7 @@ components:
     DeviceStatus:
       type: string
       enum:
+        - UNCLAIMED
         - ACTIVE
         - SUSPENDED
     Device:
@@ -226,9 +358,11 @@ components:
           description: Device identifier.
         name:
           type: string
+          nullable: true
           description: Friendly name supplied by the owner.
         ownerUserId:
           type: string
+          nullable: true
           description: Firebase UID of the device owner.
         status:
           $ref: '#/components/schemas/DeviceStatus'
@@ -238,10 +372,37 @@ components:
           description: Timestamp when the device record was created.
         location:
           $ref: '#/components/schemas/Location'
+        claimedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the device was claimed.
+        claimPassphraseCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the current claim passphrase was provisioned.
+        claimPassphraseConsumedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the passphrase was consumed (on successful claim).
+        deviceSecretVersion:
+          type: integer
+          nullable: true
+          description: Monotonic counter tracking ingest secret rotations.
+        deviceSecretUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the ingest secret was last rotated.
+        bootstrapSecretDeliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the bootstrap endpoint last released the ingest secret.
       required:
         - id
-        - name
-        - ownerUserId
         - status
         - createdAt
     Location:
@@ -275,10 +436,114 @@ components:
       type: object
       required:
         - id
+        - ingestSecret
       properties:
         id:
           type: string
           description: Newly generated device identifier.
+        ingestSecret:
+          type: string
+          description: Ingest secret assigned to the new device.
+    ClaimDeviceRequest:
+      type: object
+      required:
+        - passphrase
+      properties:
+        passphrase:
+          type: string
+          minLength: 1
+          description: Claim passphrase bundled with the physical device.
+    ClaimDeviceResponse:
+      type: object
+      required:
+        - deviceId
+        - ingestSecret
+        - device
+      properties:
+        deviceId:
+          type: string
+          description: Identifier of the claimed device.
+        ingestSecret:
+          type: string
+          description: Fresh ingest secret rotated during the claim.
+        device:
+          $ref: '#/components/schemas/Device'
+    BootstrapRequest:
+      type: object
+      required:
+        - passphrase
+      properties:
+        passphrase:
+          type: string
+          minLength: 1
+          description: Claim passphrase bundled with the physical device.
+        deviceId:
+          type: string
+          nullable: true
+          description: Optional device identifier for additional validation.
+    BootstrapStatus:
+      type: string
+      enum:
+        - UNCLAIMED
+        - CLAIMED
+        - DELIVERED
+        - SUSPENDED
+    BootstrapResponse:
+      type: object
+      required:
+        - status
+        - deviceId
+      properties:
+        status:
+          $ref: '#/components/schemas/BootstrapStatus'
+        deviceId:
+          type: string
+          description: Identifier inferred from the passphrase.
+        ingestSecret:
+          type: string
+          nullable: true
+          description: Provided exactly once when the device is claimed and has not retrieved the secret yet.
+        ownerUserId:
+          type: string
+          nullable: true
+          description: Owner Firebase UID when the device is claimed.
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the ingest secret was delivered.
+    AdminProvisionUnclaimedRequest:
+      type: object
+      required:
+        - passphrase
+      properties:
+        passphrase:
+          type: string
+          minLength: 1
+          description: Passphrase that will later be used to claim the device.
+        deviceId:
+          type: string
+          nullable: true
+          description: Optional device identifier to use instead of an auto-generated ID.
+        name:
+          type: string
+          nullable: true
+          description: Optional display name assigned during provisioning.
+    AdminProvisionUnclaimedResponse:
+      type: object
+      required:
+        - id
+        - status
+        - claimPassphraseHash
+      properties:
+        id:
+          type: string
+          description: Provisioned device identifier.
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+        claimPassphraseHash:
+          type: string
+          description: Stored hash of the provided passphrase (for auditing).
     Measurement:
       type: object
       description: Individual measurement captured for a device.

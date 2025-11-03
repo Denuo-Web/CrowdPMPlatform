@@ -4,7 +4,7 @@
 # CrowdPM Platform
 Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
 ## Highlights
-- HMAC-validated ingest gateway stores raw payloads in Cloud Storage and pushes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
+- Per-device HMAC ingest gateway stores raw payloads in Cloud Storage, validates signatures with device-scoped secrets, and pushes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
 - Pub/Sub-driven worker normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
 - Fastify-based HTTPS API (`crowdpmApi`) exposes device, measurement, and admin endpoints consumed by the frontend and integration partners.
 - React + Vite client renders Google Maps WebGL overlays via deck.gl to visualise particulate data and provides a basic admin table for device management.
@@ -13,7 +13,7 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 ## System Architecture
 - **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function guarded by `verifyHmac`, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
 - **Processing** (`functions/src/services/ingestWorker.ts`): Firebase Pub/Sub Function downloads batches, applies calibration data from `devices/{deviceId}` (if present), and writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}` with deterministic sorting.
-- **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, and `/v1/admin/devices/:id/suspend`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
+- **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/devices/claim`, `/v1/devices/bootstrap`, `/v1/measurements`, `/v1/admin/devices/:id/suspend`, and `/v1/admin/devices/unclaimed`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
 - **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and an admin table (`AdminPage`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
@@ -65,7 +65,7 @@ java --version
    ```
 4. Supply real secrets:
    - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
-   - `functions/.env.local`: shared INGEST HMAC secret and optional custom Pub/Sub topic.
+   - `functions/.env.local`: claim passphrase pepper, device-secret encryption key, and optional custom Pub/Sub topic.
 
 ### Environment Variables
 
@@ -76,12 +76,18 @@ java --version
 | `VITE_API_BASE` | Base URL for the Firebase HTTPS API. | `http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi` |
 | `VITE_GOOGLE_MAPS_API_KEY` | Maps JavaScript API key with WebGL overlay access. | `AIza...` |
 | `VITE_GOOGLE_MAP_ID` | Vector map style ID for WebGL overlay (required). | `test-map-id` |
+| `VITE_FIREBASE_API_KEY` | Firebase Web API key for email/password login. | `AIza...` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase Auth domain. | `demo-crowdpm.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID used by the stack. | `demo-crowdpm` |
+| `VITE_FIREBASE_APP_ID` *(optional)* | Firebase web app ID (needed for some Auth features). | `1:123:web:abc` |
+| `VITE_FIREBASE_AUTH_EMULATOR_HOST` *(optional)* | Host for Firebase Auth emulator when running locally. | `localhost:9099` |
 
 `functions/.env.local`
 
 | Name | Purpose | Example |
 | --- | --- | --- |
-| `INGEST_HMAC_SECRET` | Shared secret used by `verifyHmac` to authenticate ingest requests. | `replace-with-hmac-secret` |
+| `CLAIM_PASSPHRASE_PEPPER` | Secret pepper appended to device claim passphrases before hashing. Use a long, random string and rotate centrally. | `my-super-secret-pepper` |
+| `DEVICE_SECRET_ENCRYPTION_KEY` | 32-byte key (base64 or hex encoded) used to encrypt per-device ingest secrets stored in Firestore. | `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=` |
 | `INGEST_TOPIC` | Pub/Sub topic name for ingest batches (defaults to `ingest.raw`). | `ingest.raw` |
 
 ## Running Locally
@@ -105,20 +111,26 @@ Keep this terminal open; rebuilds stream into the emulator automatically.
 The REST contract is documented in `functions/src/openapi.yaml` and implemented in `functions/src/index.ts`:
 - `GET /health` – environment probe
 - `GET /v1/devices` – list devices (auth optional in emulator)
-- `POST /v1/devices` – create device (requires Firebase ID token)
+- `POST /v1/devices` – create device and return a fresh ingest secret (requires Firebase ID token)
+- `POST /v1/devices/claim` – claim an unclaimed device using its passphrase (requires Firebase ID token)
+- `GET /v1/devices/claims` – list devices claimed by the authenticated user
+- `DELETE /v1/devices/claims/:deviceId` – revoke a device claim owned by the authenticated user
+- `POST /v1/devices/bootstrap` – exchange a passphrase for claim status or a one-time ingest secret delivery
 - `GET /v1/measurements` – query PM2.5 readings by device, time window, and limit
 - `POST /v1/admin/devices/:id/suspend` – mark device as suspended (requires authenticated user)
+- `POST /v1/admin/devices/unclaimed` – provision an unclaimed device with a passphrase and server-generated ingest secret
 
 Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy `requireUser`.
 
 ## Data Model & Storage
-- Firestore: `devices/{deviceId}` documents store device metadata and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
+- Firestore: `devices/{deviceId}` documents store device metadata (status, owner, claim timestamps), encrypted ingest secrets (`deviceSecret`), and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
 - Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`).
 - Cloud Storage: raw ingest payloads saved to `ingest/{deviceId}/{batchId}.json` for auditing and replay.
 - Pub/Sub: default `ingest.raw` topic triggers `ingestWorker` for eventual consistency processing.
 
 ## Security Considerations
-- Ingest clients must HMAC-sign payloads with `INGEST_HMAC_SECRET`; unsigned or mismatched signatures are rejected (`verifyHmac`).
+- Device secrets are generated and encrypted server-side. Ingest clients sign payloads with their individual `deviceSecret`; unsigned or mismatched signatures are rejected (`verifyHmac`).
+- Device claim passphrases are hashed with a server-held pepper, rate limited, and fully audited. Secrets are only returned once via the claim response or first bootstrap exchange.
 - Firebase Auth tokens gate device creation and admin routes via `requireUser`.
 - Firestore and Storage rules ship locked-down defaults: device and measurement data are read-only to external clients, ingest blobs are entirely private.
 
@@ -127,7 +139,7 @@ Use the Firebase CLI once credentials and target project are configured:
 ```bash
 firebase deploy
 ```
-Ensure `.firebaserc` points to the intended project (avoid using the `demo-` alias outside emulator workflows). Configure runtime secrets (e.g., `INGEST_HMAC_SECRET`) through Firebase environment configuration or Cloud Secret Manager before deploying.
+Ensure `.firebaserc` points to the intended project (avoid using the `demo-` alias outside emulator workflows). Configure runtime secrets (e.g., `CLAIM_PASSPHRASE_PEPPER`, `DEVICE_SECRET_ENCRYPTION_KEY`) through Firebase environment configuration or Cloud Secret Manager before deploying.
 
 ## Further Reading
 - `docs/development.md` – end-to-end local development workflow, emulator smoke tests, and ingest pipeline walkthrough

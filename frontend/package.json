@@ -14,6 +14,8 @@
     "@deck.gl/layers": "^9.1.11",
     "@deck.gl/mesh-layers": "^9.1.11",
     "@luma.gl/engine": "^9.1.0",
+    "@radix-ui/react-dialog": "^1.1.1",
+    "firebase": "^11.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

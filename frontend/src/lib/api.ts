@@ -14,9 +14,28 @@ function buildUrl(path: string): string {
   return `${base}${normalizedPath}`;
 }
 
+type AuthTokenProvider = () => Promise<string | null> | string | null;
+let authTokenProvider: AuthTokenProvider | null = null;
+
+export function setAuthTokenProvider(provider: AuthTokenProvider | null) {
+  authTokenProvider = provider;
+}
+
+async function withAuth(init?: RequestInit): Promise<RequestInit> {
+  if (!authTokenProvider) return init ?? {};
+  const token = await authTokenProvider();
+  if (!token) return init ?? {};
+  const headers = new Headers(init?.headers ?? undefined);
+  if (!headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return { ...init, headers };
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = buildUrl(path);
-  const response = await fetch(url, init);
+  const initWithAuth = await withAuth(init);
+  const response = await fetch(url, initWithAuth);
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   const bodyText = await response.text().catch(() => "");
 
@@ -39,6 +58,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
     throw new Error(errorBody || `Request to ${url} failed with status ${response.status}`);
+  }
+
+  if (response.status === 204 || response.status === 205) {
+    return undefined as T;
   }
 
   if (!contentType.includes("application/json")) {
@@ -73,6 +96,7 @@ export type DeviceSummary = {
   status?: string | null;
   ownerUserId?: string | null;
   createdAt?: string | null;
+  claimedAt?: string | null;
 };
 
 export type FirestoreTimestampLike = {
@@ -124,6 +148,12 @@ export type IngestSmokeTestResponse = {
   points?: IngestSmokeTestPoint[];
 };
 
+export type ClaimDeviceResponse = {
+  deviceId: string;
+  ingestSecret: string;
+  device?: DeviceSummary | null;
+};
+
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
@@ -151,5 +181,23 @@ export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Prom
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function claimDevice(passphrase: string): Promise<ClaimDeviceResponse> {
+  return requestJson<ClaimDeviceResponse>("/v1/devices/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passphrase }),
+  });
+}
+
+export async function listDeviceClaims(): Promise<DeviceSummary[]> {
+  return requestJson<DeviceSummary[]>("/v1/devices/claims");
+}
+
+export async function deleteDeviceClaim(deviceId: string): Promise<void> {
+  await requestJson<void>(`/v1/devices/claims/${encodeURIComponent(deviceId)}`, {
+    method: "DELETE",
   });
 }

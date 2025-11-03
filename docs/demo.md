@@ -34,12 +34,13 @@ Confirm the active project ID matches the expected demo project. If it does not,
 ---
 
 ## 3. Update Cloud Function Secrets (first deployment and rotations)
-Smoke tests and ingest flows require the shared HMAC secret. Run these commands before the first deploy on a new project **and** whenever the secret rotates. If you need to confirm the current value, inspect it with `firebase functions:config:get ingest --project demo`.
+Smoke tests and ingest flows require the claim pepper, device-secret encryption key, and Pub/Sub topic. Run these commands before the first deploy on a new project **and** whenever a secret rotates.
 ```bash
-firebase functions:config:set ingest.hmac_secret="<demo-secret>" --project demo
+firebase functions:secrets:set CLAIM_PASSPHRASE_PEPPER --project demo
+firebase functions:secrets:set DEVICE_SECRET_ENCRYPTION_KEY --project demo
 firebase functions:config:set ingest.topic="ingest.raw" --project demo
 ```
-Record any secret changes in the team changelog.
+Use strong random values and record each secret rotation in the team changelog. Retrieve existing secrets with `firebase functions:secrets:access <NAME> --project demo`.
 
 ---
 
@@ -88,7 +89,7 @@ Watch for warnings or failures and resolve them before proceeding.
    ```bash
    curl https://<region>-<demo-project>.cloudfunctions.net/crowdpmApi/health
    ```
-3. **Ingest pipeline** – Send a signed ingest payload using the demo HMAC secret. Confirm:
+3. **Ingest pipeline** – Claim or provision a device, then send a signed ingest payload using its returned ingest secret. Confirm:
    - HTTP 202 response with a batch ID.
    - Cloud Storage file created under `ingest/<deviceId>/<batchId>.json`.
    - Firestore documents under `devices/<deviceId>/measures/...`.
@@ -122,7 +123,8 @@ Inform the team immediately and document the reason for rollback.
 ## 10. Helpful Commands
 ```bash
 firebase hosting:channel:deploy pr-<id> --project demo   # temporary preview channel for QA
-firebase functions:config:get ingest --project demo      # inspect runtime config
+firebase functions:secrets:versions:list CLAIM_PASSPHRASE_PEPPER --project demo
+firebase functions:secrets:versions:list DEVICE_SECRET_ENCRYPTION_KEY --project demo
 firebase functions:log --project demo --only ingestWorker
 ```
 

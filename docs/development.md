@@ -98,12 +98,19 @@ cp frontend/.env.example frontend/.env.local
 
 
 - Restart the Vite dev server after editing; Vite reads env variables only at startup.
+- Provide Firebase web configuration values so the login modal can authenticate users:
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - Optional values: `VITE_FIREBASE_APP_ID` and `VITE_FIREBASE_AUTH_EMULATOR_HOST` (use `localhost:9099` when running the Firebase Auth emulator).
 
 ### 6.2 `functions/.env.local`
 ```bash
 cp functions/.env.example functions/.env.local
 ```
-- Fill in `INGEST_HMAC_SECRET` with the value shared with the ingest simulator, keep it private, and adjust `INGEST_TOPIC` only when testing custom Pub/Sub topics.
+- Set `CLAIM_PASSPHRASE_PEPPER` to a strong, random string shared by all devices in the environment. It is combined with device passphrases before hashing.
+- Generate a 32-byte key (base64- or hex-encoded) for `DEVICE_SECRET_ENCRYPTION_KEY`. This encrypts device ingest secrets at rest.
+- Adjust `INGEST_TOPIC` only when testing custom Pub/Sub topics (defaults to `ingest.raw`).
 
 ---
 
@@ -146,7 +153,7 @@ If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fi
 ## 9. Optional: Ingest Pipeline Smoke Test
 Run this whenever you change ingest code or schemas.
 
-1. Launch the local stack with `pnpm dev` (Functions emulator must have `INGEST_HMAC_SECRET` in `functions/.env.local`).
+1. Launch the local stack with `pnpm dev` (Functions emulator must have `CLAIM_PASSPHRASE_PEPPER` and `DEVICE_SECRET_ENCRYPTION_KEY` set in `functions/.env.local`).
 2. Visit `http://localhost:5173`, open the **Admin** tab, and click **Run Smoke Test**.
 3. The UI seeds `device-123`, submits a signed payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
 4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:

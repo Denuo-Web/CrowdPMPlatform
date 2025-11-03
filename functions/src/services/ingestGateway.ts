@@ -3,7 +3,8 @@ import { PubSub } from "@google-cloud/pubsub";
 import crypto from "node:crypto";
 import { bucket, db } from "../lib/fire.js";
 import { verifyHmac } from "../lib/crypto.js";
-import { getIngestTopic, ingestHmacSecret } from "../lib/runtimeConfig.js";
+import { decryptDeviceSecret, type DeviceSecretRecord } from "../lib/deviceSecrets.js";
+import { deviceSecretEncryptionKeySecret, getIngestTopic } from "../lib/runtimeConfig.js";
 import type { Request } from "firebase-functions/v2/https";
 
 const pubsub = new PubSub();
@@ -45,13 +46,27 @@ function pickFirstQueryParam(value: unknown) {
 
 export async function ingestPayload(raw: string, body: IngestBody, options: IngestOptions = {}) {
   const { signature, deviceId: deviceIdOverride } = options;
-  verifyHmac(raw, signature);
+  if (!signature) throw HTTPError(401, "bad signature");
 
   const deviceId = deviceIdOverride || body.points?.[0]?.device_id || body.device_id;
   if (!deviceId) throw HTTPError(400, "missing device_id");
 
   const dev = await db().collection("devices").doc(deviceId).get();
-  if (!dev.exists || dev.get("status") === "SUSPENDED") throw HTTPError(403, "device not allowed");
+  if (!dev.exists) throw HTTPError(403, "device not allowed");
+  const status = dev.get("status");
+  if (status !== "ACTIVE") throw HTTPError(403, "device not allowed");
+  let secret: string;
+  try {
+    const secretRecord = dev.get("deviceSecret") as DeviceSecretRecord | undefined;
+    if (!secretRecord) throw HTTPError(403, "device secret unavailable");
+    secret = decryptDeviceSecret(secretRecord);
+  }
+  catch (err) {
+    if (err instanceof Error && "statusCode" in err) throw err;
+    throw HTTPError(500, "failed to load device secret");
+  }
+
+  verifyHmac(raw, signature, secret);
 
   const batchId = crypto.randomUUID();
   const path = `ingest/${deviceId}/${batchId}.json`;
@@ -61,7 +76,9 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
   return { accepted: true, batchId, deviceId, storagePath: path };
 }
 
-export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret] }, async (req, res) => {
+export const ingestGateway = onRequest(
+  { cors: true, secrets: [deviceSecretEncryptionKeySecret] },
+  async (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   const rawBody = requestWithRawBody.rawBody;
   const raw = typeof rawBody === "string"
@@ -80,4 +97,5 @@ export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret]
     const message = err instanceof Error ? err.message : "unexpected error";
     res.status(statusCode && statusCode >= 100 ? statusCode : 500).send(message);
   }
-});
+}
+);

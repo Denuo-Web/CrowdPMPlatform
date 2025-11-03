@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
-import { getIngestSecret } from "./runtimeConfig.js";
 
-export function verifyHmac(raw: string, sig?: string, secret = getIngestSecret()) {
+export function verifyHmac(raw: string, sig: string | undefined, secret: string) {
+  if (!secret) {
+    const error = Object.assign(new Error("missing secret"), { statusCode: 500 });
+    throw error;
+  }
   const mac = crypto.createHmac("sha256", secret).update(raw).digest("hex");
   if (!sig) {
     const error = Object.assign(new Error("bad signature"), { statusCode: 401 });

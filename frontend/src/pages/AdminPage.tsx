@@ -7,6 +7,7 @@ import {
   type IngestSmokeTestPayload,
   type IngestSmokeTestResponse,
 } from "../lib/api";
+import { DeviceClaimsModal } from "../components/DeviceClaimsModal";
 
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
@@ -266,7 +267,10 @@ export default function AdminPage() {
 
   return (
     <div style={{ padding:12 }}>
-      <h2>Admin</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>Admin</h2>
+        <DeviceClaimsModal onClaimsUpdated={refreshDevices} />
+      </div>
       <table><thead><tr><th>ID</th><th>Name</th><th>Status</th></tr></thead>
       <tbody>{devices.map(d=><tr key={d.id}><td>{d.id}</td><td>{d.name}</td><td>{d.status}</td></tr>)}</tbody></table>
       <section style={{ marginTop:24 }}>
