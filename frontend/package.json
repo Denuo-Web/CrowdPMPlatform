@@ -8,20 +8,25 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
-    "@googlemaps/js-api-loader": "^2.0.1",
     "@deck.gl/core": "^9.1.11",
     "@deck.gl/google-maps": "^9.1.11",
     "@deck.gl/layers": "^9.1.11",
     "@deck.gl/mesh-layers": "^9.1.11",
+    "@googlemaps/js-api-loader": "^2.0.1",
     "@luma.gl/engine": "^9.1.0",
+    "@radix-ui/themes": "^3.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
+    "@tailwindcss/vite": "^4.1.16",
     "@types/google.maps": "^3.58.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.1",
     "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
     "vite": "^7.1.9"
   }
