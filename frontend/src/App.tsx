@@ -181,7 +181,7 @@ export default function App() {
 
             <Card size="4" style={{ flex: 1, minWidth: 0 }}>
               <Heading as="h2" size="6" trim="start">
-                Deployment dashboard
+                CrowdPM Platform
               </Heading>
               <Text size="2" color="gray" mt="2">
                 Explore the map or adjust ingest settings across your network.
