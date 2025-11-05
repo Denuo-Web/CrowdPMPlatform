@@ -115,7 +115,7 @@ export default function App() {
                 >
                   OSU EECS
                 </Link>{" "}
-                Capstone Project Team
+                Capstone Team
               </Heading>
               <Text size="2" color="gray" mt="2">
                 Key collaborators for the capstone effort and their primary roles.
