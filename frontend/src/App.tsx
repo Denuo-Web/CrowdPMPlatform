@@ -9,7 +9,6 @@ import {
   Flex,
   Heading,
   Text,
-  Badge,
   Avatar,
   Separator,
   Button,
