@@ -115,6 +115,7 @@ export default function AdminPage() {
   });
   const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>(restoreSmokeHistory);
   const historyRef = useRef<SmokeHistoryItem[]>(smokeHistory);
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
@@ -140,7 +141,7 @@ export default function AdminPage() {
   }, [smokePayload]);
 
   useEffect(() => {
-  historyRef.current = smokeHistory;
+    historyRef.current = smokeHistory;
   }, [smokeHistory]);
 
   function parsePayload(raw: string): IngestSmokeTestPayload {
@@ -258,6 +259,26 @@ export default function AdminPage() {
     }
   }
 
+  async function handleBatchCleanup(entry: SmokeHistoryItem) {
+    setDeletingBatchId(entry.response.batchId)
+    try {
+      const updatedHistory = historyRef.current.filter((item) => item.response.batchId !== entry.response.batchId);
+      const devicesInRemainingEntries = new Set(updatedHistory.flatMap((item) => item.deviceIds));
+      const devicesToDelete = entry.deviceIds.filter((id) => !devicesInRemainingEntries.has(id));
+      if (devicesToDelete.length > 0) {
+        await cleanupIngestSmokeTest(devicesToDelete);
+      }
+      setSmokeHistory(updatedHistory);
+      refreshDevices();
+    }
+    catch (err) {
+      setSmokeError(err instanceof Error ? err.message : "Cleanup failed");
+    }
+    finally {
+      setDeletingDeviceId(null);
+    }
+  }
+
   function loadHistoryPayload(entry: SmokeHistoryItem) {
     setSmokePayload(determinePayloadForEditor(entry.response));
     setPayloadError(null);
@@ -265,35 +286,35 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{ padding:12 }}>
+    <div style={{ padding: 12 }}>
       <h2>Admin</h2>
       <table><thead><tr><th>ID</th><th>Name</th><th>Status</th></tr></thead>
-      <tbody>{devices.map(d=><tr key={d.id}><td>{d.id}</td><td>{d.name}</td><td>{d.status}</td></tr>)}</tbody></table>
-      <section style={{ marginTop:24 }}>
+        <tbody>{devices.map(d => <tr key={d.id}><td>{d.id}</td><td>{d.name}</td><td>{d.status}</td></tr>)}</tbody></table>
+      <section style={{ marginTop: 24 }}>
         <h3>Ingest Pipeline Smoke Test</h3>
         <p>Review or tweak the JSON payload below before sending it to the ingest endpoint. Update any device IDs or measurement details to fit the live demo scenario.</p>
         <textarea
           value={smokePayload}
-          onChange={(event)=>{ setSmokePayload(event.target.value); setPayloadError(null); }}
-          style={{ width:"100%", minHeight:260, marginTop:12, fontFamily:"monospace", fontSize:13, borderRadius:4, padding:12, border:"1px solid #ccc" }}
+          onChange={(event) => { setSmokePayload(event.target.value); setPayloadError(null); }}
+          style={{ width: "100%", minHeight: 260, marginTop: 12, fontFamily: "monospace", fontSize: 13, borderRadius: 4, padding: 12, border: "1px solid #ccc" }}
         />
         {payloadError ? (
-          <p style={{ color:"red", marginTop: 8 }}>{payloadError}</p>
+          <p style={{ color: "red", marginTop: 8 }}>{payloadError}</p>
         ) : null}
-        <div style={{ marginTop:12, display:"flex", gap:12 }}>
-          <button onClick={handleSmokeTest} disabled={isRunning} style={{ padding:"8px 12px", cursor: isRunning ? "wait" : "pointer" }}>
+        <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
+          <button onClick={handleSmokeTest} disabled={isRunning} style={{ padding: "8px 12px", cursor: isRunning ? "wait" : "pointer" }}>
             {isRunning ? "Sending..." : "Send Smoke Test"}
           </button>
           <button
             onClick={handleCleanup}
             disabled={isCleaning}
-            style={{ padding:"8px 12px", cursor: isCleaning ? "wait" : "pointer" }}
+            style={{ padding: "8px 12px", cursor: isCleaning ? "wait" : "pointer" }}
           >
             {isCleaning ? "Clearing..." : "Delete Selected Smoke Data"}
           </button>
           <button
-            onClick={()=>{ setSmokePayload(defaultPayloadString); setPayloadError(null); }}
-            style={{ padding:"8px 12px" }}
+            onClick={() => { setSmokePayload(defaultPayloadString); setPayloadError(null); }}
+            style={{ padding: "8px 12px" }}
           >
             Reset to Default Payload
           </button>
@@ -314,7 +335,7 @@ export default function AdminPage() {
             >
               Load Payload Into Editor
             </button>
-            <pre style={{ marginTop:12, background:"#f8f8f8", padding:12, borderRadius:4 }}>
+            <pre style={{ marginTop: 12, background: "#f8f8f8", padding: 12, borderRadius: 4 }}>
               {JSON.stringify(smokeResult.points ?? smokeResult.payload ?? {}, null, 2)}
             </pre>
             <p style={{ marginTop: 12, fontSize: 12, color: "#555" }}>
@@ -323,30 +344,30 @@ export default function AdminPage() {
           </div>
         ) : null}
       </section>
-      <section style={{ marginTop:24 }}>
+      <section style={{ marginTop: 24 }}>
         <h3>Recent Smoke Test Runs</h3>
         {smokeHistory.length === 0 ? (
           <p style={{ marginTop: 8 }}>No smoke tests have been submitted yet in this browser.</p>
         ) : (
-          <ul style={{ listStyle:"none", padding:0, margin:0, display:"flex", flexDirection:"column", gap:12 }}>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
             {smokeHistory.map((entry) => (
-              <li key={entry.id} style={{ border:"1px solid #ddd", borderRadius:4, padding:12 }}>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:12, alignItems:"center" }}>
+              <li key={entry.id} style={{ border: "1px solid #ddd", borderRadius: 4, padding: 12 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize:12, color:"#666" }}>{new Date(entry.createdAt).toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: "#666" }}>{new Date(entry.createdAt).toLocaleString()}</div>
                     <div>Batch: <code>{entry.response.batchId}</code></div>
-                    <div>Device IDs: {entry.deviceIds.map((id) => <code key={id} style={{ marginRight:6 }}>{id}</code>)}</div>
+                    <div>Device IDs: {entry.deviceIds.map((id) => <code key={id} style={{ marginRight: 6 }}>{id}</code>)}</div>
                   </div>
-                  <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
-                    <button onClick={() => loadHistoryPayload(entry)} style={{ padding:"6px 10px" }}>
+                  <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+                    <button onClick={() => loadHistoryPayload(entry)} style={{ padding: "6px 10px" }}>
                       Load Payload
                     </button>
                     <button
-                      onClick={() => handleHistoryCleanup(entry)}
-                      disabled={deletingDeviceId === entry.deviceIds[0]}
-                      style={{ padding:"6px 10px", cursor: deletingDeviceId === entry.deviceIds[0] ? "wait" : "pointer" }}
+                      onClick={() => handleBatchCleanup(entry)}
+                      disabled={deletingBatchId === entry.response.batchId}
+                      style={{ padding: "6px 10px", cursor: deletingBatchId === entry.response.batchId ? "wait" : "pointer" }}
                     >
-                      {deletingDeviceId === entry.deviceIds[0] ? "Deleting..." : "Delete Data"}
+                      {deletingBatchId === entry.response.batchId ? "Deleting..." : "Delete Data"}
                     </button>
                   </div>
                 </div>
