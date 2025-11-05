@@ -217,7 +217,6 @@ export default function MapPage() {
         <option value="">Select device</option>
         {devices.map((d) => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
       </select>
-      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex}/>
       {rows.length ? (
         <div style={{ marginTop: 16 }}>
           <label htmlFor="measurement-slider">Measurement timeline</label>
@@ -232,8 +231,17 @@ export default function MapPage() {
             style={{ width: "100%", marginTop: 8 }}
           />
           {selectedPoint ? (
-            <div style={{ marginTop: 12, background: "#f4f4f4", padding: 12, borderRadius: 4 }}>
-              <p style={{ margin: 0, fontWeight: 600 }}>
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 8,
+                background: "var(--color-panel)",
+                color: "var(--gray-12)",
+                border: "1px solid var(--gray-a6)",
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
                 {selectedMoment ? selectedMoment.toLocaleString() : ""}
               </p>
               <p style={{ margin: "4px 0 0" }}>
@@ -258,6 +266,7 @@ export default function MapPage() {
       ) : (
         <p style={{ marginTop: 16 }}>Select a device with recent measurements to explore the timeline.</p>
       )}
+      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex}/>
     </div>
   );
 }
