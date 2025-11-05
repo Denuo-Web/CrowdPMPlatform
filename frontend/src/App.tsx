@@ -106,7 +106,16 @@ export default function App() {
           >
             <Card size="4" style={{ flexBasis: "320px", flexShrink: 0 }}>
               <Heading as="h2" size="5" trim="start">
-                CrowdPM Platform EECS Capstone Project Team
+                <Link
+                  href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
+                  target="_blank"
+                  rel="noreferrer"
+                  color="iris"
+                  highContrast
+                >
+                  OSU EECS
+                </Link>{" "}
+                Capstone Project Team
               </Heading>
               <Text size="2" color="gray" mt="2">
                 Key collaborators for the capstone effort and their primary roles.
