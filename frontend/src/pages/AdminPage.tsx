@@ -243,7 +243,7 @@ export default function AdminPage() {
       }
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
       const clearedIds = response.clearedDeviceIds?.length ? new Set(response.clearedDeviceIds) : new Set(entry.deviceIds);
-      setSmokeHistory((prev) => prev.filter((item) => !item.deviceIds.some((id) => clearedIds.has(id))));
+      setSmokeHistory((prev) => prev.filter((item) => item.response.batchId !== entry.response.batchId));
       if (smokeResult && uniqueDeviceIdsFromResult(smokeResult).some((id) => clearedIds.has(id))) {
         setSmokeResult(null);
       }
