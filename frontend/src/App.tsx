@@ -80,6 +80,8 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
 
+  const activeTab = tab === "dashboard" && !user ? "map" : tab;
+
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
     setAuthDialogOpen(true);
@@ -88,9 +90,9 @@ export default function App() {
   const handleDashboardClick = () => {
     if (user) {
       setTab("dashboard");
-    } else {
-      openAuthDialog("login");
+      return;
     }
+    openAuthDialog("login");
   };
 
   const handleSignOut = async () => {
@@ -108,18 +110,6 @@ export default function App() {
     window.addEventListener("ingest-smoke-test:completed", handler);
     return () => window.removeEventListener("ingest-smoke-test:completed", handler);
   }, []);
-
-  useEffect(() => {
-    if (user) {
-      setTab("dashboard");
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!isLoading && !user && tab === "dashboard") {
-      setTab("map");
-    }
-  }, [isLoading, tab, user]);
 
   return (
     <Theme appearance="light" accentColor="iris" radius="full" scaling="100%">
@@ -243,10 +233,10 @@ export default function App() {
                 mt="4"
               >
                 <Flex gap="3">
-                  <Button variant={tab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
+                  <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
                     Map
                   </Button>
-                  <Button variant={tab === "dashboard" ? "solid" : "soft"} onClick={handleDashboardClick} disabled={isLoading}>
+                  <Button variant={activeTab === "dashboard" ? "solid" : "soft"} onClick={handleDashboardClick} disabled={isLoading}>
                     User Dashboard
                   </Button>
                 </Flex>
@@ -277,7 +267,7 @@ export default function App() {
                 }}
               >
                 <Box style={{ padding: "var(--space-4)" }}>
-                  {tab === "dashboard" && user ? <UserDashboard /> : <MapPage />}
+                  {activeTab === "dashboard" && user ? <UserDashboard /> : <MapPage />}
                 </Box>
               </Box>
             </Card>
@@ -289,6 +279,7 @@ export default function App() {
         mode={authMode}
         onModeChange={setAuthMode}
         onOpenChange={setAuthDialogOpen}
+        onAuthenticated={() => setTab("dashboard")}
       />
     </Theme>
   );

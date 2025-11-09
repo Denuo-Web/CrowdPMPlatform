@@ -10,6 +10,7 @@ type AuthDialogProps = {
   mode: AuthMode;
   onModeChange: (mode: AuthMode) => void;
   onOpenChange: (open: boolean) => void;
+  onAuthenticated?: () => void;
 };
 
 function getReadableError(error: unknown): string {
@@ -35,7 +36,7 @@ function getReadableError(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export function AuthDialog({ open, mode, onModeChange, onOpenChange }: AuthDialogProps) {
+export function AuthDialog({ open, mode, onModeChange, onOpenChange, onAuthenticated }: AuthDialogProps) {
   const { signIn, signUp } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,6 +76,7 @@ export function AuthDialog({ open, mode, onModeChange, onOpenChange }: AuthDialo
         await signIn(email, password);
       }
       onOpenChange(false);
+      onAuthenticated?.();
     }
     catch (err) {
       setError(getReadableError(err));
