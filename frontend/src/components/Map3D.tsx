@@ -38,6 +38,28 @@ function interpolateColor(value: number, min: number, max: number): [number, num
   return [Math.round(r * 255), Math.round(g * 255), 0];
 }
 
+const PIXEL_RATIO_EPSILON = 0.05;
+const LINUX_PIXEL_RATIO_CAP = 1.25;
+const DEFAULT_PIXEL_RATIO_CAP = 1.75;
+
+function readUserAgent(): string {
+  if (typeof navigator === "undefined" || typeof navigator.userAgent !== "string") return "";
+  return navigator.userAgent.toLowerCase();
+}
+
+function resolvePreferredDevicePixelRatio(): number {
+  if (typeof window === "undefined") return 1;
+  const baseRatio = Math.max(1, Number(window.devicePixelRatio) || 1);
+  const ua = readUserAgent();
+  const prefersReducedMotion = typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+  if (prefersReducedMotion) return 1;
+  if (ua.includes("wayland")) return 1;
+  if (ua.includes("linux")) return Math.min(baseRatio, LINUX_PIXEL_RATIO_CAP);
+  return Math.min(baseRatio, DEFAULT_PIXEL_RATIO_CAP);
+}
+
 function signature(series: MeasurementPoint[]) {
   if (!series.length) return "empty";
   const first = series[0];
@@ -115,6 +137,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const hasUserControlRef = useRef(false);
   const dataSignatureRef = useRef(signature(data));
+  const devicePixelRatioRef = useRef(resolvePreferredDevicePixelRatio());
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -126,6 +149,24 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
       hasUserControlRef.current = false;
     }
   }, [data]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateRatio = () => {
+      const next = resolvePreferredDevicePixelRatio();
+      if (Math.abs(next - devicePixelRatioRef.current) < PIXEL_RATIO_EPSILON) return;
+      devicePixelRatioRef.current = next;
+      if (overlayRef.current) {
+        overlayRef.current.setProps({ useDevicePixels: next });
+      }
+    };
+    updateRatio();
+    window.addEventListener("resize", updateRatio);
+    window.addEventListener("orientationchange", updateRatio);
+    return () => {
+      window.removeEventListener("resize", updateRatio);
+      window.removeEventListener("orientationchange", updateRatio);
+    };
+  }, []);
 
   useEffect(() => {
     const overlay = overlayRef.current;
@@ -140,7 +181,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
         selectedIndexRef.current,
         (index) => onSelectRef.current?.(index),
         sphereGeometryRef.current
-      )
+      ),
+      useDevicePixels: devicePixelRatioRef.current
     });
 
     const series = latestDataRef.current;
@@ -231,7 +273,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
           selectedIndexRef.current,
           (index) => onSelectRef.current?.(index),
           sphereGeometry
-        )
+        ),
+        useDevicePixels: devicePixelRatioRef.current
       });
       overlay.setMap(map);
 
