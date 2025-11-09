@@ -14,7 +14,7 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 - **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function guarded by `verifyHmac`, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
 - **Processing** (`functions/src/services/ingestWorker.ts`): Firebase Pub/Sub Function downloads batches, applies calibration data from `devices/{deviceId}` (if present), and writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}` with deterministic sorting.
 - **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, and `/v1/admin/devices/:id/suspend`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
-- **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and an admin table (`AdminPage`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
+- **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
 - [Firebase Cloud Functions](https://firebase.google.com/docs/functions) with [Fastify](https://fastify.dev/)
