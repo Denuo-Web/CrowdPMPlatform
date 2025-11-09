@@ -94,6 +94,14 @@ function buildClearedSet(detail?: CleanupDetail) {
   return cleared;
 }
 
+function deferStateUpdate(action: () => void) {
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(action);
+    return;
+  }
+  Promise.resolve().then(action).catch(() => {});
+}
+
 export default function MapPage() {
   const { user } = useAuth();
   const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
@@ -146,12 +154,14 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!user) {
-      setSelectedBatchKey("");
-      batchCacheRef.current.clear();
-      resetRows();
+      deferStateUpdate(() => {
+        setSelectedBatchKey("");
+        batchCacheRef.current.clear();
+        resetRows();
+      });
       return;
     }
-    void refreshBatches();
+    deferStateUpdate(() => { void refreshBatches(); });
   }, [refreshBatches, resetRows, user]);
 
   useEffect(() => {
@@ -159,7 +169,7 @@ export default function MapPage() {
     try {
       const stored = window.localStorage.getItem(userScopedSelectionKey);
       if (stored) {
-        setSelectedBatchKey(stored);
+        deferStateUpdate(() => { setSelectedBatchKey(stored); });
       }
     }
     catch (err) {
@@ -191,7 +201,7 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!user || !selectedBatchKey) {
-      if (!selectedBatchKey) resetRows();
+      if (!selectedBatchKey) deferStateUpdate(resetRows);
       return;
     }
     let cancelled = false;
