@@ -266,6 +266,45 @@ paths:
           description: Caller does not own the referenced device.
         '404':
           description: Device or batch not found, or payload unavailable.
+  /v1/user/settings:
+    get:
+      operationId: getUserSettings
+      summary: Retrieve user settings
+      description: Returns the ingest preferences configured for the authenticated user.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User settings returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          description: Missing or invalid bearer token.
+    put:
+      operationId: updateUserSettings
+      summary: Update user settings
+      description: Sets the preferences applied to new batches created by the authenticated user.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSettings'
+      responses:
+        '200':
+          description: Updated settings returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '400':
+          description: Invalid settings payload.
+        '401':
+          description: Missing or invalid bearer token.
 components:
   securitySchemes:
     BearerAuth:
@@ -492,6 +531,9 @@ components:
           $ref: '#/components/schemas/IngestBody'
         pointOverrides:
           $ref: '#/components/schemas/IngestPointOverrides'
+        visibility:
+          $ref: '#/components/schemas/BatchVisibility'
+          description: Overrides the visibility of the generated batch; defaults to the caller's user setting.
     IngestSmokeTestResponse:
       type: object
       properties:
@@ -510,6 +552,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IngestPoint'
+        visibility:
+          $ref: '#/components/schemas/BatchVisibility'
         seededDeviceId:
           type: string
         seededDeviceIds:
@@ -521,6 +565,13 @@ components:
         - batchId
         - deviceId
         - storagePath
+        - visibility
+    BatchVisibility:
+      type: string
+      description: Controls whether a batch can be surfaced in public interfaces.
+      enum:
+        - public
+        - private
     BatchSummary:
       type: object
       description: Summary metadata for an ingest batch.
@@ -543,10 +594,14 @@ components:
           format: date-time
           nullable: true
           description: Timestamp when the batch was processed.
+        visibility:
+          $ref: '#/components/schemas/BatchVisibility'
+          description: Visibility designation attached to the batch.
       required:
         - batchId
         - deviceId
         - count
+        - visibility
     BatchDetail:
       allOf:
         - $ref: '#/components/schemas/BatchSummary'
@@ -578,3 +633,11 @@ components:
           type: array
           items:
             type: string
+    UserSettings:
+      type: object
+      properties:
+        defaultBatchVisibility:
+          $ref: '#/components/schemas/BatchVisibility'
+          description: Visibility applied to newly created batches when not explicitly specified.
+      required:
+        - defaultBatchVisibility

@@ -5,6 +5,12 @@ import { bucket, db } from "../lib/fire.js";
 import { verifyHmac } from "../lib/crypto.js";
 import { getIngestTopic, ingestHmacSecret } from "../lib/runtimeConfig.js";
 import type { Request } from "firebase-functions/v2/https";
+import {
+  DEFAULT_BATCH_VISIBILITY,
+  getDeviceDefaultBatchVisibility,
+  normalizeBatchVisibility,
+  type BatchVisibility,
+} from "../lib/batchVisibility.js";
 
 const pubsub = new PubSub();
 const TOPIC = getIngestTopic();
@@ -30,6 +36,7 @@ export type IngestBody = {
 type IngestOptions = {
   signature?: string;
   deviceId?: string;
+  visibility?: BatchVisibility | null;
 };
 
 const HTTPError = (statusCode: number, message: string) => {
@@ -52,13 +59,16 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
 
   const dev = await db().collection("devices").doc(deviceId).get();
   if (!dev.exists || dev.get("status") === "SUSPENDED") throw HTTPError(403, "device not allowed");
+  const requestedVisibility = normalizeBatchVisibility(options.visibility);
+  const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(dev);
+  const visibility = requestedVisibility ?? ownerDefaultVisibility ?? DEFAULT_BATCH_VISIBILITY;
 
   const batchId = crypto.randomUUID();
   const path = `ingest/${deviceId}/${batchId}.json`;
   await bucket().file(path).save(raw, { contentType: "application/json" });
-  await pubsub.topic(TOPIC).publishMessage({ json: { deviceId, batchId, path } });
+  await pubsub.topic(TOPIC).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
-  return { accepted: true, batchId, deviceId, storagePath: path };
+  return { accepted: true, batchId, deviceId, storagePath: path, visibility };
 }
 
 export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret] }, async (req, res) => {
@@ -72,6 +82,9 @@ export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret]
     const result = await ingestPayload(raw, body, {
       signature: req.header("x-signature") || undefined,
       deviceId: pickFirstQueryParam(req.query["device_id"]),
+      visibility: normalizeBatchVisibility(
+        pickFirstQueryParam(req.query["visibility"]) ?? req.header("x-batch-visibility")
+      ) ?? undefined,
     });
     res.status(202).json(result);
   }

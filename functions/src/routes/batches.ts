@@ -3,6 +3,11 @@ import { bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
+import {
+  DEFAULT_BATCH_VISIBILITY,
+  normalizeBatchVisibility,
+  type BatchVisibility,
+} from "../lib/batchVisibility.js";
 
 type BatchSummary = {
   batchId: string;
@@ -10,6 +15,7 @@ type BatchSummary = {
   deviceName?: string | null;
   count: number;
   processedAt: string | null;
+  visibility: BatchVisibility;
 };
 
 type BatchDetail = BatchSummary & {
@@ -73,15 +79,17 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
           .get();
 
         return batchSnap.docs.map((doc) => {
-          const data = doc.data() as { count?: unknown; processedAt?: unknown } | undefined;
+          const data = doc.data() as { count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
           const count = typeof data?.count === "number" ? data.count : 0;
           const processedAt = normaliseTimestamp(data?.processedAt);
+          const visibility = normalizeBatchVisibility(data?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
           return {
             batchId: doc.id,
             deviceId,
             deviceName,
             count,
             processedAt,
+            visibility,
           } as BatchSummary;
         });
       })
@@ -121,7 +129,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     if (!batchSnap.exists) {
       return rep.code(404).send({ error: "not_found", message: "Batch not found." });
     }
-    const batchData = batchSnap.data() as { path?: unknown; count?: unknown; processedAt?: unknown } | undefined;
+    const batchData = batchSnap.data() as { path?: unknown; count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
     const path = typeof batchData?.path === "string" ? batchData.path : null;
     if (!path) {
       return rep.code(404).send({ error: "not_found", message: "Batch payload unavailable." });
@@ -144,6 +152,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
 
     const processedAt = normaliseTimestamp(batchData?.processedAt);
     const count = typeof batchData?.count === "number" ? batchData.count : points.length;
+    const visibility = normalizeBatchVisibility(batchData?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
 
     const response: BatchDetail = {
       batchId,
@@ -152,6 +161,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       count,
       processedAt,
       points,
+      visibility,
     };
     return response;
   });

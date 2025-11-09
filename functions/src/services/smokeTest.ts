@@ -1,9 +1,11 @@
 import type { IngestBody } from "./ingestGateway.js";
+import type { BatchVisibility } from "../lib/batchVisibility.js";
 
 export type SmokeTestBody = {
   deviceId?: string;
   payload?: IngestBody;
   pointOverrides?: Partial<SmokeTestPoint>;
+  visibility?: BatchVisibility;
 };
 
 type SmokeTestPoint = NonNullable<IngestBody["points"]>[number];

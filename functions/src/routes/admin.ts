@@ -5,6 +5,11 @@ import { requireUser } from "../auth/firebaseVerify.js";
 import { ingestPayload } from "../services/ingestGateway.js";
 import { getIngestSecret } from "../lib/runtimeConfig.js";
 import { prepareSmokeTestPlan, type SmokeTestBody } from "../services/smokeTest.js";
+import {
+  DEFAULT_BATCH_VISIBILITY,
+  getUserDefaultBatchVisibility,
+  normalizeBatchVisibility,
+} from "../lib/batchVisibility.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
@@ -33,6 +38,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return rep.code(400).send({ error: message });
     }
 
+    const requestedVisibility = normalizeBatchVisibility(req.body?.visibility);
+    const defaultVisibility = await getUserDefaultBatchVisibility(user.uid);
+    const targetVisibility = requestedVisibility ?? defaultVisibility ?? DEFAULT_BATCH_VISIBILITY;
+
     const ownerIds = [user.uid];
     await seedSmokeTestDevices({
       ownerIds,
@@ -45,7 +54,11 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     const raw = JSON.stringify(plan.payload);
     const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
     try {
-      const result = await ingestPayload(raw, plan.payload, { signature, deviceId: plan.primaryDeviceId });
+      const result = await ingestPayload(raw, plan.payload, {
+        signature,
+        deviceId: plan.primaryDeviceId,
+        visibility: targetVisibility,
+      });
       fastify.log.info({ batchId: result.batchId, deviceId: result.deviceId }, "ingest smoke test completed");
       return rep.code(200).send({
         ...result,

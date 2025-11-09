@@ -2,11 +2,16 @@ import { onMessagePublished } from "firebase-functions/v2/pubsub";
 import { bucket, db, hourBucket } from "../lib/fire.js";
 import { IngestBatch } from "../lib/validation.js";
 import { getIngestTopic } from "../lib/runtimeConfig.js";
+import {
+  DEFAULT_BATCH_VISIBILITY,
+  getDeviceDefaultBatchVisibility,
+  normalizeBatchVisibility,
+} from "../lib/batchVisibility.js";
 
 export const ingestWorker = onMessagePublished(
   { topic: getIngestTopic() },
   async (event) => {
-    const msg = event.data.message.json as { deviceId: string; batchId: string; path: string };
+    const msg = event.data.message.json as { deviceId: string; batchId: string; path: string; visibility?: string };
     const [buf] = await bucket().file(msg.path).download();
     const parsed = IngestBatch.safeParse(JSON.parse(buf.toString("utf8")));
     if (!parsed.success) { console.warn("schema error", parsed.error.flatten()); return; }
@@ -34,7 +39,10 @@ export const ingestWorker = onMessagePublished(
       }
       await batch.commit();
     }
+    const providedVisibility = normalizeBatchVisibility(msg.visibility);
+    const fallbackVisibility = providedVisibility ? null : await getDeviceDefaultBatchVisibility(devSnap);
+    const visibility = providedVisibility ?? fallbackVisibility ?? DEFAULT_BATCH_VISIBILITY;
     await devRef.collection("batches").doc(msg.batchId)
-      .set({ path: msg.path, count: pts.length, processedAt: new Date() }, { merge: true });
+      .set({ path: msg.path, count: pts.length, processedAt: new Date(), visibility }, { merge: true });
   }
 );

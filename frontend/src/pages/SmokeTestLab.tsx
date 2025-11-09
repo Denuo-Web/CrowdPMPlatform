@@ -30,11 +30,13 @@ import {
 import {
   cleanupIngestSmokeTest,
   runIngestSmokeTest,
+  type BatchVisibility,
   type IngestSmokeTestPayload,
   type IngestSmokeTestPoint,
   type IngestSmokeTestResponse,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
+import { useUserSettings } from "../providers/UserSettingsProvider";
 
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
@@ -311,6 +313,7 @@ function rewritePoints(
 
 export default function SmokeTestLab() {
   const { user } = useAuth();
+  const { settings } = useUserSettings();
   const defaultPayload = useMemo(() => createDefaultSmokePayload(), []);
   const defaultPayloadString = useMemo(() => JSON.stringify(defaultPayload, null, 2), [defaultPayload]);
   const defaultDeviceId = defaultPayload.points[0]?.device_id ?? "device-123";
@@ -326,6 +329,7 @@ export default function SmokeTestLab() {
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [massDeviceId, setMassDeviceId] = useState(defaultDeviceId);
   const [massPollutant, setMassPollutant] = useState(defaultPollutant);
+  const [batchVisibility, setBatchVisibility] = useState<BatchVisibility>(settings.defaultBatchVisibility);
   const [selectedCity, setSelectedCity] = useState(CITY_PRESETS[0].value);
   const [jitterMeters, setJitterMeters] = useState(40);
   const [useCurrentTime, setUseCurrentTime] = useState(true);
@@ -494,7 +498,7 @@ export default function SmokeTestLab() {
     setPayloadError(null);
     try {
       const payload = parsePayload(smokePayload);
-      const result = await runIngestSmokeTest(payload);
+      const result = await runIngestSmokeTest(payload, { visibility: batchVisibility });
       setSmokeResult(result);
       const historyEntry: SmokeHistoryItem = {
         id: `${result.deviceId}:${result.batchId}`,
@@ -600,6 +604,16 @@ export default function SmokeTestLab() {
 
   const precisionPreset = PRECISION_PRESETS.find((preset) => preset.value === precisionLevel) ?? PRECISION_PRESETS[1];
   const jitterLabel = `${jitterMeters.toFixed(0)} m jitter`;
+
+  const renderVisibilityBadge = (value: BatchVisibility) => (
+    <Badge variant="soft" color={value === "public" ? "green" : "gray"}>
+      {value === "public" ? "Public batch" : "Private batch"}
+    </Badge>
+  );
+
+  useEffect(() => {
+    setBatchVisibility(settings.defaultBatchVisibility);
+  }, [settings.defaultBatchVisibility]);
 
   return (
     <Flex direction="column" gap="5">
@@ -721,6 +735,27 @@ export default function SmokeTestLab() {
               <RocketIcon /> {isRunning ? "Sending" : "Send smoke test"}
             </Button>
           </Flex>
+          <Flex
+            direction={{ initial: "column", sm: "row" }}
+            gap="3"
+            align={{ initial: "stretch", sm: "center" }}
+            justify="between"
+          >
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Batch visibility</Text>
+              <Text size="1" color="gray">
+                Default setting: {settings.defaultBatchVisibility === "public" ? "Public" : "Private"}
+              </Text>
+            </Flex>
+            <SegmentedControl.Root
+              value={batchVisibility}
+              onValueChange={(value) => setBatchVisibility(value as BatchVisibility)}
+              style={{ alignSelf: "flex-start" }}
+            >
+              <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
+              <SegmentedControl.Item value="private">Private</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          </Flex>
           <TextArea
             value={smokePayload}
             onChange={(event) => { setSmokePayload(event.target.value); setPayloadError(null); }}
@@ -748,6 +783,7 @@ export default function SmokeTestLab() {
             <Flex gap="3" wrap="wrap" mt="2">
               <Badge variant="soft">Device: {smokeResult.deviceId}</Badge>
               <Badge variant="soft">Points inserted: {smokeResult.points?.length ?? smokeResult.payload?.points?.length ?? 0}</Badge>
+              {renderVisibilityBadge(smokeResult.visibility)}
             </Flex>
             <Button mt="3" variant="surface" onClick={() => setSmokePayload(determinePayloadForEditor(smokeResult))}>
               <ReloadIcon /> Load payload into editor
@@ -768,7 +804,10 @@ export default function SmokeTestLab() {
                   <Card key={entry.id} variant="surface">
                     <Flex direction="column" gap="2">
                       <Text size="1" color="gray">{new Date(entry.createdAt).toLocaleString()}</Text>
-                      <Text size="2">Batch <code>{entry.response.batchId}</code></Text>
+                      <Flex gap="2" align="center" wrap="wrap">
+                        <Text size="2">Batch <code>{entry.response.batchId}</code></Text>
+                        {renderVisibilityBadge(entry.response.visibility)}
+                      </Flex>
                       <Flex gap="2" wrap="wrap">
                         {entry.deviceIds.map((id) => (
                           <Badge key={id} variant="soft">{id}</Badge>

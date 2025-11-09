@@ -106,6 +106,8 @@ export type MeasurementRecord = {
   flags?: number;
 };
 
+export type BatchVisibility = "public" | "private";
+
 export type IngestSmokeTestPoint = {
   device_id: string;
   pollutant: string;
@@ -128,6 +130,7 @@ export type IngestSmokeTestResponse = {
   batchId: string;
   deviceId: string;
   storagePath: string;
+  visibility: BatchVisibility;
   seededDeviceId: string;
   seededDeviceIds?: string[];
   payload?: {
@@ -142,10 +145,15 @@ export type BatchSummary = {
   deviceName?: string | null;
   count: number;
   processedAt?: string | null;
+  visibility: BatchVisibility;
 };
 
 export type BatchDetail = BatchSummary & {
   points: IngestSmokeTestPoint[];
+};
+
+export type UserSettings = {
+  defaultBatchVisibility: BatchVisibility;
 };
 
 export async function listDevices(): Promise<DeviceSummary[]> {
@@ -168,8 +176,14 @@ export async function fetchBatchDetail(deviceId: string, batchId: string): Promi
   return requestJson<BatchDetail>(`/v1/batches/${safeDevice}/${safeBatch}`);
 }
 
-export async function runIngestSmokeTest(payload?: IngestSmokeTestPayload): Promise<IngestSmokeTestResponse> {
-  const body = payload ? { payload } : {};
+export async function runIngestSmokeTest(
+  payload?: IngestSmokeTestPayload,
+  options?: { visibility?: BatchVisibility }
+): Promise<IngestSmokeTestResponse> {
+  const body: Record<string, unknown> = payload ? { payload } : {};
+  if (options?.visibility) {
+    body.visibility = options.visibility;
+  }
   return requestJson<IngestSmokeTestResponse>("/v1/admin/ingest-smoke-test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -185,5 +199,17 @@ export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Prom
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchUserSettings(): Promise<UserSettings> {
+  return requestJson<UserSettings>("/v1/user/settings");
+}
+
+export async function updateUserSettings(next: Partial<UserSettings>): Promise<UserSettings> {
+  return requestJson<UserSettings>("/v1/user/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(next),
   });
 }

@@ -9,6 +9,7 @@ import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
 import { batchesRoutes } from "./routes/batches.js";
 import { ingestHmacSecret } from "./lib/runtimeConfig.js";
+import { userSettingsRoutes } from "./routes/userSettings.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -52,6 +53,7 @@ const apiSetup = (async () => {
   await api.register(measurementsRoutes);
   await api.register(adminRoutes);
   await api.register(batchesRoutes);
+  await api.register(userSettingsRoutes);
 
   // Ensure all lifecycle hooks are ready before handling traffic.
   await api.ready();
