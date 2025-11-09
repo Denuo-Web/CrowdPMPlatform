@@ -1,13 +1,34 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
+    function authedUid() {
+      return request.auth != null ? request.auth.uid : null;
+    }
+
+    function hasDeviceAccess(device) {
+      return authedUid() != null &&
+        device != null &&
+        device.data != null &&
+        (
+          device.data.ownerUserId == authedUid() ||
+          (
+            device.data.ownerUserIds != null &&
+            device.data.ownerUserIds.hasAny([authedUid()])
+          )
+        );
+    }
+
+    function canReadDevice(deviceId) {
+      return hasDeviceAccess(get(/databases/$(db)/documents/devices/$(deviceId)));
+    }
+
     match /devices/{deviceId} {
-      allow read: if true;
+      allow read: if hasDeviceAccess(resource);
       allow write: if false;
       match /measures/{bucket} {
-        allow read: if true;
+        allow read: if canReadDevice(deviceId);
         allow write: if false;
-        match /rows/{doc} { allow read: if true; allow write: if false; }
+        match /rows/{doc} { allow read: if canReadDevice(deviceId); allow write: if false; }
       }
       match /batches/{batchId} { allow read: if false; allow write: if false; }
     }

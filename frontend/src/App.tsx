@@ -76,6 +76,7 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
 
 export default function App() {
   const { user, isLoading, signOut } = useAuth();
+  const userScopedKey = user?.uid ?? "anon";
   const [tab, setTab] = useState<"map" | "dashboard">("map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
@@ -267,7 +268,11 @@ export default function App() {
                 }}
               >
                 <Box style={{ padding: "var(--space-4)" }}>
-                  {activeTab === "dashboard" && user ? <UserDashboard /> : <MapPage />}
+                  {activeTab === "dashboard" && user ? (
+                    <UserDashboard key={userScopedKey} />
+                  ) : (
+                    <MapPage key={userScopedKey} />
+                  )}
                 </Box>
               </Box>
             </Card>

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/fire.js";
+import { requireUser } from "../auth/firebaseVerify.js";
 
 type MeasurementsQuery = {
   device_id?: string;
@@ -35,6 +36,7 @@ function timestampToMillis(value: MeasurementDoc["timestamp"]) {
 
 export const measurementsRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: MeasurementsQuery }>("/v1/measurements", async (req) => {
+    const user = await requireUser(req);
     const {
       device_id: deviceIdParam,
       pollutant = "pm25",
@@ -48,6 +50,17 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
     const t1 = new Date(t1Param ?? "");
     const limit = Math.min(Number(limitParam ?? 2000), 5000);
     if (!deviceId || Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime())) return [];
+
+    const doc = await db().collection("devices").doc(deviceId).get();
+    if (!doc.exists) return [];
+    const data = doc.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
+    const owners = Array.isArray(data?.ownerUserIds) ? data?.ownerUserIds : [];
+    const isOwner = data?.ownerUserId === user.uid || owners.includes(user.uid);
+    if (!isOwner) {
+      const error = new Error("forbidden");
+      (error as Error & { statusCode?: number }).statusCode = 403;
+      throw error;
+    }
 
     const hours: string[] = [];
     const cur = new Date(Date.UTC(
