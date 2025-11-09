@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map3D from "../components/Map3D";
 import {
-  fetchMeasurements,
-  listDevices,
-  type DeviceSummary,
+  fetchBatchDetail,
+  listBatches,
+  type BatchSummary,
   type MeasurementRecord,
   type IngestSmokeTestResponse,
+  type IngestSmokeTestPoint,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 
-const LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
+const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
+const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 
 function scopedKey(base: string, uid?: string | null) {
   return uid ? `${base}:${uid}` : base;
@@ -25,203 +27,270 @@ function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
   return ts.toMillis();
 }
 
+type BatchKey = { deviceId: string; batchId: string };
+
+function encodeBatchKey(deviceId: string, batchId: string): string {
+  return `${deviceId}::${batchId}`;
+}
+
+function decodeBatchKey(value: string): BatchKey | null {
+  if (!value) return null;
+  const separator = value.indexOf("::");
+  if (separator === -1) return null;
+  const deviceId = value.slice(0, separator);
+  const batchId = value.slice(separator + 2);
+  if (!deviceId || !batchId) return null;
+  return { deviceId, batchId };
+}
+
+function formatBatchLabel(batch: BatchSummary) {
+  const time = batch.processedAt ? new Date(batch.processedAt) : null;
+  const timeLabel = time ? time.toLocaleString() : "Pending timestamp";
+  const name = batch.deviceName?.trim().length ? batch.deviceName : batch.deviceId;
+  const countLabel = batch.count ? ` (${batch.count})` : "";
+  return `${timeLabel} — ${name}${countLabel}`;
+}
+
+function pointsToMeasurementRecords(points: IngestSmokeTestPoint[], fallbackDeviceId: string, batchId: string): MeasurementRecord[] {
+  return [...points]
+    .sort((a, b) => {
+      const aTs = normaliseTimestamp(a.timestamp as unknown as MeasurementRecord["timestamp"]);
+      const bTs = normaliseTimestamp(b.timestamp as unknown as MeasurementRecord["timestamp"]);
+      return aTs - bTs;
+    })
+    .map((point, idx) => {
+      const deviceId = typeof point.device_id === "string" && point.device_id.length
+        ? point.device_id
+        : fallbackDeviceId;
+      return {
+        id: `${batchId}-${deviceId}-${idx}`,
+        deviceId,
+        pollutant: "pm25",
+        value: point.value,
+        unit: point.unit ?? "µg/m³",
+        lat: point.lat ?? 0,
+        lon: point.lon ?? 0,
+        altitude: point.altitude ?? null,
+        precision: point.precision ?? null,
+        timestamp: point.timestamp,
+        flags: point.flags ?? 0,
+      } satisfies MeasurementRecord;
+    });
+}
+
+type CleanupDetail = { clearedDeviceId: string | null; clearedDeviceIds?: string[] };
+
+function buildClearedSet(detail?: CleanupDetail) {
+  const cleared = new Set<string>();
+  if (!detail) return cleared;
+  if (Array.isArray(detail.clearedDeviceIds)) {
+    detail.clearedDeviceIds.forEach((id) => {
+      if (typeof id === "string" && id.length) cleared.add(id);
+    });
+  }
+  if (typeof detail.clearedDeviceId === "string" && detail.clearedDeviceId.length) {
+    cleared.add(detail.clearedDeviceId);
+  }
+  return cleared;
+}
+
 export default function MapPage() {
   const { user } = useAuth();
-  const userScopedDeviceKey = useMemo(() => scopedKey(LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
-  const [devices, setDevices] = useState<DeviceSummary[]>([]);
-  const [devicesOwner, setDevicesOwner] = useState<string | null>(null);
-  const [deviceId, setDeviceId] = useState<string>(() => {
+  const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
+  const userScopedLegacyKey = useMemo(() => scopedKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [batchesOwner, setBatchesOwner] = useState<string | null>(null);
+  const [selectedBatchKey, setSelectedBatchKey] = useState<string>(() => {
     if (typeof window === "undefined" || !user) return "";
     try {
-      const legacy = window.localStorage.getItem(LAST_DEVICE_KEY);
-      if (legacy && !window.localStorage.getItem(userScopedDeviceKey)) {
-        window.localStorage.setItem(userScopedDeviceKey, legacy);
+      const stored = window.localStorage.getItem(userScopedSelectionKey);
+      if (stored) return stored;
+      const legacyScoped = window.localStorage.getItem(userScopedLegacyKey);
+      if (legacyScoped) {
+        window.localStorage.removeItem(userScopedLegacyKey);
       }
-      window.localStorage.removeItem(LAST_DEVICE_KEY);
-      return window.localStorage.getItem(userScopedDeviceKey) ?? "";
+      const legacy = window.localStorage.getItem(LEGACY_LAST_DEVICE_KEY);
+      if (legacy) {
+        window.localStorage.removeItem(LEGACY_LAST_DEVICE_KEY);
+      }
     }
     catch (err) {
       console.warn(err);
-      return "";
     }
+    return "";
   });
   const [rows, setRows] = useState<MeasurementRecord[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [pendingSmoke, setPendingSmoke] = useState(false);
-  const pendingSmokeRef = useRef(pendingSmoke);
-  useEffect(() => { pendingSmokeRef.current = pendingSmoke; }, [pendingSmoke]);
-  const effectiveDeviceId = user ? deviceId : "";
-  const visibleDevices = user && devicesOwner === user.uid ? devices : [];
+  const batchCacheRef = useRef(new Map<string, MeasurementRecord[]>());
+
+  const visibleBatches = user && batchesOwner === user.uid ? batches : [];
 
   const resetRows = useCallback(() => {
     setRows([]);
     setSelectedIndex(0);
   }, []);
 
-  const refreshDevices = useCallback(async () => {
+  const refreshBatches = useCallback(async () => {
     if (!user) return;
     const targetUid = user.uid;
     try {
-      const list = await listDevices();
-      setDevices(list);
-      setDevicesOwner(targetUid);
+      const list = await listBatches();
+      setBatches(list);
+      setBatchesOwner(targetUid);
     }
     catch {
-      setDevices([]);
-      setDevicesOwner(targetUid);
+      setBatches([]);
+      setBatchesOwner(targetUid);
     }
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    const targetUid = user.uid;
-    (async () => {
-      try {
-        const list = await listDevices();
-        if (!cancelled) {
-          setDevices(list);
-          setDevicesOwner(targetUid);
-        }
+    if (!user) {
+      setSelectedBatchKey("");
+      batchCacheRef.current.clear();
+      resetRows();
+      return;
+    }
+    void refreshBatches();
+  }, [refreshBatches, resetRows, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) return;
+    try {
+      const stored = window.localStorage.getItem(userScopedSelectionKey);
+      if (stored) {
+        setSelectedBatchKey(stored);
       }
-      catch {
-        if (!cancelled) {
-          setDevices([]);
-          setDevicesOwner(targetUid);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user]);
+    }
+    catch (err) {
+      console.warn(err);
+    }
+  }, [user, userScopedSelectionKey]);
 
   const applyRecords = useCallback((records: MeasurementRecord[]) => {
     if (records.length) {
-      setPendingSmoke(false);
       setRows(records);
       setSelectedIndex(records.length - 1);
       return true;
     }
-    if (!pendingSmokeRef.current) {
-      resetRows();
-    }
+    resetRows();
     return false;
   }, [resetRows]);
 
-  const loadMeasurements = useCallback(async () => {
-    if (!effectiveDeviceId) return [];
-    const now = new Date();
-    const t1 = now.toISOString();
-    const windowSizes = pendingSmokeRef.current ? [1] : [1, 6, 24];
-    for (const hours of windowSizes) {
-      const t0 = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-      const records = await fetchMeasurements({ device_id: effectiveDeviceId, pollutant: "pm25", t0, t1, limit: 2000 });
-      if (records.length) return records;
-    }
-    return [];
-  }, [effectiveDeviceId]);
+  const loadBatchRecords = useCallback(async (key: string) => {
+    if (!key) return [];
+    const cached = batchCacheRef.current.get(key);
+    if (cached) return cached;
+    const parsed = decodeBatchKey(key);
+    if (!parsed) return [];
+    const detail = await fetchBatchDetail(parsed.deviceId, parsed.batchId);
+    const records = pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId);
+    batchCacheRef.current.set(key, records);
+    return records;
+  }, []);
 
   useEffect(() => {
+    if (!user || !selectedBatchKey) {
+      if (!selectedBatchKey) resetRows();
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const records = await loadMeasurements();
+        const records = await loadBatchRecords(selectedBatchKey);
         if (!cancelled) applyRecords(records);
       }
       catch (err) {
-        if (cancelled) return;
-        console.warn("Failed to load measurements", err);
-        if (!pendingSmokeRef.current) {
+        if (!cancelled) {
+          console.warn("Failed to load batch measurements", err);
           resetRows();
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [loadMeasurements, applyRecords, resetRows]);
+  }, [applyRecords, loadBatchRecords, resetRows, selectedBatchKey, user]);
 
-  useEffect(() => {
-    if (!pendingSmoke || !effectiveDeviceId) return;
-    let cancelled = false;
-    let attempt = 0;
-    let timer: number | null = null;
-    const poll = async () => {
-      if (cancelled) return;
-      attempt += 1;
-      let fulfilled = false;
+  const handleBatchSelect = useCallback((value: string) => {
+    setSelectedBatchKey(value);
+    if (typeof window !== "undefined" && user) {
       try {
-        const records = await loadMeasurements();
-        if (cancelled) return;
-        fulfilled = applyRecords(records);
+        if (value) window.localStorage.setItem(userScopedSelectionKey, value);
+        else window.localStorage.removeItem(userScopedSelectionKey);
       }
       catch (err) {
-        if (!cancelled) {
-          console.warn("Failed to load measurements", err);
-          if (!pendingSmokeRef.current) {
-            resetRows();
-          }
-        }
+        console.warn(err);
       }
-      if (cancelled || fulfilled || attempt >= 6) return;
-      timer = window.setTimeout(poll, 4000);
-    };
-    timer = window.setTimeout(poll, 4000);
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [pendingSmoke, effectiveDeviceId, loadMeasurements, applyRecords, resetRows]);
+    }
+    if (!value) {
+      resetRows();
+    }
+  }, [resetRows, user, userScopedSelectionKey]);
 
   useEffect(() => {
-    const handler = (event: Event) => {
+    const handleCompleted = (event: Event) => {
       if (!user) return;
       const detail = (event as CustomEvent<IngestSmokeTestResponse>).detail;
-      if (!detail) return;
-      const newDevice = detail.deviceId || detail.seededDeviceId;
-      if (newDevice) {
-        setDeviceId(newDevice);
-        setPendingSmoke(Boolean(detail.points?.length));
-        try {
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(userScopedDeviceKey, newDevice);
-          }
-        } catch (err) { console.warn(err); }
-        if (detail.points?.length) {
-          const provisionalRows: MeasurementRecord[] = detail.points.map((point, idx) => ({
-            id: `smoke-${detail.batchId}-${idx}`,
-            deviceId: newDevice,
-            pollutant: point.pollutant as "pm25",
-            value: point.value,
-            unit: point.unit ?? "ug/m3",
-            lat: point.lat ?? 0,
-            lon: point.lon ?? 0,
-            altitude: point.altitude ?? null,
-            precision: point.precision ?? null,
-            timestamp: point.timestamp,
-            flags: point.flags ?? 0
-          }));
-          setRows(provisionalRows);
-          setSelectedIndex(provisionalRows.length ? provisionalRows.length - 1 : 0);
-        }
-        refreshDevices();
+      if (!detail?.batchId) return;
+      const deviceForBatch = detail.deviceId || detail.seededDeviceId;
+      if (!deviceForBatch) return;
+      const key = encodeBatchKey(deviceForBatch, detail.batchId);
+      const rawPoints = detail.points?.length
+        ? detail.points
+        : detail.payload?.points ?? [];
+      if (rawPoints.length) {
+        const provisional = pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId);
+        setRows(provisional);
+        setSelectedIndex(provisional.length - 1);
       }
-    };
-    window.addEventListener("ingest-smoke-test:completed", handler);
-    const cleanupHandler = () => {
-      if (!user) return;
-      setPendingSmoke(false);
-      resetRows();
-      setDeviceId("");
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem(userScopedDeviceKey);
+      else {
+        resetRows();
+      }
+      setSelectedBatchKey(key);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(userScopedSelectionKey, key);
         }
-      } catch (err) { console.warn(err); }
+        catch (err) {
+          console.warn(err);
+        }
+      }
+      refreshBatches();
     };
-    window.addEventListener("ingest-smoke-test:cleared", cleanupHandler);
+
+    const handleCleared = (event: Event) => {
+      if (!user) return;
+      const detail = (event as CustomEvent<CleanupDetail>).detail;
+      const cleared = buildClearedSet(detail);
+      if (!cleared.size) return;
+      for (const key of Array.from(batchCacheRef.current.keys())) {
+        const parsed = decodeBatchKey(key);
+        if (parsed && cleared.has(parsed.deviceId)) {
+          batchCacheRef.current.delete(key);
+        }
+      }
+      const current = decodeBatchKey(selectedBatchKey);
+      if (current && cleared.has(current.deviceId)) {
+        setSelectedBatchKey("");
+        resetRows();
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(userScopedSelectionKey);
+          }
+          catch (err) {
+            console.warn(err);
+          }
+        }
+      }
+      refreshBatches();
+    };
+
+    window.addEventListener("ingest-smoke-test:completed", handleCompleted);
+    window.addEventListener("ingest-smoke-test:cleared", handleCleared);
     return () => {
-      window.removeEventListener("ingest-smoke-test:completed", handler);
-      window.removeEventListener("ingest-smoke-test:cleared", cleanupHandler);
+      window.removeEventListener("ingest-smoke-test:completed", handleCompleted);
+      window.removeEventListener("ingest-smoke-test:cleared", handleCleared);
     };
-  }, [refreshDevices, resetRows, user, userScopedDeviceKey]);
+  }, [refreshBatches, resetRows, selectedBatchKey, user, userScopedSelectionKey]);
 
   const data = useMemo(
     () => rows.map((r) => ({
@@ -237,28 +306,24 @@ export default function MapPage() {
 
   const selectedPoint = rows[selectedIndex];
   const selectedMoment = selectedPoint ? new Date(normaliseTimestamp(selectedPoint.timestamp)) : null;
-  function handleDeviceSelect(value: string) {
-    setPendingSmoke(false);
-    resetRows();
-    setDeviceId(value);
-    try {
-      if (typeof window !== "undefined" && user) {
-        if (value) window.localStorage.setItem(userScopedDeviceKey, value);
-        else window.localStorage.removeItem(userScopedDeviceKey);
-      }
-    }
-    catch (err) {
-      console.warn(err);
-    }
-  }
 
   return (
     <div style={{ padding: 12 }}>
       <h2>CrowdPM Map</h2>
-      <select value={effectiveDeviceId} onChange={(e) => handleDeviceSelect(e.target.value)}>
-        <option value="">Select device</option>
-        {visibleDevices.map((d) => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
+      <select
+        value={selectedBatchKey}
+        onChange={(e) => handleBatchSelect(e.target.value)}
+        disabled={!user}
+      >
+        <option value="">{user ? "Select batch" : "Sign in to select a batch"}</option>
+        {visibleBatches.map((batch) => {
+          const key = encodeBatchKey(batch.deviceId, batch.batchId);
+          return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
+        })}
       </select>
+      {user && !visibleBatches.length ? (
+        <p style={{ marginTop: 8, fontSize: 14 }}>No batches available yet. Run a smoke test from the dashboard to generate one.</p>
+      ) : null}
       {rows.length ? (
         <div style={{ marginTop: 16 }}>
           <label htmlFor="measurement-slider">Measurement timeline</label>
@@ -306,7 +371,7 @@ export default function MapPage() {
           ) : null}
         </div>
       ) : (
-        <p style={{ marginTop: 16 }}>Select a device with recent measurements to explore the timeline.</p>
+        <p style={{ marginTop: 16 }}>Select a batch with recent measurements to explore the timeline.</p>
       )}
       <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex}/>
     </div>
