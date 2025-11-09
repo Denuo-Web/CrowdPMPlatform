@@ -37,7 +37,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
-    const authedUser = await requireUser(req).catch(() => null); // allow unauthenticated usage when desired
+    const user = await requireUser(req);
 
     const defaultDeviceId = "device-123";
     const body = req.body ?? {};
@@ -121,9 +121,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
     }
 
-    const ownerSegment = authedUser?.uid
-      ? slugify(authedUser.uid, "user")
-      : `anon-${crypto.randomUUID().slice(0, 8)}`;
+    const ownerSegment = slugify(user.uid, "user");
 
     const rawDeviceIds = Array.from(new Set(
       payload.points
@@ -154,7 +152,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     if (!primaryDeviceId) {
       return rep.code(400).send({ error: "unable to determine device_id for smoke test" });
     }
-    const ownerIds = authedUser?.uid ? [authedUser.uid] : ["smoke-test"];
+    const ownerIds = [user.uid];
     const arrayUnion = getFirebaseApp().firestore.FieldValue.arrayUnion;
     const primaryOwnerId = ownerIds[0];
     const scopedToRaw = new Map<string, string>();
@@ -219,8 +217,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
       const data = snap.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
-      const owners = Array.isArray(data?.ownerUserIds) ? data?.ownerUserIds : [];
-      const isOwner = data?.ownerUserId === user.uid || owners.includes(user.uid);
+      const owners = Array.isArray(data?.ownerUserIds)
+        ? data.ownerUserIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+        : [];
+      const ownerUserId = typeof data?.ownerUserId === "string" && data.ownerUserId.length > 0
+        ? data.ownerUserId
+        : null;
+      const isOwner = ownerUserId === user.uid || owners.includes(user.uid);
       if (isOwner) {
         allowedIds.push(deviceId);
         return;
