@@ -218,9 +218,16 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         allowedIds.push(deviceId); // stale device reference; allow cleanup to continue
         return;
       }
-      const data = snap.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
-      const owners = Array.isArray(data?.ownerUserIds) ? data?.ownerUserIds : [];
-      const isOwner = data?.ownerUserId === user.uid || owners.includes(user.uid);
+      const data = snap.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null; ownerScope?: string | null } | undefined;
+      const owners = Array.isArray(data?.ownerUserIds) ? data.ownerUserIds.filter((id): id is string => typeof id === "string" && id.length > 0) : [];
+      const ownerUserId = typeof data?.ownerUserId === "string" && data.ownerUserId.length > 0 ? data.ownerUserId : null;
+      const ownerScope = typeof data?.ownerScope === "string" ? data.ownerScope : null;
+      const isSyntheticSmokeTest = ownerUserId === "smoke-test" || owners.includes("smoke-test") || Boolean(ownerScope && ownerScope.startsWith("anon-"));
+      if (isSyntheticSmokeTest || (!ownerUserId && owners.length === 0)) {
+        allowedIds.push(deviceId); // legacy/smoke test devices do not belong to a real user
+        return;
+      }
+      const isOwner = ownerUserId === user.uid || owners.includes(user.uid);
       if (isOwner) {
         allowedIds.push(deviceId);
         return;
