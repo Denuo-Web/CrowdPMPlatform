@@ -73,6 +73,10 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
     label: "Asana Board",
     href: "https://app.asana.com/1/941689499454829/project/1211814553979599/board",
   },
+  {
+    label: "Discord Invite",
+    href: "https://discord.gg/cEbGw8HAUQ",
+  },
 ];
 
 export default function App() {
@@ -82,7 +86,8 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
 
-  const activeTab = !user && tab !== "map" ? "map" : tab;
+  const isSignedIn = Boolean(user);
+  const activeTab = !isSignedIn && tab !== "map" ? "map" : tab;
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -200,24 +205,28 @@ export default function App() {
                   </Flex>
                 ))}
               </Flex>
-              <Separator my="4" />
-              <Text size="2" color="gray">
-                Coordination links
-              </Text>
-              <Flex direction="column" gap="2" mt="2">
-                {RESOURCE_LINKS.map((resource) => (
-                  <Link
-                    key={resource.href}
-                    href={resource.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    color="iris"
-                    size="2"
-                  >
-                    {resource.label}
-                  </Link>
-                ))}
-              </Flex>
+              {isSignedIn ? (
+                <>
+                  <Separator my="4" />
+                  <Text size="2" color="gray">
+                    Coordination links
+                  </Text>
+                  <Flex direction="column" gap="2" mt="2">
+                    {RESOURCE_LINKS.map((resource) => (
+                      <Link
+                        key={resource.href}
+                        href={resource.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        color="iris"
+                        size="2"
+                      >
+                        {resource.label}
+                      </Link>
+                    ))}
+                  </Flex>
+                </>
+              ) : null}
             </Card>
 
             <Card size="4" style={{ flex: 1, minWidth: 0 }}>
@@ -238,20 +247,24 @@ export default function App() {
                   <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
                     Map
                   </Button>
-                  <Button
-                    variant={activeTab === "dashboard" ? "solid" : "soft"}
-                    onClick={() => handleProtectedTabClick("dashboard")}
-                    disabled={isLoading}
-                  >
-                    User Dashboard
-                  </Button>
-                  <Button
-                    variant={activeTab === "smoke" ? "solid" : "soft"}
-                    onClick={() => handleProtectedTabClick("smoke")}
-                    disabled={isLoading}
-                  >
-                    Smoke Test
-                  </Button>
+                  {isSignedIn ? (
+                    <>
+                      <Button
+                        variant={activeTab === "dashboard" ? "solid" : "soft"}
+                        onClick={() => handleProtectedTabClick("dashboard")}
+                        disabled={isLoading}
+                      >
+                        User Dashboard
+                      </Button>
+                      <Button
+                        variant={activeTab === "smoke" ? "solid" : "soft"}
+                        onClick={() => handleProtectedTabClick("smoke")}
+                        disabled={isLoading}
+                      >
+                        Smoke Test
+                      </Button>
+                    </>
+                  ) : null}
                 </Flex>
                 <Flex gap="2" justify="end">
                   {user ? (
@@ -284,8 +297,22 @@ export default function App() {
                     <UserDashboard key={`dashboard:${userScopedKey}`} />
                   ) : activeTab === "smoke" && user ? (
                     <SmokeTestLab key={`smoke:${userScopedKey}`} />
-                  ) : (
+                  ) : activeTab === "map" && user ? (
                     <MapPage key={`map:${userScopedKey}`} />
+                  ) : (
+                    <Flex
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      gap="3"
+                      style={{ padding: "var(--space-8)", textAlign: "center" }}
+                    >
+                      <Heading size="5">Sign in to access CrowdPM</Heading>
+                      <Text size="2" color="gray" style={{ maxWidth: 360 }}>
+                        Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
+                        resources.
+                      </Text>
+                    </Flex>
                   )}
                 </Box>
               </Box>
