@@ -30,9 +30,11 @@ paths:
       operationId: listDevices
       summary: List devices
       description: >
-        Returns all registered devices. Authentication is required in production,
-        but emulator builds may allow anonymous access for convenience.
-      security: []
+        Returns the devices the authenticated caller can access. Devices may be
+        shared with multiple Firebase users, and the caller only receives entries
+        where their UID is a member.
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: Devices returned.
@@ -75,8 +77,10 @@ paths:
       summary: Query measurements
       description: >
         Returns measurements for a device within an inclusive time window. Missing or invalid
-        parameters result in an empty array.
-      security: []
+        parameters result in an empty array. Only authenticated callers who own the device
+        (via `ownerUserIds`) may retrieve its data.
+      security:
+        - BearerAuth: []
       parameters:
         - name: device_id
           in: query
@@ -127,6 +131,10 @@ paths:
                   $ref: '#/components/schemas/Measurement'
         '400':
           description: Invalid combination of query parameters. Currently returns an empty array.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller does not have access to the requested device.
   /v1/admin/devices/{id}/suspend:
     post:
       operationId: suspendDevice
@@ -229,7 +237,19 @@ components:
           description: Friendly name supplied by the owner.
         ownerUserId:
           type: string
-          description: Firebase UID of the device owner.
+          description: Primary Firebase UID associated with the device. Legacy field retained for backwards compatibility.
+        ownerUserIds:
+          type: array
+          description: All Firebase UIDs that can access the device.
+          items:
+            type: string
+          minItems: 1
+        publicDeviceId:
+          type: string
+          description: Raw device identifier provided by the owner (before namespacing).
+        ownerScope:
+          type: string
+          description: Slugged segment derived from the owner UID that is prepended to device IDs for uniqueness.
         status:
           $ref: '#/components/schemas/DeviceStatus'
         createdAt:

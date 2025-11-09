@@ -7,6 +7,13 @@ import {
   type MeasurementRecord,
   type IngestSmokeTestResponse,
 } from "../lib/api";
+import { useAuth } from "../providers/AuthProvider";
+
+const LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
+
+function scopedKey(base: string, uid?: string | null) {
+  return uid ? `${base}:${uid}` : base;
+}
 
 function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
   if (typeof ts === "number") return ts;
@@ -19,12 +26,21 @@ function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
 }
 
 export default function MapPage() {
+  const { user } = useAuth();
+  const userScopedDeviceKey = useMemo(() => scopedKey(LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
+  const [devicesOwner, setDevicesOwner] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined" || !user) return "";
     try {
-      return window.localStorage.getItem("crowdpm:lastSmokeTestDevice") ?? "";
-    } catch (err) {
+      const legacy = window.localStorage.getItem(LAST_DEVICE_KEY);
+      if (legacy && !window.localStorage.getItem(userScopedDeviceKey)) {
+        window.localStorage.setItem(userScopedDeviceKey, legacy);
+      }
+      window.localStorage.removeItem(LAST_DEVICE_KEY);
+      return window.localStorage.getItem(userScopedDeviceKey) ?? "";
+    }
+    catch (err) {
       console.warn(err);
       return "";
     }
@@ -34,6 +50,8 @@ export default function MapPage() {
   const [pendingSmoke, setPendingSmoke] = useState(false);
   const pendingSmokeRef = useRef(pendingSmoke);
   useEffect(() => { pendingSmokeRef.current = pendingSmoke; }, [pendingSmoke]);
+  const effectiveDeviceId = user ? deviceId : "";
+  const visibleDevices = user && devicesOwner === user.uid ? devices : [];
 
   const resetRows = useCallback(() => {
     setRows([]);
@@ -41,28 +59,40 @@ export default function MapPage() {
   }, []);
 
   const refreshDevices = useCallback(async () => {
+    if (!user) return;
+    const targetUid = user.uid;
     try {
       const list = await listDevices();
       setDevices(list);
+      setDevicesOwner(targetUid);
     }
     catch {
       setDevices([]);
+      setDevicesOwner(targetUid);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
+    const targetUid = user.uid;
     (async () => {
       try {
         const list = await listDevices();
-        if (!cancelled) setDevices(list);
+        if (!cancelled) {
+          setDevices(list);
+          setDevicesOwner(targetUid);
+        }
       }
       catch {
-        if (!cancelled) setDevices([]);
+        if (!cancelled) {
+          setDevices([]);
+          setDevicesOwner(targetUid);
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [user]);
 
   const applyRecords = useCallback((records: MeasurementRecord[]) => {
     if (records.length) {
@@ -78,17 +108,17 @@ export default function MapPage() {
   }, [resetRows]);
 
   const loadMeasurements = useCallback(async () => {
-    if (!deviceId) return [];
+    if (!effectiveDeviceId) return [];
     const now = new Date();
     const t1 = now.toISOString();
     const windowSizes = pendingSmokeRef.current ? [1] : [1, 6, 24];
     for (const hours of windowSizes) {
       const t0 = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-      const records = await fetchMeasurements({ device_id: deviceId, pollutant: "pm25", t0, t1, limit: 2000 });
+      const records = await fetchMeasurements({ device_id: effectiveDeviceId, pollutant: "pm25", t0, t1, limit: 2000 });
       if (records.length) return records;
     }
     return [];
-  }, [deviceId]);
+  }, [effectiveDeviceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +139,7 @@ export default function MapPage() {
   }, [loadMeasurements, applyRecords, resetRows]);
 
   useEffect(() => {
-    if (!pendingSmoke || !deviceId) return;
+    if (!pendingSmoke || !effectiveDeviceId) return;
     let cancelled = false;
     let attempt = 0;
     let timer: number | null = null;
@@ -138,17 +168,22 @@ export default function MapPage() {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [pendingSmoke, deviceId, loadMeasurements, applyRecords, resetRows]);
+  }, [pendingSmoke, effectiveDeviceId, loadMeasurements, applyRecords, resetRows]);
 
   useEffect(() => {
     const handler = (event: Event) => {
+      if (!user) return;
       const detail = (event as CustomEvent<IngestSmokeTestResponse>).detail;
       if (!detail) return;
       const newDevice = detail.deviceId || detail.seededDeviceId;
       if (newDevice) {
         setDeviceId(newDevice);
         setPendingSmoke(Boolean(detail.points?.length));
-        try { localStorage.setItem("crowdpm:lastSmokeTestDevice", newDevice); } catch (err) { console.warn(err); }
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(userScopedDeviceKey, newDevice);
+          }
+        } catch (err) { console.warn(err); }
         if (detail.points?.length) {
           const provisionalRows: MeasurementRecord[] = detail.points.map((point, idx) => ({
             id: `smoke-${detail.batchId}-${idx}`,
@@ -171,17 +206,22 @@ export default function MapPage() {
     };
     window.addEventListener("ingest-smoke-test:completed", handler);
     const cleanupHandler = () => {
+      if (!user) return;
       setPendingSmoke(false);
       resetRows();
       setDeviceId("");
-      try { localStorage.removeItem("crowdpm:lastSmokeTestDevice"); } catch (err) { console.warn(err); }
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(userScopedDeviceKey);
+        }
+      } catch (err) { console.warn(err); }
     };
     window.addEventListener("ingest-smoke-test:cleared", cleanupHandler);
     return () => {
       window.removeEventListener("ingest-smoke-test:completed", handler);
       window.removeEventListener("ingest-smoke-test:cleared", cleanupHandler);
     };
-  }, [refreshDevices, resetRows]);
+  }, [refreshDevices, resetRows, user, userScopedDeviceKey]);
 
   const data = useMemo(
     () => rows.map((r) => ({
@@ -202,8 +242,10 @@ export default function MapPage() {
     resetRows();
     setDeviceId(value);
     try {
-      if (value) window.localStorage.setItem("crowdpm:lastSmokeTestDevice", value);
-      else window.localStorage.removeItem("crowdpm:lastSmokeTestDevice");
+      if (typeof window !== "undefined" && user) {
+        if (value) window.localStorage.setItem(userScopedDeviceKey, value);
+        else window.localStorage.removeItem(userScopedDeviceKey);
+      }
     }
     catch (err) {
       console.warn(err);
@@ -213,9 +255,9 @@ export default function MapPage() {
   return (
     <div style={{ padding: 12 }}>
       <h2>CrowdPM Map</h2>
-      <select value={deviceId} onChange={(e) => handleDeviceSelect(e.target.value)}>
+      <select value={effectiveDeviceId} onChange={(e) => handleDeviceSelect(e.target.value)}>
         <option value="">Select device</option>
-        {devices.map((d) => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
+        {visibleDevices.map((d) => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
       </select>
       {rows.length ? (
         <div style={{ marginTop: 16 }}>

@@ -1,3 +1,5 @@
+import { auth } from "./firebase";
+
 const rawBase = import.meta.env.VITE_API_BASE as string | undefined;
 const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "";
 
@@ -16,7 +18,14 @@ function buildUrl(path: string): string {
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = buildUrl(path);
-  const response = await fetch(url, init);
+  const headers = new Headers(init?.headers ?? {});
+  if (!headers.has("Authorization")) {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+  const response = await fetch(url, { ...init, headers });
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   const bodyText = await response.text().catch(() => "");
 
@@ -72,6 +81,9 @@ export type DeviceSummary = {
   name?: string | null;
   status?: string | null;
   ownerUserId?: string | null;
+  ownerUserIds?: string[] | null;
+  publicDeviceId?: string | null;
+  ownerScope?: string | null;
   createdAt?: string | null;
 };
 

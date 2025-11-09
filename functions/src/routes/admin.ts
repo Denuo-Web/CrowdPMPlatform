@@ -19,9 +19,25 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     pointOverrides?: Partial<NonNullable<IngestBody["points"]>[number]>;
   };
 
+  const slugify = (value: string | undefined | null, fallback: string) => {
+    if (!value) return fallback;
+    const normalised = value
+      .toString()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-");
+    return normalised || fallback;
+  };
+
+  const scopeDeviceId = (ownerSegment: string, rawDeviceId: string) => {
+    const deviceSegment = slugify(rawDeviceId, "device");
+    return `${ownerSegment}-${deviceSegment}`;
+  };
+
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
-    await requireUser(req).catch(() => ({})); // allow unauthenticated usage when desired
+    const authedUser = await requireUser(req).catch(() => null); // allow unauthenticated usage when desired
 
     const defaultDeviceId = "device-123";
     const body = req.body ?? {};
@@ -105,19 +121,62 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
     }
 
+    const ownerSegment = authedUser?.uid
+      ? slugify(authedUser.uid, "user")
+      : `anon-${crypto.randomUUID().slice(0, 8)}`;
+
+    const rawDeviceIds = Array.from(new Set(
+      payload.points
+        .map((point) => point.device_id)
+        .filter((id): id is string => Boolean(id))
+    ));
+
+    const idMap = new Map<string, string>();
+    rawDeviceIds.forEach((rawId) => {
+      idMap.set(rawId, scopeDeviceId(ownerSegment, rawId));
+    });
+    if (!rawDeviceIds.length) {
+      const fallback = scopeDeviceId(ownerSegment, requestedDeviceId);
+      idMap.set(requestedDeviceId, fallback);
+    }
+
+    payload.points = payload.points.map((point, idx) => {
+      const rawId = point.device_id || rawDeviceIds[idx % rawDeviceIds.length] || requestedDeviceId;
+      const scopedId = idMap.get(rawId) ?? scopeDeviceId(ownerSegment, rawId);
+      if (!idMap.has(rawId)) {
+        idMap.set(rawId, scopedId);
+      }
+      return { ...point, device_id: scopedId };
+    });
+
     const deviceIds = Array.from(new Set(payload.points.map((point) => point.device_id).filter((id): id is string => Boolean(id))));
-    const primaryDeviceId = deviceIds[0] || requestedDeviceId;
+    const primaryDeviceId = deviceIds[0] || scopeDeviceId(ownerSegment, requestedDeviceId);
     if (!primaryDeviceId) {
       return rep.code(400).send({ error: "unable to determine device_id for smoke test" });
     }
+    const ownerIds = authedUser?.uid ? [authedUser.uid] : ["smoke-test"];
+    const arrayUnion = getFirebaseApp().firestore.FieldValue.arrayUnion;
+    const primaryOwnerId = ownerIds[0];
+    const scopedToRaw = new Map<string, string>();
+    idMap.forEach((scoped, raw) => scopedToRaw.set(scoped, raw));
+
     const seedTargets = deviceIds.length ? deviceIds : [primaryDeviceId];
     await Promise.all(seedTargets.map(async (deviceId) => {
-      await db().collection("devices").doc(deviceId).set({
+      const publicDeviceId = scopedToRaw.get(deviceId) ?? deviceId;
+      const payload: Record<string, unknown> = {
         status: "ACTIVE",
         name: "Smoke Test Device",
-        ownerUserId: "smoke-test",
         createdAt: new Date().toISOString(),
-      }, { merge: true });
+        publicDeviceId,
+        ownerScope: ownerSegment,
+      };
+      if (primaryOwnerId) {
+        payload.ownerUserId = primaryOwnerId;
+      }
+      if (ownerIds.length) {
+        payload.ownerUserIds = arrayUnion(...ownerIds);
+      }
+      await db().collection("devices").doc(deviceId).set(payload, { merge: true });
     }));
     fastify.log.info({ deviceIds: seedTargets }, "ingest smoke test seeded devices");
 
@@ -143,7 +202,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post<{ Body: { deviceId?: string; deviceIds?: string[] } }>("/v1/admin/ingest-smoke-test/cleanup", async (req, rep) => {
-    await requireUser(req).catch(() => ({}));
+    const user = await requireUser(req);
 
     const uniqueIds = Array.from(new Set(
       (req.body?.deviceIds && req.body.deviceIds.length ? req.body.deviceIds : [req.body?.deviceId || "device-123"])
@@ -151,8 +210,34 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         .map((id) => id.trim())
     ));
 
+    const allowedIds: string[] = [];
+    const forbiddenIds: string[] = [];
+    await Promise.all(uniqueIds.map(async (deviceId) => {
+      const snap = await db().collection("devices").doc(deviceId).get();
+      if (!snap.exists) {
+        allowedIds.push(deviceId); // stale device reference; allow cleanup to continue
+        return;
+      }
+      const data = snap.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
+      const owners = Array.isArray(data?.ownerUserIds) ? data?.ownerUserIds : [];
+      const isOwner = data?.ownerUserId === user.uid || owners.includes(user.uid);
+      if (isOwner) {
+        allowedIds.push(deviceId);
+        return;
+      }
+      forbiddenIds.push(deviceId);
+    }));
+
+    if (forbiddenIds.length) {
+      return rep.code(403).send({
+        error: "forbidden",
+        message: "You do not have permission to delete one or more devices.",
+        forbiddenDeviceIds: forbiddenIds,
+      });
+    }
+
     const cleared: string[] = [];
-    for (const deviceId of uniqueIds) {
+    for (const deviceId of allowedIds) {
       const ref = db().collection("devices").doc(deviceId);
       await getFirebaseApp().firestore().recursiveDelete(ref).catch((err: unknown) => {
         console.warn("Failed to recursively delete Firestore data", err);

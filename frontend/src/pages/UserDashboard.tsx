@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import {
   cleanupIngestSmokeTest,
   listDevices,
@@ -11,6 +11,7 @@ import { useAuth } from "../providers/AuthProvider";
 
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
+const LAST_DEVICE_STORAGE_KEY = "crowdpm:lastSmokeTestDevice";
 
 type SmokeHistoryItem = {
   id: string;
@@ -47,11 +48,9 @@ function createDefaultSmokePayload(deviceId = "device-123"): IngestSmokeTestPayl
   return { points };
 }
 
-function restoreSmokeHistory(): SmokeHistoryItem[] {
-  if (typeof window === "undefined") return [];
+function parseSmokeHistory(raw: string | null): SmokeHistoryItem[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
@@ -76,7 +75,7 @@ function restoreSmokeHistory(): SmokeHistoryItem[] {
       .filter((item): item is SmokeHistoryItem => Boolean(item));
   }
   catch (err) {
-    console.warn("Unable to restore smoke test history", err);
+    console.warn("Unable to parse smoke test history", err);
     return [];
   }
 }
@@ -101,27 +100,44 @@ export default function UserDashboard() {
   const { user } = useAuth();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [isCleaning, setIsCleaning] = useState(false);
   const [smokeResult, setSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [smokeError, setSmokeError] = useState<string | null>(null);
   const [payloadError, setPayloadError] = useState<string | null>(null);
-  const defaultPayloadString = JSON.stringify(createDefaultSmokePayload(), null, 2);
-  const [smokePayload, setSmokePayload] = useState<string>(() => {
-    if (typeof window === "undefined") return defaultPayloadString;
-    try {
-      return window.localStorage.getItem(PAYLOAD_STORAGE_KEY) || defaultPayloadString;
-    }
-    catch {
-      return defaultPayloadString;
-    }
-  });
-  const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>(restoreSmokeHistory);
-  const historyRef = useRef<SmokeHistoryItem[]>(smokeHistory);
+  const defaultPayloadString = useMemo(
+    () => JSON.stringify(createDefaultSmokePayload(), null, 2),
+    []
+  );
+  const scopedPayloadKey = useMemo(
+    () => user?.uid ? `${PAYLOAD_STORAGE_KEY}:${user.uid}` : PAYLOAD_STORAGE_KEY,
+    [user?.uid]
+  );
+  const scopedHistoryKey = useMemo(
+    () => user?.uid ? `${HISTORY_STORAGE_KEY}:${user.uid}` : HISTORY_STORAGE_KEY,
+    [user?.uid]
+  );
+  const scopedLastDeviceKey = useMemo(
+    () => user?.uid ? `${LAST_DEVICE_STORAGE_KEY}:${user.uid}` : LAST_DEVICE_STORAGE_KEY,
+    [user?.uid]
+  );
+  const [smokePayload, setSmokePayload] = useState<string>(defaultPayloadString);
+  const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>([]);
+  const historyRef = useRef<SmokeHistoryItem[]>([]);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const welcomeEmail = user?.email ?? "";
+  const ownedDeviceIds = useMemo(() => {
+    const ids = new Set(devices.map((device) => device.id));
+    smokeHistory.forEach((entry) => entry.deviceIds.forEach((id) => ids.add(id)));
+    uniqueDeviceIdsFromResult(smokeResult).forEach((id) => ids.add(id));
+    return ids;
+  }, [devices, smokeHistory, smokeResult]);
 
   const refreshDevices = useCallback(async () => {
+    if (!user) {
+      await Promise.resolve();
+      setDevices([]);
+      return;
+    }
     try {
       const list = await listDevices();
       setDevices(list);
@@ -129,19 +145,80 @@ export default function UserDashboard() {
     catch {
       setDevices([]);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { refreshDevices(); }, [refreshDevices]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!user) {
+      setSmokeResult(null);
+      setSmokeError(null);
+      setPayloadError(null);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setSmokePayload(defaultPayloadString);
+      return;
+    }
+    if (!user) {
+      setSmokePayload(defaultPayloadString);
+      return;
+    }
     try {
-      window.localStorage.setItem(PAYLOAD_STORAGE_KEY, smokePayload);
+      const legacy = window.localStorage.getItem(PAYLOAD_STORAGE_KEY);
+      if (legacy && !window.localStorage.getItem(scopedPayloadKey)) {
+        window.localStorage.setItem(scopedPayloadKey, legacy);
+      }
+      window.localStorage.removeItem(PAYLOAD_STORAGE_KEY);
+      const stored = window.localStorage.getItem(scopedPayloadKey);
+      setSmokePayload(stored || defaultPayloadString);
+    }
+    catch (err) {
+      console.warn("Unable to load smoke payload", err);
+      setSmokePayload(defaultPayloadString);
+    }
+  }, [scopedPayloadKey, defaultPayloadString, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setSmokeHistory([]);
+      historyRef.current = [];
+      return;
+    }
+    if (!user) {
+      setSmokeHistory([]);
+      historyRef.current = [];
+      return;
+    }
+    try {
+      const legacy = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (legacy && !window.localStorage.getItem(scopedHistoryKey)) {
+        window.localStorage.setItem(scopedHistoryKey, legacy);
+      }
+      window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+      const stored = window.localStorage.getItem(scopedHistoryKey);
+      const parsed = parseSmokeHistory(stored);
+      setSmokeHistory(parsed);
+      historyRef.current = parsed;
+    }
+    catch (err) {
+      console.warn("Unable to load smoke test history", err);
+      setSmokeHistory([]);
+      historyRef.current = [];
+    }
+  }, [scopedHistoryKey, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) return;
+    try {
+      window.localStorage.setItem(scopedPayloadKey, smokePayload);
     }
     catch (err) {
       console.warn("Unable to store smoke payload", err);
     }
-  }, [smokePayload]);
+  }, [smokePayload, scopedPayloadKey, user]);
 
   useEffect(() => {
     historyRef.current = smokeHistory;
@@ -162,6 +239,10 @@ export default function UserDashboard() {
   }
 
   async function handleSmokeTest() {
+    if (!user) {
+      setSmokeError("Sign in is required to run smoke tests.");
+      return;
+    }
     setIsRunning(true);
     setSmokeError(null);
     setPayloadError(null);
@@ -179,8 +260,10 @@ export default function UserDashboard() {
         historyEntry, ...historyRef.current.filter((item) => item.response.batchId !== result.batchId)
       ].slice(0, 10);
       setSmokeHistory(updatedHistory);
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
-      localStorage.setItem("crowdpm:lastSmokeTestDevice", result.deviceId);
+      if (typeof window !== "undefined" && user) {
+        window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
+        window.localStorage.setItem(scopedLastDeviceKey, result.deviceId);
+      }
       // Notify MapPage
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:completed", { detail: result }));
     }
@@ -198,51 +281,27 @@ export default function UserDashboard() {
     }
   }
 
-  async function handleCleanup() {
-    setIsCleaning(true);
-    try {
-      const ids = new Set<string>();
-      uniqueDeviceIdsFromResult(smokeResult).forEach((id) => ids.add(id));
-      smokeHistory.forEach((entry) => entry.deviceIds.forEach((id) => ids.add(id)));
-      if (typeof window !== "undefined") {
-        const last = window.localStorage.getItem("crowdpm:lastSmokeTestDevice");
-        if (last) ids.add(last);
-      }
-      const targetIds = ids.size ? Array.from(ids) : undefined;
-      const response = await cleanupIngestSmokeTest(targetIds);
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("crowdpm:lastSmokeTestDevice");
-      }
-      setSmokeResult(null);
-      setSmokeError(null);
-      window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
-      if (response.clearedDeviceIds?.length) {
-        setSmokeHistory((prev) => prev.filter((entry) => !entry.deviceIds.some((id) => response.clearedDeviceIds?.includes(id))));
-      } else {
-        setSmokeHistory([]);
-      }
-      refreshDevices();
-    }
-    catch (err) {
-      const message = err instanceof Error ? err.message : "Cleanup failed";
-      setSmokeError(message);
-    }
-    finally {
-      setIsCleaning(false);
-    }
-  }
 
   async function handleHistoryCleanup(entry: SmokeHistoryItem) {
+    if (!user) {
+      setSmokeError("Sign in is required to delete smoke data.");
+      return;
+    }
     if (!entry.deviceIds.length) return;
     const primary = entry.deviceIds[0];
+    const targetIds = entry.deviceIds.filter((id) => ownedDeviceIds.has(id));
+    if (!targetIds.length) {
+      setSmokeError("No devices available to delete for this account.");
+      return;
+    }
     setDeletingDeviceId(primary);
     setSmokeError(null);
     try {
-      const response = await cleanupIngestSmokeTest(entry.deviceIds);
-      if (typeof window !== "undefined") {
-        const last = window.localStorage.getItem("crowdpm:lastSmokeTestDevice");
+      const response = await cleanupIngestSmokeTest(targetIds);
+      if (typeof window !== "undefined" && user) {
+        const last = window.localStorage.getItem(scopedLastDeviceKey);
         if (last && entry.deviceIds.includes(last)) {
-          window.localStorage.removeItem("crowdpm:lastSmokeTestDevice");
+          window.localStorage.removeItem(scopedLastDeviceKey);
         }
       }
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
@@ -263,19 +322,28 @@ export default function UserDashboard() {
   }
 
   async function handleBatchCleanup(entry: SmokeHistoryItem) {
+    if (!user) {
+      setSmokeError("Sign in is required to delete smoke data.");
+      return;
+    }
+    const targetIds = entry.deviceIds.filter((id) => ownedDeviceIds.has(id));
+    if (!targetIds.length) {
+      setSmokeError("No devices available to delete for this account.");
+      return;
+    }
     setDeletingBatchId(entry.response.batchId);
     setSmokeError(null);
     try {
       const updatedHistory = historyRef.current.filter((item) => item.response.batchId !== entry.response.batchId);
       const devicesInRemainingEntries = new Set(updatedHistory.flatMap((item) => item.deviceIds));
-      const devicesToDelete = entry.deviceIds.filter((id) => !devicesInRemainingEntries.has(id));
+      const devicesToDelete = targetIds.filter((id) => !devicesInRemainingEntries.has(id));
       if (devicesToDelete.length > 0) {
         const response = await cleanupIngestSmokeTest(devicesToDelete);
         window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
       }
       setSmokeHistory(updatedHistory);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+      if (typeof window !== "undefined" && user) {
+        window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
       }
       if (smokeResult?.batchId === entry.response.batchId) {
         setSmokeResult(null);
@@ -328,13 +396,6 @@ export default function UserDashboard() {
         <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
           <button onClick={handleSmokeTest} disabled={isRunning} style={{ padding: "8px 12px", cursor: isRunning ? "wait" : "pointer" }}>
             {isRunning ? "Sending..." : "Send Smoke Test"}
-          </button>
-          <button
-            onClick={handleCleanup}
-            disabled={isCleaning}
-            style={{ padding: "8px 12px", cursor: isCleaning ? "wait" : "pointer" }}
-          >
-            {isCleaning ? "Clearing..." : "Delete Selected Smoke Data"}
           </button>
           <button
             onClick={() => { setSmokePayload(defaultPayloadString); setPayloadError(null); }}
