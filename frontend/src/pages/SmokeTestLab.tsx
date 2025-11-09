@@ -332,7 +332,6 @@ export default function SmokeTestLab() {
   const [customDate, setCustomDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customTime, setCustomTime] = useState(() => new Date().toISOString().slice(11, 16));
   const [precisionLevel, setPrecisionLevel] = useState<PrecisionLevel>("medium");
-  const [isPrecisionDirty, setPrecisionDirty] = useState(false);
 
   const historyRef = useRef<SmokeHistoryItem[]>([]);
 
@@ -407,33 +406,21 @@ export default function SmokeTestLab() {
     }
   }, [smokePayload, scopedPayloadKey, user]);
 
-  useEffect(() => {
-    if (!isPrecisionDirty) return;
+  const applyPrecisionRange = useCallback((nextLevel: PrecisionLevel) => {
+    setPrecisionLevel(nextLevel);
     try {
       setSmokePayload((prev) => rewritePoints(prev, (point) => ({
         ...point,
-        precision: Math.round(randomBetween(PRECISION_PRESETS.find((p) => p.value === precisionLevel)?.range ?? [5, 15])),
+        precision: Math.round(
+          randomBetween(PRECISION_PRESETS.find((preset) => preset.value === nextLevel)?.range ?? [5, 15])
+        ),
       })));
       setPayloadError(null);
     }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update precision");
     }
-  }, [precisionLevel, isPrecisionDirty]);
-
-  const applyPrecisionNow = useCallback(() => {
-    try {
-      setSmokePayload((prev) => rewritePoints(prev, (point) => ({
-        ...point,
-        precision: Math.round(randomBetween(PRECISION_PRESETS.find((p) => p.value === precisionLevel)?.range ?? [5, 15])),
-      })));
-      setPayloadError(null);
-      setPrecisionDirty(true);
-    }
-    catch (err) {
-      setPayloadError(err instanceof Error ? err.message : "Unable to update precision");
-    }
-  }, [precisionLevel]);
+  }, []);
 
   const handleApplyDeviceId = useCallback(() => {
     try {
@@ -629,7 +616,7 @@ export default function SmokeTestLab() {
             <MixerHorizontalIcon />
             <Heading as="h3" size="4">Payload controls</Heading>
           </Flex>
-          <Grid columns={{ initial: "1", md: "2" }} gap="4">
+          <Grid columns={{ initial: "1", md: "3" }} gap="4">
             <Flex direction="column" gap="3">
               <Text size="2" color="gray">Device ID</Text>
               <Flex gap="2">
@@ -688,50 +675,41 @@ export default function SmokeTestLab() {
                 <MagicWandIcon /> Regenerate trail
               </Button>
             </Flex>
-          </Grid>
 
-          <Separator size="4" />
-
-          <Grid columns={{ initial: "1", md: "3" }} gap="4">
-            <Flex direction="column" gap="3">
-              <Text size="2" color="gray">Timestamp alignment</Text>
-              <Flex align="center" gap="2">
-                <Switch checked={useCurrentTime} onCheckedChange={setUseCurrentTime} />
-                <Text>{useCurrentTime ? "Use now" : "Use custom time"}</Text>
-              </Flex>
-              {!useCurrentTime ? (
-                <Flex gap="3">
-                  <TextField.Root type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} />
-                  <TextField.Root type="time" value={customTime} onChange={(event) => setCustomTime(event.target.value)} />
+            <Flex direction="column" gap="4">
+              <Flex direction="column" gap="3">
+                <Text size="2" color="gray">Timestamp alignment</Text>
+                <Flex align="center" gap="2">
+                  <Switch checked={useCurrentTime} onCheckedChange={setUseCurrentTime} />
+                  <Text>{useCurrentTime ? "Use now" : "Use custom time"}</Text>
                 </Flex>
-              ) : null}
-              <Button onClick={handleRewriteTimestamps} variant="soft">
-                <CalendarIcon /> Rewrite timestamps
-              </Button>
-            </Flex>
-
-            <Flex direction="column" gap="3">
-              <Text size="2" color="gray">Precision range</Text>
-              <SegmentedControl.Root value={precisionLevel} onValueChange={(value) => setPrecisionLevel(value as PrecisionLevel)}>
-                {PRECISION_PRESETS.map((preset) => (
-                  <SegmentedControl.Item key={preset.value} value={preset.value} style={{ backgroundImage: preset.gradient }}>
-                    {preset.label}
-                  </SegmentedControl.Item>
-                ))}
-              </SegmentedControl.Root>
-              <Text size="1" color="gray">{precisionPreset.hint}</Text>
-              <Button onClick={applyPrecisionNow} variant="soft">
-                <MagicWandIcon /> Rewrite precision
-              </Button>
-            </Flex>
-
-            <Flex direction="column" gap="3">
-              <Text size="2" color="gray">Quick tips</Text>
-              <Text size="1" color="gray">
-                Use the controls to sculpt your payload, then run the ingest smoke test below. You can always edit the JSON directly if you need a bespoke shape.
-              </Text>
+                {!useCurrentTime ? (
+                  <Flex gap="3">
+                    <TextField.Root type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} />
+                    <TextField.Root type="time" value={customTime} onChange={(event) => setCustomTime(event.target.value)} />
+                  </Flex>
+                ) : null}
+                <Button onClick={handleRewriteTimestamps} variant="soft">
+                  <CalendarIcon /> Rewrite timestamps
+                </Button>
+              </Flex>
+              <Separator size="4" />
+              <Flex direction="column" gap="3">
+                <Text size="2" color="gray">Precision range</Text>
+                <SegmentedControl.Root value={precisionLevel} onValueChange={(value) => applyPrecisionRange(value as PrecisionLevel)}>
+                  {PRECISION_PRESETS.map((preset) => (
+                    <SegmentedControl.Item key={preset.value} value={preset.value} style={{ backgroundImage: preset.gradient }}>
+                      {preset.label}
+                    </SegmentedControl.Item>
+                  ))}
+                </SegmentedControl.Root>
+                <Text size="1" color="gray">{precisionPreset.hint}</Text>
+              </Flex>
             </Flex>
           </Grid>
+          <Text size="1" color="gray">
+            Use the controls to sculpt your payload, then run the ingest smoke test below. You can always edit the JSON directly if you need a bespoke shape.
+          </Text>
         </Flex>
       </Card>
 
