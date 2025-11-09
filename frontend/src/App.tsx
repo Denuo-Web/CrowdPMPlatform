@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import MapPage from "./pages/MapPage";
 import UserDashboard from "./pages/UserDashboard";
+import SmokeTestLab from "./pages/SmokeTestLab";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
 import { useAuth } from "./providers/AuthProvider";
 import {
@@ -77,20 +78,20 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
 export default function App() {
   const { user, isLoading, signOut } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
-  const [tab, setTab] = useState<"map" | "dashboard">("map");
+  const [tab, setTab] = useState<"map" | "dashboard" | "smoke">("map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
 
-  const activeTab = tab === "dashboard" && !user ? "map" : tab;
+  const activeTab = !user && tab !== "map" ? "map" : tab;
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
     setAuthDialogOpen(true);
   };
 
-  const handleDashboardClick = () => {
+  const handleProtectedTabClick = (target: "dashboard" | "smoke") => {
     if (user) {
-      setTab("dashboard");
+      setTab(target);
       return;
     }
     openAuthDialog("login");
@@ -237,8 +238,19 @@ export default function App() {
                   <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
                     Map
                   </Button>
-                  <Button variant={activeTab === "dashboard" ? "solid" : "soft"} onClick={handleDashboardClick} disabled={isLoading}>
+                  <Button
+                    variant={activeTab === "dashboard" ? "solid" : "soft"}
+                    onClick={() => handleProtectedTabClick("dashboard")}
+                    disabled={isLoading}
+                  >
                     User Dashboard
+                  </Button>
+                  <Button
+                    variant={activeTab === "smoke" ? "solid" : "soft"}
+                    onClick={() => handleProtectedTabClick("smoke")}
+                    disabled={isLoading}
+                  >
+                    Smoke Test
                   </Button>
                 </Flex>
                 <Flex gap="2" justify="end">
@@ -269,9 +281,11 @@ export default function App() {
               >
                 <Box style={{ padding: "var(--space-4)" }}>
                   {activeTab === "dashboard" && user ? (
-                    <UserDashboard key={userScopedKey} />
+                    <UserDashboard key={`dashboard:${userScopedKey}`} />
+                  ) : activeTab === "smoke" && user ? (
+                    <SmokeTestLab key={`smoke:${userScopedKey}`} />
                   ) : (
-                    <MapPage key={userScopedKey} />
+                    <MapPage key={`map:${userScopedKey}`} />
                   )}
                 </Box>
               </Box>
