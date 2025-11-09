@@ -244,7 +244,7 @@ export default function AdminPage() {
       }
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
       const clearedIds = response.clearedDeviceIds?.length ? new Set(response.clearedDeviceIds) : new Set(entry.deviceIds);
-      setSmokeHistory((prev) => prev.filter((item) => item.response.batchId !== entry.response.batchId));
+      setSmokeHistory((prev) => prev.filter((item) => !item.deviceIds.some((id) => clearedIds.has(id))));
       if (smokeResult && uniqueDeviceIdsFromResult(smokeResult).some((id) => clearedIds.has(id))) {
         setSmokeResult(null);
       }
@@ -349,31 +349,44 @@ export default function AdminPage() {
         {smokeHistory.length === 0 ? (
           <p style={{ marginTop: 8 }}>No smoke tests have been submitted yet in this browser.</p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-            {smokeHistory.map((entry) => (
-              <li key={entry.id} style={{ border: "1px solid #ddd", borderRadius: 4, padding: 12 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: "#666" }}>{new Date(entry.createdAt).toLocaleString()}</div>
-                    <div>Batch: <code>{entry.response.batchId}</code></div>
-                    <div>Device IDs: {entry.deviceIds.map((id) => <code key={id} style={{ marginRight: 6 }}>{id}</code>)}</div>
+          <>
+            <div style={{ display: "flex", marginLeft: "auto" }}>
+              <button
+              // currently deleting all history data BUT, not updating active devices
+              // So a device appears active when there's no history data.
+                onClick={() => handleHistoryCleanup(smokeHistory[0])}
+                disabled={deletingDeviceId === smokeHistory[0].deviceIds[0]}
+                style={{ padding: "6px 10px", cursor: deletingDeviceId === smokeHistory[0].deviceIds[0] ? "wait" : "pointer" }}
+              >
+                {deletingDeviceId === smokeHistory[0].deviceIds[0] ? "Deleting..." : "Clear All"}
+              </button>
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+              {smokeHistory.map((entry) => (
+                <li key={entry.id} style={{ border: "1px solid #ddd", borderRadius: 4, padding: 12 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#666" }}>{new Date(entry.createdAt).toLocaleString()}</div>
+                      <div>Batch: <code>{entry.response.batchId}</code></div>
+                      <div>Device IDs: {entry.deviceIds.map((id) => <code key={id} style={{ marginRight: 6 }}>{id}</code>)}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+                      <button onClick={() => loadHistoryPayload(entry)} style={{ padding: "6px 10px" }}>
+                        Load Payload
+                      </button>
+                      <button
+                        onClick={() => handleBatchCleanup(entry)}
+                        disabled={deletingBatchId === entry.response.batchId}
+                        style={{ padding: "6px 10px", cursor: deletingBatchId === entry.response.batchId ? "wait" : "pointer" }}
+                      >
+                        {deletingBatchId === entry.response.batchId ? "Deleting..." : "Delete Data"}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-                    <button onClick={() => loadHistoryPayload(entry)} style={{ padding: "6px 10px" }}>
-                      Load Payload
-                    </button>
-                    <button
-                      onClick={() => handleBatchCleanup(entry)}
-                      disabled={deletingBatchId === entry.response.batchId}
-                      style={{ padding: "6px 10px", cursor: deletingBatchId === entry.response.batchId ? "wait" : "pointer" }}
-                    >
-                      {deletingBatchId === entry.response.batchId ? "Deleting..." : "Delete Data"}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
     </div>
