@@ -102,6 +102,7 @@ cp frontend/.env.example frontend/.env.local
    - `VITE_FIREBASE_STORAGE_BUCKET`
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
+   - `VITE_FIREBASE_AUTH_EMULATOR_HOST` (set to `127.0.0.1:9099` so the web app talks to the Auth emulator)
    - You can find these in the Firebase Console under **Project settings → General → Your apps → Firebase SDK snippet** (pick the Web app template).
 
 

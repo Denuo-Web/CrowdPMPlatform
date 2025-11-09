@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 const {
   VITE_FIREBASE_API_KEY,
@@ -28,5 +28,14 @@ const app = getApps().length
       appId: requireEnv(VITE_FIREBASE_APP_ID, "VITE_FIREBASE_APP_ID"),
     });
 
-export const auth = getAuth(app);
+const auth = getAuth(app);
 
+const emulatorHost = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST?.trim();
+const globalScope = globalThis as typeof globalThis & { __firebaseAuthEmulatorConnected?: boolean };
+if (emulatorHost && !globalScope.__firebaseAuthEmulatorConnected) {
+  const url = emulatorHost.startsWith("http") ? emulatorHost : `http://${emulatorHost}`;
+  connectAuthEmulator(auth, url, { disableWarnings: true });
+  globalScope.__firebaseAuthEmulatorConnected = true;
+}
+
+export { auth };
