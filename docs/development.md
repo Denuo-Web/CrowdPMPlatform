@@ -95,6 +95,14 @@ cp frontend/.env.example frontend/.env.local
    - Map type: Javascript -> Vector.
    - Optionally allow Tilt and Rotation.
    - Save and copy the Map ID (looks like abcd1234efgh5678).
+- Populate the Firebase web app configuration values so email/password authentication can connect to your project:
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
+   - You can find these in the Firebase Console under **Project settings → General → Your apps → Firebase SDK snippet** (pick the Web app template).
 
 
 - Restart the Vite dev server after editing; Vite reads env variables only at startup.
@@ -147,7 +155,7 @@ If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fi
 Run this whenever you change ingest code or schemas.
 
 1. Launch the local stack with `pnpm dev` (Functions emulator must have `INGEST_HMAC_SECRET` in `functions/.env.local`).
-2. Visit `http://localhost:5173`, open the **Admin** tab, and click **Run Smoke Test**.
+2. Visit `http://localhost:5173`, open the **User Dashboard** tab, and click **Run Smoke Test**.
 3. The UI seeds `device-123`, submits a signed payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
 4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:
    - Storage: `ingest/device-123/<batchId>.json`.
@@ -156,7 +164,7 @@ Run this whenever you change ingest code or schemas.
 
 > Prefer a raw cURL workflow or custom payload? Call `POST /v1/admin/ingest-smoke-test` from the API directly with your overrides, or adapt the previous manual script (kept in repo history) for advanced debugging.
 
-Need to reset the environment? Use **Delete Smoke Test Data** in the Admin tab, which clears the seeded device, storage batches, and map state so you can run the scenario again.
+Need to reset the environment? Use **Delete Smoke Test Data** in the User Dashboard tab, which clears the seeded device, storage batches, and map state so you can run the scenario again.
 
 ---
 

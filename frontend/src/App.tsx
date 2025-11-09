@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import MapPage from "./pages/MapPage";
-import AdminPage from "./pages/AdminPage";
+import UserDashboard from "./pages/UserDashboard";
+import { AuthDialog, type AuthMode } from "./components/AuthDialog";
+import { useAuth } from "./providers/AuthProvider";
 import {
   Theme,
   ThemePanel,
@@ -73,7 +75,36 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState<"map" | "admin">("map");
+  const { user, isLoading, signOut } = useAuth();
+  const [tab, setTab] = useState<"map" | "dashboard">("map");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
+
+  const activeTab = tab === "dashboard" && !user ? "map" : tab;
+
+  const openAuthDialog = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setAuthDialogOpen(true);
+  };
+
+  const handleDashboardClick = () => {
+    if (user) {
+      setTab("dashboard");
+      return;
+    }
+    openAuthDialog("login");
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setTab("map");
+    }
+    catch (err) {
+      console.warn("Sign out failed", err);
+    }
+  };
+
   useEffect(() => {
     const handler = () => setTab("map");
     window.addEventListener("ingest-smoke-test:completed", handler);
@@ -194,13 +225,37 @@ export default function App() {
               <Text size="2" color="gray" mt="2">
                 Explore the map or adjust ingest settings across your network.
               </Text>
-              <Flex gap="3" mt="4">
-                <Button variant={tab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
-                  Map
-                </Button>
-                <Button variant={tab === "admin" ? "solid" : "soft"} onClick={() => setTab("admin")}>
-                  Admin
-                </Button>
+              <Flex
+                direction={{ initial: "column", sm: "row" }}
+                align={{ initial: "stretch", sm: "center" }}
+                justify="between"
+                gap="3"
+                mt="4"
+              >
+                <Flex gap="3">
+                  <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
+                    Map
+                  </Button>
+                  <Button variant={activeTab === "dashboard" ? "solid" : "soft"} onClick={handleDashboardClick} disabled={isLoading}>
+                    User Dashboard
+                  </Button>
+                </Flex>
+                <Flex gap="2" justify="end">
+                  {user ? (
+                    <Button variant="soft" onClick={handleSignOut}>
+                      Sign out
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="soft" onClick={() => openAuthDialog("login")} disabled={isLoading}>
+                        Log in
+                      </Button>
+                      <Button onClick={() => openAuthDialog("signup")} disabled={isLoading}>
+                        Sign up
+                      </Button>
+                    </>
+                  )}
+                </Flex>
               </Flex>
 
               <Box
@@ -212,13 +267,20 @@ export default function App() {
                 }}
               >
                 <Box style={{ padding: "var(--space-4)" }}>
-                  {tab === "map" ? <MapPage /> : <AdminPage />}
+                  {activeTab === "dashboard" && user ? <UserDashboard /> : <MapPage />}
                 </Box>
               </Box>
             </Card>
           </Flex>
         </Flex>
       </Box>
+      <AuthDialog
+        open={isAuthDialogOpen}
+        mode={authMode}
+        onModeChange={setAuthMode}
+        onOpenChange={setAuthDialogOpen}
+        onAuthenticated={() => setTab("dashboard")}
+      />
     </Theme>
   );
 }

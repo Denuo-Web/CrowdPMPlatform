@@ -7,6 +7,7 @@ import {
   type IngestSmokeTestPayload,
   type IngestSmokeTestResponse,
 } from "../lib/api";
+import { useAuth } from "../providers/AuthProvider";
 
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
@@ -96,7 +97,8 @@ function uniqueDeviceIdsFromResult(result: IngestSmokeTestResponse | null): stri
   return Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0)));
 }
 
-export default function AdminPage() {
+export default function UserDashboard() {
+  const { user } = useAuth();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -117,6 +119,7 @@ export default function AdminPage() {
   const historyRef = useRef<SmokeHistoryItem[]>(smokeHistory);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
+  const welcomeEmail = user?.email ?? "";
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -295,9 +298,22 @@ export default function AdminPage() {
 
   return (
     <div style={{ padding: 12 }}>
-      <h2>Admin</h2>
-      <table><thead><tr><th>ID</th><th>Name</th><th>Status</th></tr></thead>
-        <tbody>{devices.map(d => <tr key={d.id}><td>{d.id}</td><td>{d.name}</td><td>{d.status}</td></tr>)}</tbody></table>
+      <h2 style={{ margin: "0 0 4px" }}>Welcome {welcomeEmail}</h2>
+      <p style={{ margin: "0 0 16px", color: "#555", fontWeight: 500 }}>User Dashboard</p>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {devices.map((device) => (
+            <tr key={device.id}>
+              <td>{device.id}</td>
+              <td>{device.name}</td>
+              <td>{device.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <section style={{ marginTop: 24 }}>
         <h3>Ingest Pipeline Smoke Test</h3>
         <p>Review or tweak the JSON payload below before sending it to the ingest endpoint. Update any device IDs or measurement details to fit the live demo scenario.</p>
