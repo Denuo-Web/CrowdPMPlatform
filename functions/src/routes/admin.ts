@@ -2,8 +2,9 @@ import type { FastifyPluginAsync } from "fastify";
 import crypto from "node:crypto";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
-import { ingestPayload, type IngestBody } from "../services/ingestGateway.js";
+import { ingestPayload } from "../services/ingestGateway.js";
 import { getIngestSecret } from "../lib/runtimeConfig.js";
+import { prepareSmokeTestPlan, type SmokeTestBody } from "../services/smokeTest.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
@@ -13,182 +14,45 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     return rep.code(204).send();
   });
 
-  type SmokeTestBody = {
-    deviceId?: string;
-    payload?: IngestBody;
-    pointOverrides?: Partial<NonNullable<IngestBody["points"]>[number]>;
-  };
-
-  const slugify = (value: string | undefined | null, fallback: string) => {
-    if (!value) return fallback;
-    const normalised = value
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/-{2,}/g, "-");
-    return normalised || fallback;
-  };
-
-  const scopeDeviceId = (ownerSegment: string, rawDeviceId: string) => {
-    const deviceSegment = slugify(rawDeviceId, "device");
-    return `${ownerSegment}-${deviceSegment}`;
-  };
-
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = await requireUser(req);
-
-    const defaultDeviceId = "device-123";
-    const body = req.body ?? {};
-    const overridesRaw = body.pointOverrides ?? {};
-    const pointOverrides = Object.fromEntries(
-      Object.entries(overridesRaw).filter(([, value]) => value !== undefined)
-    ) as Partial<NonNullable<IngestBody["points"]>[number]>;
-    const overrideDeviceId = typeof pointOverrides.device_id === "string" && pointOverrides.device_id.trim();
-
-    const ensureDeviceId = (candidate: unknown, fallback: string) => {
-      const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-      return trimmed || fallback;
-    };
-
-    function buildDefaultPoints(deviceId: string) {
-      const baseLat = 40.7128;
-      const baseLon = -74.0060;
-      const now = Date.now();
-      return Array.from({ length: 60 }, (_, idx) => {
-        const secondsAgo = 59 - idx;
-        const ts = new Date(now - secondsAgo * 1000);
-        const progress = idx / 59;
-        const latOffset = Math.sin(progress * Math.PI * 2) * 0.0002;
-        const lonOffset = Math.cos(progress * Math.PI * 2) * 0.0002;
-        const altitude = 25 + Math.sin(progress * Math.PI * 6) * 5 + Math.random() * 2;
-        const baseValue = 15 + Math.sin(progress * Math.PI * 4) * 10 + Math.random();
-        const precision = 5 + Math.round(Math.abs(Math.cos(progress * Math.PI * 2)) * 20);
-        const basePoint = {
-          device_id: deviceId,
-          pollutant: "pm25",
-          value: Math.round(baseValue * 10) / 10,
-          unit: "\u00b5g/m\u00b3",
-          lat: Number((baseLat + latOffset).toFixed(6)),
-          lon: Number((baseLon + lonOffset).toFixed(6)),
-          timestamp: ts.toISOString(),
-          precision,
-          altitude: Number(altitude.toFixed(1)),
-        };
-        const merged = { ...basePoint, ...pointOverrides };
-        return {
-          ...merged,
-          device_id: ensureDeviceId(pointOverrides.device_id, basePoint.device_id),
-          pollutant: merged.pollutant ?? "pm25",
-          timestamp: merged.timestamp ?? basePoint.timestamp,
-        };
-      });
-    }
-
-    const providedPoints = body.payload?.points;
-    const requestedDeviceId = ensureDeviceId(
-      body.deviceId ||
-      overrideDeviceId ||
-      providedPoints?.[0]?.device_id ||
-      body.payload?.device_id,
-      defaultDeviceId
-    );
-
-    const points: NonNullable<IngestBody["points"]> = providedPoints?.length
-      ? providedPoints.map((point, idx) => {
-        const fallbackTimestamp = new Date(Date.now() - (providedPoints.length - idx - 1) * 1000).toISOString();
-        const merged = { ...point, ...pointOverrides };
-        return {
-          ...merged,
-          pollutant: merged.pollutant ?? "pm25",
-          device_id: ensureDeviceId(merged.device_id, requestedDeviceId),
-          timestamp: merged.timestamp ?? fallbackTimestamp,
-        };
-      })
-      : buildDefaultPoints(requestedDeviceId);
-
-    const payload: IngestBody = {
-      ...body.payload,
-      points,
-    };
-    if (!payload.points || payload.points.length === 0) {
-      return rep.code(400).send({ error: "payload must include at least one point" });
-    }
 
     const secret = getIngestSecret();
     if (!secret) {
       return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
     }
 
-    const ownerSegment = slugify(user.uid, "user");
-
-    const rawDeviceIds = Array.from(new Set(
-      payload.points
-        .map((point) => point.device_id)
-        .filter((id): id is string => Boolean(id))
-    ));
-
-    const idMap = new Map<string, string>();
-    rawDeviceIds.forEach((rawId) => {
-      idMap.set(rawId, scopeDeviceId(ownerSegment, rawId));
-    });
-    if (!rawDeviceIds.length) {
-      const fallback = scopeDeviceId(ownerSegment, requestedDeviceId);
-      idMap.set(requestedDeviceId, fallback);
+    let plan: ReturnType<typeof prepareSmokeTestPlan>;
+    try {
+      plan = prepareSmokeTestPlan(user.uid, req.body);
+    }
+    catch (err) {
+      fastify.log.warn({ err }, "invalid smoke test request");
+      const message = err instanceof Error ? err.message : "invalid smoke test payload";
+      return rep.code(400).send({ error: message });
     }
 
-    payload.points = payload.points.map((point, idx) => {
-      const rawId = point.device_id || rawDeviceIds[idx % rawDeviceIds.length] || requestedDeviceId;
-      const scopedId = idMap.get(rawId) ?? scopeDeviceId(ownerSegment, rawId);
-      if (!idMap.has(rawId)) {
-        idMap.set(rawId, scopedId);
-      }
-      return { ...point, device_id: scopedId };
-    });
-
-    const deviceIds = Array.from(new Set(payload.points.map((point) => point.device_id).filter((id): id is string => Boolean(id))));
-    const primaryDeviceId = deviceIds[0] || scopeDeviceId(ownerSegment, requestedDeviceId);
-    if (!primaryDeviceId) {
-      return rep.code(400).send({ error: "unable to determine device_id for smoke test" });
-    }
     const ownerIds = [user.uid];
-    const arrayUnion = getFirebaseApp().firestore.FieldValue.arrayUnion;
-    const primaryOwnerId = ownerIds[0];
-    const scopedToRaw = new Map<string, string>();
-    idMap.forEach((scoped, raw) => scopedToRaw.set(scoped, raw));
+    await seedSmokeTestDevices({
+      ownerIds,
+      ownerSegment: plan.ownerSegment,
+      seedTargets: plan.seedTargets,
+      scopedToRawIds: plan.scopedToRawIds,
+    });
+    fastify.log.info({ deviceIds: plan.seedTargets }, "ingest smoke test seeded devices");
 
-    const seedTargets = deviceIds.length ? deviceIds : [primaryDeviceId];
-    await Promise.all(seedTargets.map(async (deviceId) => {
-      const publicDeviceId = scopedToRaw.get(deviceId) ?? deviceId;
-      const payload: Record<string, unknown> = {
-        status: "ACTIVE",
-        name: "Smoke Test Device",
-        createdAt: new Date().toISOString(),
-        publicDeviceId,
-        ownerScope: ownerSegment,
-      };
-      if (primaryOwnerId) {
-        payload.ownerUserId = primaryOwnerId;
-      }
-      if (ownerIds.length) {
-        payload.ownerUserIds = arrayUnion(...ownerIds);
-      }
-      await db().collection("devices").doc(deviceId).set(payload, { merge: true });
-    }));
-    fastify.log.info({ deviceIds: seedTargets }, "ingest smoke test seeded devices");
-
-    const raw = JSON.stringify(payload);
+    const raw = JSON.stringify(plan.payload);
     const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
     try {
-      const result = await ingestPayload(raw, payload, { signature, deviceId: primaryDeviceId });
+      const result = await ingestPayload(raw, plan.payload, { signature, deviceId: plan.primaryDeviceId });
       fastify.log.info({ batchId: result.batchId, deviceId: result.deviceId }, "ingest smoke test completed");
       return rep.code(200).send({
         ...result,
-        payload,
-        points,
-        seededDeviceId: primaryDeviceId,
-        seededDeviceIds: deviceIds.length ? deviceIds : [primaryDeviceId],
+        payload: plan.payload,
+        points: plan.displayPoints,
+        seededDeviceId: plan.primaryDeviceId,
+        seededDeviceIds: plan.seedTargets,
       });
     }
     catch (err) {
@@ -260,3 +124,35 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 };
+
+type SeedSmokeTestOptions = {
+  ownerIds: string[];
+  ownerSegment: string;
+  seedTargets: string[];
+  scopedToRawIds: Map<string, string>;
+};
+
+async function seedSmokeTestDevices({ ownerIds, ownerSegment, seedTargets, scopedToRawIds }: SeedSmokeTestOptions) {
+  if (!seedTargets.length) return;
+  const arrayUnion = getFirebaseApp().firestore.FieldValue.arrayUnion;
+  const primaryOwnerId = ownerIds[0] ?? null;
+  const timestamp = new Date().toISOString();
+
+  await Promise.all(seedTargets.map(async (deviceId) => {
+    const publicDeviceId = scopedToRawIds.get(deviceId) ?? deviceId;
+    const payload: Record<string, unknown> = {
+      status: "ACTIVE",
+      name: "Smoke Test Device",
+      createdAt: timestamp,
+      publicDeviceId,
+      ownerScope: ownerSegment,
+    };
+    if (primaryOwnerId) {
+      payload.ownerUserId = primaryOwnerId;
+    }
+    if (ownerIds.length) {
+      payload.ownerUserIds = arrayUnion(...ownerIds);
+    }
+    await db().collection("devices").doc(deviceId).set(payload, { merge: true });
+  }));
+}

@@ -213,6 +213,59 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to clean up smoke tests.
+  /v1/batches:
+    get:
+      operationId: listBatches
+      summary: List recent ingest batches
+      description: >
+        Returns the most recent batches for each device the authenticated caller owns (up to 10 per device).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Batch summaries returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BatchSummary'
+        '401':
+          description: Missing or invalid bearer token.
+  /v1/batches/{deviceId}/{batchId}:
+    get:
+      operationId: getBatchDetail
+      summary: Retrieve batch detail
+      description: >
+        Returns the stored ingest payload for a specific batch belonging to a device the caller owns.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Device identifier associated with the batch.
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ingest batch identifier.
+      responses:
+        '200':
+          description: Batch detail returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetail'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller does not own the referenced device.
+        '404':
+          description: Device or batch not found, or payload unavailable.
 components:
   securitySchemes:
     BearerAuth:
@@ -468,6 +521,44 @@ components:
         - batchId
         - deviceId
         - storagePath
+    BatchSummary:
+      type: object
+      description: Summary metadata for an ingest batch.
+      properties:
+        batchId:
+          type: string
+          description: Batch identifier.
+        deviceId:
+          type: string
+          description: Device associated with the batch.
+        deviceName:
+          type: string
+          nullable: true
+          description: Friendly device name, if one is set.
+        count:
+          type: integer
+          description: Number of points recorded in the batch.
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the batch was processed.
+      required:
+        - batchId
+        - deviceId
+        - count
+    BatchDetail:
+      allOf:
+        - $ref: '#/components/schemas/BatchSummary'
+        - type: object
+          required:
+            - points
+          properties:
+            points:
+              type: array
+              description: Ingest payload persisted for the batch.
+              items:
+                $ref: '#/components/schemas/IngestPoint'
     IngestCleanupRequest:
       type: object
       properties:

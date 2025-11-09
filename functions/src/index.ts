@@ -7,6 +7,7 @@ import { app as adminApp } from "./lib/fire.js";
 import { devicesRoutes } from "./routes/devices.js";
 import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
+import { batchesRoutes } from "./routes/batches.js";
 import { ingestHmacSecret } from "./lib/runtimeConfig.js";
 adminApp();
 
@@ -50,6 +51,7 @@ const apiSetup = (async () => {
   await api.register(devicesRoutes);
   await api.register(measurementsRoutes);
   await api.register(adminRoutes);
+  await api.register(batchesRoutes);
 
   // Ensure all lifecycle hooks are ready before handling traffic.
   await api.ready();

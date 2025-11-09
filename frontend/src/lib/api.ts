@@ -136,6 +136,18 @@ export type IngestSmokeTestResponse = {
   points?: IngestSmokeTestPoint[];
 };
 
+export type BatchSummary = {
+  batchId: string;
+  deviceId: string;
+  deviceName?: string | null;
+  count: number;
+  processedAt?: string | null;
+};
+
+export type BatchDetail = BatchSummary & {
+  points: IngestSmokeTestPoint[];
+};
+
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
@@ -144,6 +156,16 @@ export async function fetchMeasurements(q: {
 }): Promise<MeasurementRecord[]> {
   const qs = new URLSearchParams(Object.entries(q).map(([k,v])=>[k,String(v)]));
   return requestJson<MeasurementRecord[]>(`/v1/measurements?${qs}`);
+}
+
+export async function listBatches(): Promise<BatchSummary[]> {
+  return requestJson<BatchSummary[]>("/v1/batches");
+}
+
+export async function fetchBatchDetail(deviceId: string, batchId: string): Promise<BatchDetail> {
+  const safeDevice = encodeURIComponent(deviceId);
+  const safeBatch = encodeURIComponent(batchId);
+  return requestJson<BatchDetail>(`/v1/batches/${safeDevice}/${safeBatch}`);
 }
 
 export async function runIngestSmokeTest(payload?: IngestSmokeTestPayload): Promise<IngestSmokeTestResponse> {
