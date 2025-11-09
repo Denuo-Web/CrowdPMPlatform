@@ -260,22 +260,30 @@ export default function AdminPage() {
   }
 
   async function handleBatchCleanup(entry: SmokeHistoryItem) {
-    setDeletingBatchId(entry.response.batchId)
+    setDeletingBatchId(entry.response.batchId);
+    setSmokeError(null);
     try {
       const updatedHistory = historyRef.current.filter((item) => item.response.batchId !== entry.response.batchId);
       const devicesInRemainingEntries = new Set(updatedHistory.flatMap((item) => item.deviceIds));
       const devicesToDelete = entry.deviceIds.filter((id) => !devicesInRemainingEntries.has(id));
       if (devicesToDelete.length > 0) {
-        await cleanupIngestSmokeTest(devicesToDelete);
+        const response = await cleanupIngestSmokeTest(devicesToDelete);
+        window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
       }
       setSmokeHistory(updatedHistory);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+      }
+      if (smokeResult?.batchId === entry.response.batchId) {
+        setSmokeResult(null);
+      }
       refreshDevices();
     }
     catch (err) {
       setSmokeError(err instanceof Error ? err.message : "Cleanup failed");
     }
     finally {
-      setDeletingDeviceId(null);
+      setDeletingBatchId(null);
     }
   }
 
@@ -352,8 +360,8 @@ export default function AdminPage() {
           <>
             <div style={{ display: "flex", marginLeft: "auto" }}>
               <button
-              // currently deleting all history data BUT, not updating active devices
-              // So a device appears active when there's no history data.
+                // currently deleting all history data BUT, not updating active devices
+                // So a device appears active when there's no history data.
                 onClick={() => handleHistoryCleanup(smokeHistory[0])}
                 disabled={deletingDeviceId === smokeHistory[0].deviceIds[0]}
                 style={{ padding: "6px 10px", cursor: deletingDeviceId === smokeHistory[0].deviceIds[0] ? "wait" : "pointer" }}
