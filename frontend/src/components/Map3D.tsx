@@ -99,7 +99,10 @@ function createLayers(
     getColor: () => [80, 160, 255, 200],
     getWidth: () => 6,
     widthUnits: "pixels",
-    parameters: { depthTest: false },
+    parameters: {
+      depthCompare: "always",
+      depthWriteEnabled: false
+    },
     pickable: false
   });
 
@@ -120,8 +123,7 @@ function createLayers(
     onClick: (info) => {
       const index = info.object?.index;
       if (typeof index === "number" && onSelectIndex) onSelectIndex(index);
-    },
-    parameters: { depthTest: true }
+    }
   });
 
   return [pathLayer, sphereLayer];
@@ -172,7 +174,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
     const overlay = overlayRef.current;
     if (!overlay) return;
     if (!sphereGeometryRef.current) {
-      sphereGeometryRef.current = new SphereGeometry({ radius: 1, latitudeBands: 24, longitudeBands: 24 });
+      sphereGeometryRef.current = new SphereGeometry({ radius: 1, nlat: 24, nlong: 24 });
     }
 
     overlay.setProps({
@@ -265,7 +267,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
         return;
       }
 
-      const sphereGeometry = sphereGeometryRef.current ?? new SphereGeometry({ radius: 1, latitudeBands: 24, longitudeBands: 24 });
+      const sphereGeometry = sphereGeometryRef.current ?? new SphereGeometry({ radius: 1, nlat: 24, nlong: 24 });
       sphereGeometryRef.current = sphereGeometry;
       const overlay = new GoogleMapsOverlay({
         layers: createLayers(
