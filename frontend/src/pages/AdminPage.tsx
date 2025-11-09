@@ -349,18 +349,6 @@ export default function AdminPage() {
         {smokeHistory.length === 0 ? (
           <p style={{ marginTop: 8 }}>No smoke tests have been submitted yet in this browser.</p>
         ) : (
-          <>
-            <div style={{ display: "flex", marginLeft: "auto" }}>
-              <button
-              // currently deleting all history data BUT, not updating active devices
-              // So a device appears active when there's no history data.
-                onClick={() => handleHistoryCleanup(smokeHistory[0])}
-                disabled={deletingDeviceId === smokeHistory[0].deviceIds[0]}
-                style={{ padding: "6px 10px", cursor: deletingDeviceId === smokeHistory[0].deviceIds[0] ? "wait" : "pointer" }}
-              >
-                {deletingDeviceId === smokeHistory[0].deviceIds[0] ? "Deleting..." : "Clear All"}
-              </button>
-            </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
               {smokeHistory.map((entry) => (
                 <li key={entry.id} style={{ border: "1px solid #ddd", borderRadius: 4, padding: 12 }}>
@@ -386,7 +374,6 @@ export default function AdminPage() {
                 </li>
               ))}
             </ul>
-          </>
         )}
       </section>
     </div>
