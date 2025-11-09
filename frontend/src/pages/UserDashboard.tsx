@@ -101,7 +101,7 @@ export default function UserDashboard() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card id="user-settings">
         <Flex direction="column" gap="3">
           <Heading as="h3" size="4">User settings</Heading>
           <Text color="gray">Choose the default visibility applied to new ingest batches.</Text>
