@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Separator, Text, TextField } from "@radix-ui/themes";
 import { useAuth } from "../providers/AuthProvider";
 import { AuthDialog, type AuthMode } from "../components/AuthDialog";
@@ -57,6 +57,8 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const initialCodeRef = useRef(userCode.trim());
+  const hasAutoLookupRef = useRef(false);
 
   useEffect(() => {
     if (!user && !authDialogOpen) {
@@ -100,10 +102,15 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
     }
   }, [userCode]);
 
+  const matchesInitialCode = useMemo(() => {
+    return initialCodeRef.current.length > 0 && initialCodeRef.current === userCode.trim();
+  }, [userCode]);
+
   useEffect(() => {
-    if (!user || !userCode.trim() || session || isLoading) return;
+    if (!user || !matchesInitialCode || session || isLoading || hasAutoLookupRef.current) return;
+    hasAutoLookupRef.current = true;
     void handleLookup();
-  }, [user, userCode, session, isLoading, handleLookup]);
+  }, [user, matchesInitialCode, session, isLoading, handleLookup]);
 
   const handleAuthorize = useCallback(async () => {
     if (!session) return;
