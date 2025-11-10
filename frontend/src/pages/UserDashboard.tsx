@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, Callout } from "@radix-ui/themes";
+import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";

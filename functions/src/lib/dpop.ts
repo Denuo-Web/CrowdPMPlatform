@@ -28,7 +28,7 @@ export async function verifyDpopProof(proof: string | undefined, options: Verify
     throw unauthorized("DPoP proof is required");
   }
   let protectedJwk: JWK | undefined;
-  const { payload, protectedHeader } = await compactVerify(proof, async (header) => {
+  const { payload } = await compactVerify(proof, async (header) => {
     if (header.alg !== "EdDSA") {
       throw unauthorized("DPoP must use EdDSA");
     }
