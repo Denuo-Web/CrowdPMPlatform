@@ -6,16 +6,16 @@ on:
       - main
 
 env:
-  FIREBASE_PROJECT_ID: ${{ vars.DEMO_FIREBASE_PROJECT_ID }}
-  INGEST_TOPIC: ${{ vars.DEMO_INGEST_TOPIC || 'ingest.raw' }}
-  DEVICE_ACTIVATION_URL: ${{ vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
-  DEVICE_VERIFICATION_URI: ${{ vars.DEVICE_VERIFICATION_URI || vars.DEMO_DEVICE_VERIFICATION_URI || vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
-  DEVICE_TOKEN_ISSUER: ${{ vars.DEVICE_TOKEN_ISSUER || vars.DEMO_DEVICE_TOKEN_ISSUER || 'crowdpm' }}
-  DEVICE_TOKEN_AUDIENCE: ${{ vars.DEVICE_TOKEN_AUDIENCE || vars.DEMO_DEVICE_TOKEN_AUDIENCE || 'crowdpm_device_api' }}
-  DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_ACCESS_TOKEN_TTL_SECONDS || '600' }}
-  DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || '60' }}
-  FRONTEND_URL: ${{ vars.FRONTEND_URL || vars.DEMO_FRONTEND_URL }}
-  FUNCTIONS_HEALTH_URL: ${{ vars.DEMO_FUNCTIONS_HEALTH_URL }}
+  FIREBASE_PROJECT_ID: ${{ secrets.DEMO_FIREBASE_PROJECT_ID || vars.DEMO_FIREBASE_PROJECT_ID }}
+  INGEST_TOPIC: ${{ secrets.INGEST_TOPIC || vars.INGEST_TOPIC || vars.DEMO_INGEST_TOPIC || 'ingest.raw' }}
+  DEVICE_ACTIVATION_URL: ${{ secrets.DEVICE_ACTIVATION_URL || vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
+  DEVICE_VERIFICATION_URI: ${{ secrets.DEVICE_VERIFICATION_URI || vars.DEVICE_VERIFICATION_URI || secrets.DEVICE_ACTIVATION_URL || vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_VERIFICATION_URI || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
+  DEVICE_TOKEN_ISSUER: ${{ secrets.DEVICE_TOKEN_ISSUER || vars.DEVICE_TOKEN_ISSUER || vars.DEMO_DEVICE_TOKEN_ISSUER || 'crowdpm' }}
+  DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE || vars.DEMO_DEVICE_TOKEN_AUDIENCE || 'crowdpm_device_api' }}
+  DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_ACCESS_TOKEN_TTL_SECONDS || '600' }}
+  DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || '60' }}
+  FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL || vars.DEMO_FRONTEND_URL }}
+  FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL || vars.FUNCTIONS_HEALTH_URL || vars.DEMO_FUNCTIONS_HEALTH_URL }}
   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
   VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
   VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID }}
@@ -64,7 +64,7 @@ jobs:
 
       - name: Validate configuration
         run: |
-          test -n "$FIREBASE_PROJECT_ID" || { echo "Set repository variable DEMO_FIREBASE_PROJECT_ID"; exit 1; }
+          test -n "$FIREBASE_PROJECT_ID" || { echo "Set DEMO_FIREBASE_PROJECT_ID as a repository secret or variable before deploying."; exit 1; }
           gcloud config set project "$FIREBASE_PROJECT_ID"
 
       - name: Install Firebase CLI
@@ -75,10 +75,10 @@ jobs:
 
       - name: Sync Cloud Function secrets
         env:
-          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEMO_DEVICE_TOKEN_PRIVATE_KEY }}
+          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY || secrets.DEMO_DEVICE_TOKEN_PRIVATE_KEY }}
         run: |
           if [ -z "$DEVICE_TOKEN_PRIVATE_KEY" ]; then
-            echo "::error::Set the DEMO_DEVICE_TOKEN_PRIVATE_KEY GitHub secret before deploying; device pairing requires it."
+            echo "::error::Set the DEVICE_TOKEN_PRIVATE_KEY (or DEMO_DEVICE_TOKEN_PRIVATE_KEY) GitHub secret before deploying; device pairing requires it."
             exit 1
           fi
           printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file -
