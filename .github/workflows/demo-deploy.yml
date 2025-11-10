@@ -8,6 +8,12 @@ on:
 env:
   FIREBASE_PROJECT_ID: ${{ vars.DEMO_FIREBASE_PROJECT_ID }}
   INGEST_TOPIC: ${{ vars.DEMO_INGEST_TOPIC || 'ingest.raw' }}
+  DEVICE_ACTIVATION_URL: ${{ vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
+  DEVICE_VERIFICATION_URI: ${{ vars.DEVICE_VERIFICATION_URI || vars.DEMO_DEVICE_VERIFICATION_URI || vars.DEVICE_ACTIVATION_URL || vars.DEMO_DEVICE_ACTIVATION_URL || 'https://crowdpmplatform.web.app/activate' }}
+  DEVICE_TOKEN_ISSUER: ${{ vars.DEVICE_TOKEN_ISSUER || vars.DEMO_DEVICE_TOKEN_ISSUER || 'crowdpm' }}
+  DEVICE_TOKEN_AUDIENCE: ${{ vars.DEVICE_TOKEN_AUDIENCE || vars.DEMO_DEVICE_TOKEN_AUDIENCE || 'crowdpm_device_api' }}
+  DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_ACCESS_TOKEN_TTL_SECONDS || '600' }}
+  DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEMO_DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || '60' }}
   FRONTEND_URL: ${{ vars.FRONTEND_URL || vars.DEMO_FRONTEND_URL }}
   FUNCTIONS_HEALTH_URL: ${{ vars.DEMO_FUNCTIONS_HEALTH_URL }}
   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
@@ -76,7 +82,15 @@ jobs:
             exit 1
           fi
           printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file -
-          firebase functions:config:set ingest.topic="$INGEST_TOPIC" --project "$FIREBASE_PROJECT_ID"
+          firebase functions:config:set \
+            ingest.topic="$INGEST_TOPIC" \
+            pairing.activation_url="$DEVICE_ACTIVATION_URL" \
+            pairing.verification_uri="$DEVICE_VERIFICATION_URI" \
+            tokens.issuer="$DEVICE_TOKEN_ISSUER" \
+            tokens.audience="$DEVICE_TOKEN_AUDIENCE" \
+            tokens.access_ttl_seconds="$DEVICE_ACCESS_TOKEN_TTL_SECONDS" \
+            tokens.registration_ttl_seconds="$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS" \
+            --project "$FIREBASE_PROJECT_ID"
 
       - name: Ensure ingest Pub/Sub topic exists
         run: |
