@@ -1,9 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
-import crypto from "node:crypto";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { ingestPayload } from "../services/ingestGateway.js";
-import { getIngestSecret } from "../lib/runtimeConfig.js";
 import { prepareSmokeTestPlan, type SmokeTestBody } from "../services/smokeTest.js";
 import {
   DEFAULT_BATCH_VISIBILITY,
@@ -22,11 +20,6 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = await requireUser(req);
-
-    const secret = getIngestSecret();
-    if (!secret) {
-      return rep.code(500).send({ error: "INGEST_HMAC_SECRET must be set to run smoke tests" });
-    }
 
     let plan: ReturnType<typeof prepareSmokeTestPlan>;
     try {
@@ -52,10 +45,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.log.info({ deviceIds: plan.seedTargets }, "ingest smoke test seeded devices");
 
     const raw = JSON.stringify(plan.payload);
-    const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
     try {
       const result = await ingestPayload(raw, plan.payload, {
-        signature,
         deviceId: plan.primaryDeviceId,
         visibility: targetVisibility,
       });

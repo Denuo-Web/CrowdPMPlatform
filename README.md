@@ -4,16 +4,17 @@
 # CrowdPM Platform
 Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
 ## Highlights
-- HMAC-validated ingest gateway stores raw payloads in Cloud Storage and pushes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
+- DPoP-bound ingest gateway validates short-lived device tokens, persists raw payloads in Cloud Storage, and publishes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
 - Pub/Sub-driven worker normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
 - Fastify-based HTTPS API (`crowdpmApi`) exposes device, measurement, and admin endpoints consumed by the frontend and integration partners.
 - React + Vite client renders Google Maps WebGL overlays via deck.gl to visualise particulate data and provides a basic admin table for device management.
 - pnpm-managed TypeScript monorepo keeps frontend and backend code in sync, with shared tooling for linting, builds, and testing.
 
 ## System Architecture
-- **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function guarded by `verifyHmac`, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
+- **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function that validates DPoP proofs plus device access tokens, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage, and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
 - **Processing** (`functions/src/services/ingestWorker.ts`): Firebase Pub/Sub Function downloads batches, applies calibration data from `devices/{deviceId}` (if present), and writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}` with deterministic sorting.
-- **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, and `/v1/admin/devices/:id/suspend`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
+- **Pairing API** (`functions/src/routes/pairing.ts` + `functions/src/routes/activation.ts`): Implements the device authorization grant (device start/token/register/access-token) using Ed25519 keys, DPoP, and the `/activate` UI for human approval with MFA enforcement.
+- **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, pairing endpoints, and `/v1/device-activation`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
 - **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
@@ -65,7 +66,7 @@ java --version
    ```
 4. Supply real secrets:
    - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
-   - `functions/.env.local`: shared INGEST HMAC secret and optional custom Pub/Sub topic.
+   - `functions/.env.local`: device token signing key, activation URL overrides, and optional ingest topic.
 
 ### Environment Variables
 
@@ -81,7 +82,13 @@ java --version
 
 | Name | Purpose | Example |
 | --- | --- | --- |
-| `INGEST_HMAC_SECRET` | Shared secret used by `verifyHmac` to authenticate ingest requests. | `replace-with-hmac-secret` |
+| `DEVICE_TOKEN_PRIVATE_KEY` | PEM-encoded Ed25519 private key for signing registration + access tokens. | `-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIP...\n-----END PRIVATE KEY-----` |
+| `DEVICE_ACTIVATION_URL` | Base URL surfaced to users during pairing. | `https://crowdpmplatform.web.app/activate` |
+| `DEVICE_VERIFICATION_URI` | Optional override for the verification URI sent to devices. | `https://example.com/activate` |
+| `DEVICE_TOKEN_ISSUER` | JWT issuer claim for device tokens. | `crowdpm` |
+| `DEVICE_TOKEN_AUDIENCE` | JWT audience for runtime access tokens. | `crowdpm_device_api` |
+| `DEVICE_ACCESS_TOKEN_TTL_SECONDS` | Access token lifetime (default 600). | `600` |
+| `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS` | Registration token lifetime (default 60). | `60` |
 | `INGEST_TOPIC` | Pub/Sub topic name for ingest batches (defaults to `ingest.raw`). | `ingest.raw` |
 
 ## Running Locally
@@ -118,7 +125,8 @@ Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy
 - Pub/Sub: default `ingest.raw` topic triggers `ingestWorker` for eventual consistency processing.
 
 ## Security Considerations
-- Ingest clients must HMAC-sign payloads with `INGEST_HMAC_SECRET`; unsigned or mismatched signatures are rejected (`verifyHmac`).
+- Devices must complete the `/device/start → /activate → /device/token → /device/register` flow and retrieve DPoP-bound access tokens before ingesting.
+- All pairing, registration, and ingest calls require DPoP proofs whose thumbprints match the Ed25519 keys declared during onboarding; mismatches are rejected immediately.
 - Firebase Auth tokens gate device creation and admin routes via `requireUser`.
 - Firestore and Storage rules ship locked-down defaults: device and measurement data are read-only to external clients, ingest blobs are entirely private.
 
@@ -127,7 +135,7 @@ Use the Firebase CLI once credentials and target project are configured:
 ```bash
 firebase deploy
 ```
-Ensure `.firebaserc` points to the intended project (avoid using the `demo-` alias outside emulator workflows). Configure runtime secrets (e.g., `INGEST_HMAC_SECRET`) through Firebase environment configuration or Cloud Secret Manager before deploying.
+Ensure `.firebaserc` points to the intended project (avoid using the `demo-` alias outside emulator workflows). Configure runtime secrets (e.g., `DEVICE_TOKEN_PRIVATE_KEY`) through Firebase environment configuration or Cloud Secret Manager before deploying.
 
 ## Further Reading
 - `docs/development.md` – end-to-end local development workflow, emulator smoke tests, and ingest pipeline walkthrough

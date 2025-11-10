@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text } from "@radix-ui/themes";
+import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, Callout } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
-import { listDevices, type BatchVisibility, type DeviceSummary } from "../lib/api";
+import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
+
+type UserDashboardProps = {
+  onRequestActivation: () => void;
+};
 
 function describeStatus(status?: string | null): { label: string; tone: "green" | "yellow" | "red" | "gray" } {
   const normalized = (status ?? "").toLowerCase();
@@ -13,12 +17,14 @@ function describeStatus(status?: string | null): { label: string; tone: "green" 
   return { label: status ?? "Unknown", tone: "red" };
 }
 
-export default function UserDashboard() {
+export default function UserDashboard({ onRequestActivation }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
 
@@ -43,9 +49,11 @@ export default function UserDashboard() {
   }, [user]);
 
   useEffect(() => { refreshDevices(); }, [refreshDevices]);
-
   const ownedCount = useMemo(() => devices.length, [devices]);
-  const activeCount = useMemo(() => devices.filter((device) => describeStatus(device.status).tone === "green").length, [devices]);
+  const activeCount = useMemo(
+    () => devices.filter((device) => describeStatus(device.registryStatus ?? device.status).tone === "green").length,
+    [devices],
+  );
   const isSettingsBusy = isSettingsLoading || isSettingsSaving;
 
   const handleDefaultVisibilityChange = useCallback(async (nextValue: string) => {
@@ -62,14 +70,66 @@ export default function UserDashboard() {
     }
   }, [settings.defaultBatchVisibility, updateSettings, user]);
 
+  const handleRevoke = useCallback(async (deviceId: string) => {
+    if (!deviceId) return;
+    if (!window.confirm("Revoke this device? It will immediately lose access tokens.")) {
+      return;
+    }
+    setRevokeError(null);
+    setRevokingId(deviceId);
+    try {
+      await revokeDevice(deviceId);
+      await refreshDevices();
+    }
+    catch (err) {
+      setRevokeError(err instanceof Error ? err.message : "Unable to revoke device.");
+    }
+    finally {
+      setRevokingId(null);
+    }
+  }, [refreshDevices]);
+
+  const handleOpenActivation = useCallback(() => {
+    onRequestActivation();
+  }, [onRequestActivation]);
+
+
   if (!user) {
     return (
-      <Card>
-        <Flex direction="column" gap="3">
-          <Heading size="4">User Dashboard</Heading>
-          <Text color="gray">Sign in to review the devices tied to your account.</Text>
-        </Flex>
-      </Card>
+      <>
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading size="4">User Dashboard</Heading>
+            <Text color="gray">Sign in to review the devices tied to your account.</Text>
+          </Flex>
+        </Card>
+
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h3" size="4">Add a device</Heading>
+            <Text color="gray">
+              Plug in your node and wait for it to display a pairing code. Open the activation UI to review the device facts
+              and approve it for this account. The node continues once you approve the code.
+            </Text>
+            <Flex gap="3" wrap="wrap">
+              <Button onClick={handleOpenActivation}>Open activation UI</Button>
+              <Button variant="ghost" asChild>
+                <a href="/activate" target="_blank" rel="noreferrer">Open in current tab</a>
+              </Button>
+            </Flex>
+            <Text size="2" color="gray">Share this link with trusted teammates who can approve devices for your org:</Text>
+            <Flex gap="2" align="center" wrap="wrap">
+              <Box style={{ flex: 1, minWidth: "240px" }}>
+                <TextField.Root value={activationUrl} readOnly />
+              </Box>
+              <Button variant="soft" onClick={handleCopyActivationLink}>Copy link</Button>
+            </Flex>
+            {activationLinkMessage ? (
+              <Text size="1" color="gray">{activationLinkMessage}</Text>
+            ) : null}
+          </Flex>
+        </Card>
+      </>
     );
   }
 
@@ -79,6 +139,18 @@ export default function UserDashboard() {
         <Heading as="h2" size="5">Welcome back, {user.email ?? user.uid}</Heading>
         <Text color="gray">Monitor the devices that are registered to your CrowdPM ingest pipeline.</Text>
       </Box>
+
+      <Card>
+        <Flex direction="column" gap="3">
+          <Heading as="h3" size="4">Add a device</Heading>
+          <Text color="gray">
+            Plug in your node, wait for the pairing code to appear, and open the activation UI to approve the request.
+          </Text>
+          <Button onClick={handleOpenActivation} alignSelf="start">
+            Open activation UI
+          </Button>
+        </Flex>
+      </Card>
 
       <Card>
         <Flex direction={{ initial: "column", sm: "row" }} justify="between" align="center" gap="4">
@@ -132,6 +204,11 @@ export default function UserDashboard() {
           <Heading as="h3" size="4">Registered devices</Heading>
           <Text color="gray">These are exposed by the Functions API via /v1/devices for your account.</Text>
           <Separator my="2" size="4" />
+          {revokeError ? (
+            <Callout.Root color="tomato">
+              <Callout.Text>{revokeError}</Callout.Text>
+            </Callout.Root>
+          ) : null}
           {devices.length === 0 ? (
             <Text color="gray" style={{ fontStyle: "italic" }}>
               {isLoading ? "Loading devices…" : "No devices are currently linked to this account."}
@@ -143,14 +220,19 @@ export default function UserDashboard() {
                   <Table.ColumnHeaderCell>ID</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Created</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Last seen</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Fingerprint</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Actions</Table.ColumnHeaderCell>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
                 {devices.map((device) => {
-                  const status = describeStatus(device.status);
+                  const status = describeStatus(device.registryStatus ?? device.status);
                   const created = device.createdAt
                     ? new Date(device.createdAt).toLocaleDateString()
+                    : "—";
+                  const lastSeen = device.lastSeenAt
+                    ? new Date(device.lastSeenAt).toLocaleString()
                     : "—";
                   return (
                     <Table.Row key={device.id}>
@@ -163,7 +245,25 @@ export default function UserDashboard() {
                           {status.label}
                         </Badge>
                       </Table.Cell>
-                      <Table.Cell>{created}</Table.Cell>
+                      <Table.Cell>
+                        <Flex direction="column">
+                          <Text>{lastSeen}</Text>
+                          <Text size="1" color="gray">Created {created}</Text>
+                        </Flex>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" style={{ fontFamily: "monospace" }}>{device.fingerprint || "—"}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Button
+                          variant="soft"
+                          size="1"
+                          disabled={revokingId === device.id || status.tone !== "green"}
+                          onClick={() => handleRevoke(device.id)}
+                        >
+                          {revokingId === device.id ? "Revoking…" : "Revoke"}
+                        </Button>
+                      </Table.Cell>
                     </Table.Row>
                   );
                 })}

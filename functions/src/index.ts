@@ -8,8 +8,10 @@ import { devicesRoutes } from "./routes/devices.js";
 import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
 import { batchesRoutes } from "./routes/batches.js";
-import { ingestHmacSecret } from "./lib/runtimeConfig.js";
+import { deviceTokenPrivateKeySecret } from "./lib/runtimeConfig.js";
 import { userSettingsRoutes } from "./routes/userSettings.js";
+import { pairingRoutes } from "./routes/pairing.js";
+import { activationRoutes } from "./routes/activation.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -54,6 +56,8 @@ const apiSetup = (async () => {
   await api.register(adminRoutes);
   await api.register(batchesRoutes);
   await api.register(userSettingsRoutes);
+  await api.register(pairingRoutes);
+  await api.register(activationRoutes);
 
   // Ensure all lifecycle hooks are ready before handling traffic.
   await api.ready();
@@ -62,7 +66,7 @@ const apiSetup = (async () => {
   throw err;
 });
 
-export const crowdpmApi = https.onRequest({ cors: true, secrets: [ingestHmacSecret] }, (req, res) => {
+export const crowdpmApi = https.onRequest({ cors: true, secrets: [deviceTokenPrivateKeySecret] }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   requestWithRawBody.rawBody = requestWithRawBody.rawBody ?? undefined;
   apiSetup.then(() => api.server.emit("request", req, res));
