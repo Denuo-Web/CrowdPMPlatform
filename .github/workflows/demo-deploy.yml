@@ -69,14 +69,13 @@ jobs:
 
       - name: Sync Cloud Function secrets
         env:
-          INGEST_HMAC_SECRET: ${{ secrets.DEMO_INGEST_HMAC_SECRET }}
+          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEMO_DEVICE_TOKEN_PRIVATE_KEY }}
         run: |
-          if [ -z "$INGEST_HMAC_SECRET" ]; then
-            echo "::error::Set the DEMO_INGEST_HMAC_SECRET GitHub secret before deploying; ingest smoke tests require it."
+          if [ -z "$DEVICE_TOKEN_PRIVATE_KEY" ]; then
+            echo "::error::Set the DEMO_DEVICE_TOKEN_PRIVATE_KEY GitHub secret before deploying; device pairing requires it."
             exit 1
           fi
-          printf '%s' "$INGEST_HMAC_SECRET" | firebase functions:secrets:set INGEST_HMAC_SECRET --project "$FIREBASE_PROJECT_ID" --data-file -
-          firebase functions:config:set ingest.hmac_secret="$INGEST_HMAC_SECRET" --project "$FIREBASE_PROJECT_ID"
+          printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file -
           firebase functions:config:set ingest.topic="$INGEST_TOPIC" --project "$FIREBASE_PROJECT_ID"
 
       - name: Ensure ingest Pub/Sub topic exists

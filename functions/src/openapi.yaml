@@ -25,6 +25,192 @@ paths:
           description: Service is healthy.
         '400':
           description: Malformed request.
+  /device/start:
+    post:
+      operationId: startDevicePairing
+      summary: Start device pairing
+      description: >
+        Called by a headless node to begin the pairing flow. The node supplies its
+        ephemeral Ed25519 public key (`pub_ke`) along with hardware metadata and
+        receives a `device_code` + human-readable `user_code`. A human must visit
+        `/activate` to approve the request before the device can continue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pub_ke, model, version]
+              properties:
+                pub_ke:
+                  type: string
+                  description: Base64url-encoded Ed25519 public key that will be used with DPoP during pairing.
+                model:
+                  type: string
+                  example: rpi-node
+                version:
+                  type: string
+                  example: 1.2.3
+                nonce:
+                  type: string
+                  description: Optional client-provided nonce for idempotency.
+      responses:
+        '200':
+          description: Pairing session created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [device_code, user_code, verification_uri, poll_interval, expires_in]
+                properties:
+                  device_code:
+                    type: string
+                    description: 128-bit opaque identifier used by the device when polling.
+                  user_code:
+                    type: string
+                    description: Human-readable code displayed to the operator.
+                  verification_uri:
+                    type: string
+                    format: uri
+                    description: URL where the human completes activation (`/activate`).
+                  verification_uri_complete:
+                    type: string
+                    format: uri
+                    description: Deep link that includes the user code in the query string.
+                  poll_interval:
+                    type: integer
+                    description: Minimum seconds between token polls.
+                  expires_in:
+                    type: integer
+                    description: Lifetime of the device and user codes in seconds.
+        '400':
+          description: Invalid pairing request.
+        '429':
+          description: Rate limited.
+  /device/token:
+    post:
+      operationId: pollPairingToken
+      summary: Poll for a registration token
+      description: >
+        Called by the device after the human approves pairing. Requires a DPoP proof bound
+        to the `pub_ke` submitted to `/device/start`. While the human has not yet approved,
+        the endpoint returns `authorization_pending`. After approval it returns a short-lived
+        `registration_token` JWT that can be redeemed via `/device/register`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_code]
+              properties:
+                device_code:
+                  type: string
+      responses:
+        '200':
+          description: Registration token issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [registration_token, expires_in]
+                properties:
+                  registration_token:
+                    type: string
+                    description: JWT scoped to the `device_register` audience.
+                  expires_in:
+                    type: integer
+                    description: Token lifetime in seconds.
+        '400':
+          description: Session pending, expired, or invalid.
+  /device/register:
+    post:
+      operationId: completeDeviceRegistration
+      summary: Register a device identity
+      description: >
+        Exchanges a `registration_token` for a long-lived device identity. The caller must
+        present the bearer token in `Authorization: Bearer` *and* a DPoP proof bound to the
+        ephemeral key (`Ke`). The body must include the device's long-term Ed25519 key (`Kl`)
+        as a JWK.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jwk_pub_kl:
+                  type: object
+                  description: Ed25519 JWK representing the device's long-term key.
+                csr:
+                  type: string
+                  description: Optional PKCS#10 CSR (not yet supported).
+      responses:
+        '200':
+          description: Device registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [device_id, jwk_pub_kl, issued_at]
+                properties:
+                  device_id:
+                    type: string
+                  jwk_pub_kl:
+                    type: object
+                  issued_at:
+                    type: integer
+                    description: UNIX timestamp (seconds) when the device record was created.
+        '400':
+          description: Invalid request payload.
+        '401':
+          description: Missing/invalid registration token or DPoP proof.
+        '403':
+          description: Session not authorized for this account.
+  /device/access-token:
+    post:
+      operationId: issueDeviceAccessToken
+      summary: Issue a DPoP-bound device access token
+      description: >
+        Exchanges proof-of-possession of the registered long-term key (`Kl`) for a short-lived
+        access token scoped to ingest APIs. Requires a DPoP proof bound to `Kl`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id]
+              properties:
+                device_id:
+                  type: string
+                scope:
+                  type: array
+                  items:
+                    type: string
+                  description: Optional scopes (defaults to `ingest.write`).
+      responses:
+        '200':
+          description: Access token issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, device_id]
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: DPoP
+                  expires_in:
+                    type: integer
+                  device_id:
+                    type: string
+        '401':
+          description: Missing or invalid DPoP proof.
+        '403':
+          description: Device not active.
   /v1/devices:
     get:
       operationId: listDevices
@@ -71,6 +257,86 @@ paths:
           description: Invalid request payload.
         '401':
           description: Missing or invalid bearer token.
+  /v1/devices/{id}/revoke:
+    post:
+      operationId: revokeDevice
+      summary: Revoke a device
+      description: >
+        Immediately revokes a device owned by the caller. Revocation tears down active access
+        tokens and prevents future ingest requests until the node is re-registered.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Device revoked.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller does not own the device.
+        '404':
+          description: Device not found.
+  /v1/device-activation:
+    get:
+      operationId: getActivationSession
+      summary: Fetch activation session
+      description: >
+        Returns metadata about a pending pairing session so the user can verify the request
+        before approving it. Requires a signed-in Firebase user.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pending pairing session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationSession'
+        '401':
+          description: Missing or invalid bearer token.
+        '404':
+          description: Session not found.
+  /v1/device-activation/authorize:
+    post:
+      operationId: authorizeActivationSession
+      summary: Approve a pending device
+      description: >
+        Associates a pending pairing session with the caller's account. Accounts with MFA
+        enabled must satisfy a fresh second factor before this endpoint succeeds.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_code]
+              properties:
+                user_code:
+                  type: string
+      responses:
+        '200':
+          description: Device authorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivationSession'
+        '401':
+          description: Missing credentials or MFA requirement not satisfied.
+        '404':
+          description: Session not found.
   /v1/measurements:
     get:
       operationId: getDeviceMeasurements
@@ -356,6 +622,52 @@ components:
         - ownerUserId
         - status
         - createdAt
+    ActivationSession:
+      type: object
+      description: Metadata about a pending pairing session.
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+        model:
+          type: string
+        version:
+          type: string
+        fingerprint:
+          type: string
+          description: First bytes of the Ke hash, used for human verification.
+        status:
+          type: string
+          enum: [pending, authorized, redeemed, expired]
+        requested_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        requester_ip:
+          type: string
+          nullable: true
+        requester_asn:
+          type: string
+          nullable: true
+        poll_interval:
+          type: integer
+        authorized_account:
+          type: string
+          nullable: true
+        viewer_account:
+          type: string
+          nullable: true
+      required:
+        - device_code
+        - user_code
+        - model
+        - version
+        - status
+        - requested_at
+        - expires_at
     Location:
       type: object
       description: Latitude and longitude in decimal degrees.

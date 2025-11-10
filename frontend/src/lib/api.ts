@@ -80,11 +80,14 @@ export type DeviceSummary = {
   id: string;
   name?: string | null;
   status?: string | null;
+  registryStatus?: string | null;
   ownerUserId?: string | null;
   ownerUserIds?: string[] | null;
   publicDeviceId?: string | null;
   ownerScope?: string | null;
   createdAt?: string | null;
+  fingerprint?: string | null;
+  lastSeenAt?: string | null;
 };
 
 export type FirestoreTimestampLike = {
@@ -156,6 +159,22 @@ export type UserSettings = {
   defaultBatchVisibility: BatchVisibility;
 };
 
+export type ActivationSession = {
+  device_code: string;
+  user_code: string;
+  model: string;
+  version: string;
+  fingerprint: string;
+  requested_at: string;
+  expires_at: string;
+  requester_ip?: string | null;
+  requester_asn?: string | null;
+  status: string;
+  poll_interval: number;
+  authorized_account?: string | null;
+  viewer_account?: string | null;
+};
+
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
@@ -211,5 +230,25 @@ export async function updateUserSettings(next: Partial<UserSettings>): Promise<U
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(next),
+  });
+}
+
+export async function fetchActivationSession(userCode: string): Promise<ActivationSession> {
+  const qs = new URLSearchParams({ user_code: userCode.trim() });
+  return requestJson<ActivationSession>(`/v1/device-activation?${qs}`);
+}
+
+export async function authorizeActivationSession(userCode: string): Promise<ActivationSession> {
+  return requestJson<ActivationSession>("/v1/device-activation/authorize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_code: userCode.trim() }),
+  });
+}
+
+export async function revokeDevice(deviceId: string): Promise<{ status: string }> {
+  const encoded = encodeURIComponent(deviceId);
+  return requestJson<{ status: string }>(`/v1/devices/${encoded}/revoke`, {
+    method: "POST",
   });
 }

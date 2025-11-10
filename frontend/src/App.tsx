@@ -4,6 +4,7 @@ import UserDashboard from "./pages/UserDashboard";
 import SmokeTestLab from "./pages/SmokeTestLab";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
 import { useAuth } from "./providers/AuthProvider";
+import { ActivationPage } from "./pages/ActivationPage";
 import {
   Theme,
   ThemePanel,
@@ -17,6 +18,7 @@ import {
   Button,
   Link,
   IconButton,
+  Dialog,
 } from "@radix-ui/themes";
 import { GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
@@ -85,6 +87,8 @@ export default function App() {
   const [tab, setTab] = useState<"map" | "dashboard" | "smoke">("map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
+  const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
+  const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
 
   const isSignedIn = Boolean(user);
   const activeTab = !isSignedIn && tab !== "map" ? "map" : tab;
@@ -118,9 +122,40 @@ export default function App() {
     return () => window.removeEventListener("ingest-smoke-test:completed", handler);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isActivationModalOpen) {
+      if (!window.location.pathname.toLowerCase().startsWith("/activate")) {
+        window.history.pushState({}, "", "/activate");
+      }
+    }
+    else if (window.location.pathname.toLowerCase().startsWith("/activate")) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [isActivationModalOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopState = () => {
+      const next = window.location.pathname.toLowerCase().startsWith("/activate");
+      setActivationModalOpen(next);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const openActivationModal = () => {
+    if (!user) {
+      openAuthDialog("login");
+      return;
+    }
+    setActivationModalOpen(true);
+  };
+
   return (
     <Theme appearance="light" accentColor="iris" radius="full" scaling="100%">
       <ThemePanel defaultOpen={false} />
+      <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
       <Box
         style={{
           minHeight: "100vh",
@@ -294,7 +329,7 @@ export default function App() {
               >
                 <Box style={{ padding: "var(--space-4)" }}>
                   {activeTab === "dashboard" && user ? (
-                    <UserDashboard key={`dashboard:${userScopedKey}`} />
+                    <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
                   ) : activeTab === "smoke" && user ? (
                     <SmokeTestLab key={`smoke:${userScopedKey}`} />
                   ) : activeTab === "map" && user ? (
@@ -328,5 +363,28 @@ export default function App() {
         onAuthenticated={() => setTab("dashboard")}
       />
     </Theme>
+  );
+}
+
+type ActivationModalProps = {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+};
+
+function ActivationModal({ open, onOpenChange }: ActivationModalProps) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Content
+        size="4"
+        style={{
+          width: "min(760px, 96vw)",
+          maxWidth: "760px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        <ActivationPage layout="dialog" />
+      </Dialog.Content>
+    </Dialog.Root>
   );
 }

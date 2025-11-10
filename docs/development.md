@@ -112,7 +112,8 @@ cp frontend/.env.example frontend/.env.local
 ```bash
 cp functions/.env.example functions/.env.local
 ```
-- Fill in `INGEST_HMAC_SECRET` with the value shared with the ingest simulator, keep it private, and adjust `INGEST_TOPIC` only when testing custom Pub/Sub topics.
+- Replace the placeholder `DEVICE_TOKEN_PRIVATE_KEY` with a real Ed25519 private key (PKCS8 PEM). The emulator can reuse the sample key from `.env.example`, but production-like flows should generate their own.
+- Adjust `DEVICE_ACTIVATION_URL`, `DEVICE_VERIFICATION_URI`, and `INGEST_TOPIC` only when testing alternative activation sites or Pub/Sub topics.
 
 ---
 
@@ -155,9 +156,9 @@ If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fi
 ## 9. Optional: Ingest Pipeline Smoke Test
 Run this whenever you change ingest code or schemas.
 
-1. Launch the local stack with `pnpm dev` (Functions emulator must have `INGEST_HMAC_SECRET` in `functions/.env.local`).
+1. Launch the local stack with `pnpm dev` (Functions emulator must have `DEVICE_TOKEN_PRIVATE_KEY` in `functions/.env.local`).
 2. Visit `http://localhost:5173`, open the **User Dashboard** tab, and click **Run Smoke Test**.
-3. The UI seeds `device-123`, submits a signed payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
+3. The UI seeds `device-123`, completes the DPoP-based pairing flow, mints an access token, submits a payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
 4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:
    - Storage: `ingest/device-123/<batchId>.json`.
    - Firestore: `devices/device-123/measures/<hourBucket>/rows`.

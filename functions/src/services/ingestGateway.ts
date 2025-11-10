@@ -2,8 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { PubSub } from "@google-cloud/pubsub";
 import crypto from "node:crypto";
 import { bucket, db } from "../lib/fire.js";
-import { verifyHmac } from "../lib/crypto.js";
-import { getIngestTopic, ingestHmacSecret } from "../lib/runtimeConfig.js";
+import { deviceTokenPrivateKeySecret, getIngestTopic } from "../lib/runtimeConfig.js";
 import type { Request } from "firebase-functions/v2/https";
 import {
   DEFAULT_BATCH_VISIBILITY,
@@ -11,6 +10,10 @@ import {
   normalizeBatchVisibility,
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
+import { verifyDeviceAccessToken } from "./deviceTokens.js";
+import { verifyDpopProof } from "../lib/dpop.js";
+import { canonicalRequestUrl } from "../lib/http.js";
+import { getDevice, updateDeviceLastSeen } from "./deviceRegistry.js";
 
 const pubsub = new PubSub();
 const TOPIC = getIngestTopic();
@@ -34,8 +37,7 @@ export type IngestBody = {
 };
 
 type IngestOptions = {
-  signature?: string;
-  deviceId?: string;
+  deviceId: string;
   visibility?: BatchVisibility | null;
 };
 
@@ -50,11 +52,8 @@ function pickFirstQueryParam(value: unknown) {
   return undefined;
 }
 
-export async function ingestPayload(raw: string, body: IngestBody, options: IngestOptions = {}) {
-  const { signature, deviceId: deviceIdOverride } = options;
-  verifyHmac(raw, signature);
-
-  const deviceId = deviceIdOverride || body.points?.[0]?.device_id || body.device_id;
+export async function ingestPayload(raw: string, body: IngestBody, options: IngestOptions) {
+  const deviceId = options.deviceId || body.points?.[0]?.device_id || body.device_id;
   if (!deviceId) throw HTTPError(400, "missing device_id");
 
   const dev = await db().collection("devices").doc(deviceId).get();
@@ -68,10 +67,12 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
   await bucket().file(path).save(raw, { contentType: "application/json" });
   await pubsub.topic(TOPIC).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
+  await updateDeviceLastSeen(deviceId).catch(() => {});
+
   return { accepted: true, batchId, deviceId, storagePath: path, visibility };
 }
 
-export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret] }, async (req, res) => {
+export const ingestGateway = onRequest({ cors: true, secrets: [deviceTokenPrivateKeySecret] }, async (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   const rawBody = requestWithRawBody.rawBody;
   const raw = typeof rawBody === "string"
@@ -79,9 +80,37 @@ export const ingestGateway = onRequest({ cors: true, secrets: [ingestHmacSecret]
     : rawBody?.toString() ?? JSON.stringify(req.body ?? {});
   const body = (req.body ?? {}) as IngestBody;
   try {
+    const authHeader = req.get("authorization") || req.header("authorization") || "";
+    if (!authHeader.toLowerCase().startsWith("bearer ")) {
+      res.status(401).send("missing bearer token");
+      return;
+    }
+    const token = authHeader.slice(7).trim();
+    const accessToken = await verifyDeviceAccessToken(token);
+    const htu = canonicalRequestUrl(req.url, req.headers);
+    const dpopProof = req.get("dpop") || req.header("dpop");
+    const verifiedProof = await verifyDpopProof(dpopProof, {
+      method: req.method.toUpperCase(),
+      htu,
+      expectedThumbprint: accessToken.cnf.jkt,
+    });
+    if (verifiedProof.thumbprint !== accessToken.cnf.jkt) {
+      throw HTTPError(401, "DPoP key mismatch");
+    }
+
+    const deviceIdFromToken = accessToken.device_id;
+    const payloadDeviceId = body.points?.[0]?.device_id || body.device_id;
+    if (payloadDeviceId && payloadDeviceId !== deviceIdFromToken) {
+      throw HTTPError(400, "device_id mismatch between payload and token");
+    }
+
+    const deviceRecord = await getDevice(deviceIdFromToken);
+    if (!deviceRecord || deviceRecord.registryStatus !== "active" || deviceRecord.status === "SUSPENDED" || deviceRecord.status === "REVOKED") {
+      throw HTTPError(403, "device not allowed");
+    }
+
     const result = await ingestPayload(raw, body, {
-      signature: req.header("x-signature") || undefined,
-      deviceId: pickFirstQueryParam(req.query["device_id"]),
+      deviceId: deviceIdFromToken,
       visibility: normalizeBatchVisibility(
         pickFirstQueryParam(req.query["visibility"]) ?? req.header("x-batch-visibility")
       ) ?? undefined,
