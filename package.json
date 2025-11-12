@@ -11,10 +11,10 @@
   },
   "scripts": {
     "predev": "pnpm --filter crowdpm-functions build",
-    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\"",
+    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD,PM25 \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\" \"pnpm --filter crowdpm-atm-service dev\"",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "eslint \"{functions,frontend}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
+    "lint": "eslint \"{functions,frontend,atm-service}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
     "deploy": "firebase deploy"
   },
   "devDependencies": {

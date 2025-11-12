@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
 import Map3D from "../components/Map3D";
 import {
   fetchBatchDetail,
@@ -8,6 +9,7 @@ import {
   type IngestSmokeTestResponse,
   type IngestSmokeTestPoint,
 } from "../lib/api";
+import { fetchPm25Heatmap, type Pm25Response } from "../lib/pm25";
 import { useAuth } from "../providers/AuthProvider";
 
 const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
@@ -100,6 +102,58 @@ function deferStateUpdate(action: () => void) {
     return;
   }
   Promise.resolve().then(action).catch(() => {});
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function computeSpatialEnvelope(records: MeasurementRecord[]) {
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  for (const record of records) {
+    const lat = Number(record.lat);
+    const lon = Number(record.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+  }
+  if (minLat === Infinity || minLon === Infinity || maxLat === -Infinity || maxLon === -Infinity) {
+    return null;
+  }
+  const latSpan = Math.max(0.05, Math.abs(maxLat - minLat));
+  const lonSpan = Math.max(0.05, Math.abs(maxLon - minLon));
+  const latPadding = Math.max(0.1, latSpan * 0.2);
+  const lonPadding = Math.max(0.1, lonSpan * 0.2);
+  return {
+    south: clamp(minLat - latPadding, -90, 90),
+    north: clamp(maxLat + latPadding, -90, 90),
+    west: clamp(minLon - lonPadding, -180, 180),
+    east: clamp(maxLon + lonPadding, -180, 180)
+  };
+}
+
+function computeTemporalRange(records: MeasurementRecord[]) {
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+  for (const record of records) {
+    const ts = normaliseTimestamp(record.timestamp);
+    if (!Number.isFinite(ts)) continue;
+    if (ts < minTs) minTs = ts;
+    if (ts > maxTs) maxTs = ts;
+  }
+  if (minTs === Infinity) {
+    const now = Date.now();
+    return { start: new Date(now).toISOString(), end: new Date(now).toISOString() };
+  }
+  return {
+    start: new Date(minTs).toISOString(),
+    end: new Date(maxTs).toISOString()
+  };
 }
 
 export default function MapPage() {
@@ -198,6 +252,54 @@ export default function MapPage() {
     batchCacheRef.current.set(key, records);
     return records;
   }, []);
+
+  const heatmapParams = useMemo(() => {
+    if (!rows.length || !selectedBatchKey) return null;
+    const parsed = decodeBatchKey(selectedBatchKey);
+    if (!parsed) return null;
+    const envelope = computeSpatialEnvelope(rows);
+    if (!envelope) return null;
+    const { start, end } = computeTemporalRange(rows);
+    const bbox = [
+      envelope.south.toFixed(4),
+      envelope.west.toFixed(4),
+      envelope.north.toFixed(4),
+      envelope.east.toFixed(4)
+    ].join(",");
+    return {
+      batchId: parsed.batchId,
+      deviceId: parsed.deviceId,
+      start,
+      end,
+      bbox
+    };
+  }, [rows, selectedBatchKey]);
+
+  const {
+    data: pm25Heatmap,
+    error: pm25Error,
+    isValidating: isPm25Loading
+  } = useSWR<Pm25Response, Error>(
+    heatmapParams
+      ? ["pm25", heatmapParams.batchId, heatmapParams.deviceId ?? "", heatmapParams.start, heatmapParams.end, heatmapParams.bbox]
+      : null,
+    async ([, batchId, deviceId, start, end, bbox]) => {
+      return fetchPm25Heatmap({
+        batchId,
+        deviceId: deviceId || undefined,
+        start,
+        end,
+        bbox,
+        allowStale: true
+      });
+    },
+    {
+      revalidateOnFocus: false,
+      keepPreviousData: true
+    }
+  );
+
+  const heatmapPoints = pm25Heatmap?.points ?? [];
 
   useEffect(() => {
     if (!user || !selectedBatchKey) {
@@ -383,7 +485,24 @@ export default function MapPage() {
       ) : (
         <p style={{ marginTop: 16 }}>Select a batch with recent measurements to explore the timeline.</p>
       )}
-      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex}/>
+      {heatmapParams ? (
+        <p style={{ marginTop: 12, fontSize: 14, color: pm25Error ? "var(--tomato-10)" : "var(--gray-11)" }}>
+          {pm25Error
+            ? `PM2.5 overlay unavailable: ${pm25Error.message}`
+            : pm25Heatmap
+              ? `PM2.5 forecast updated ${new Date(pm25Heatmap.updatedAt).toLocaleString()}`
+              : isPm25Loading
+                ? "Loading PM2.5 overlay…"
+                : "PM2.5 overlay pending"}
+        </p>
+      ) : null}
+      <Map3D
+        data={data}
+        selectedIndex={selectedIndex}
+        onSelectIndex={setSelectedIndex}
+        heatmap={heatmapPoints}
+        heatmapMode="heatmap"
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
+import { HeatmapLayer, GridLayer } from "@deck.gl/aggregation-layers";
 import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SphereGeometry } from "@luma.gl/engine";
@@ -15,13 +16,32 @@ type MeasurementPoint = {
   altitude: number | null;
 };
 
+type HeatmapPoint = {
+  lat: number;
+  lon: number;
+  value: number;
+};
+
 type Map3DProps = {
   data: MeasurementPoint[];
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
+  heatmap?: HeatmapPoint[] | null;
+  heatmapMode?: "heatmap" | "grid";
 };
 
 const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
+const HEATMAP_COLOR_RANGE: [number, number, number, number][] = [
+  [33, 102, 172, 90],
+  [67, 147, 195, 120],
+  [146, 197, 222, 160],
+  [209, 229, 240, 200],
+  [253, 219, 199, 220],
+  [239, 138, 98, 240],
+  [178, 24, 43, 255]
+];
+const DEFAULT_HEATMAP_RADIUS = 48;
+const GRID_LAYER_CELL_SIZE_METERS = 15000;
 type PathDatum = { path: [number, number, number][] };
 
 function ensureRange(min: number, max: number): [number, number] {
@@ -76,11 +96,64 @@ function signature(series: MeasurementPoint[]) {
 
 function createLayers(
   series: MeasurementPoint[],
+  heatmapPoints: HeatmapPoint[] | undefined,
+  heatmapMode: "heatmap" | "grid",
   selectedIndex: number,
   onSelectIndex: ((index: number) => void) | undefined,
   sphereGeometry: SphereGeometry
 ): Layer[] {
-  if (!series.length) return [];
+  const layers: Layer[] = [];
+
+  if (heatmapPoints && heatmapPoints.length) {
+    let minHeat = Infinity;
+    let maxHeat = -Infinity;
+    for (const point of heatmapPoints) {
+      if (point.value < minHeat) minHeat = point.value;
+      if (point.value > maxHeat) maxHeat = point.value;
+    }
+    const [heatMin, heatMax] = ensureRange(minHeat, maxHeat);
+    if (heatmapMode === "grid") {
+      layers.push(new GridLayer<HeatmapPoint>({
+        id: "pm25-grid-layer",
+        data: heatmapPoints,
+        cellSize: GRID_LAYER_CELL_SIZE_METERS,
+        getPosition: (d) => [d.lon, d.lat],
+        getColorWeight: (d) => d.value,
+        colorAggregation: "MEAN",
+        colorDomain: [heatMin, heatMax],
+        colorRange: HEATMAP_COLOR_RANGE,
+        getElevationWeight: (d) => d.value,
+        elevationAggregation: "MEAN",
+        elevationDomain: [heatMin, heatMax],
+        elevationScale: 200,
+        extruded: true,
+        pickable: false,
+        // Google Maps' WebGL overlay regularly lacks the drawBuffers extension, so
+        // forcing GPU aggregation raises INVALID_OPERATION warnings in the console.
+        // Stay on the CPU path for compatibility.
+        gpuAggregation: false
+      }));
+    }
+    else {
+      layers.push(new HeatmapLayer<HeatmapPoint>({
+        id: "pm25-heatmap-layer",
+        data: heatmapPoints,
+        getPosition: (d) => [d.lon, d.lat],
+        getWeight: (d) => d.value,
+        radiusPixels: DEFAULT_HEATMAP_RADIUS,
+        intensity: 1,
+        colorRange: HEATMAP_COLOR_RANGE,
+        colorDomain: [heatMin, heatMax],
+        aggregation: "SUM",
+        threshold: 0.05,
+        pickable: false,
+        // See note above; disable GPU aggregation to avoid unsupported drawBuffers usage.
+        gpuAggregation: false
+      }));
+    }
+  }
+
+  if (!series.length) return layers;
 
   let min = Infinity;
   let max = -Infinity;
@@ -92,7 +165,7 @@ function createLayers(
   const pathPoints = series.map((point) => [point.lon, point.lat, 0]);
   const selected = series[selectedIndex] ?? series[series.length - 1];
 
-  const pathLayer = new PathLayer<PathDatum>({
+  layers.push(new PathLayer<PathDatum>({
     id: "measurement-path",
     data: [{ path: pathPoints }],
     getPath: (d) => d.path,
@@ -104,9 +177,9 @@ function createLayers(
       depthWriteEnabled: false
     },
     pickable: false
-  });
+  }));
 
-  const sphereLayer = new SimpleMeshLayer<MeasurementPoint & { index: number }>({
+  layers.push(new SimpleMeshLayer<MeasurementPoint & { index: number }>({
     id: "measurement-sphere",
     data: selected ? [{ ...selected, index: selectedIndex }] : [],
     mesh: sphereGeometry,
@@ -124,16 +197,18 @@ function createLayers(
       const index = info.object?.index;
       if (typeof index === "number" && onSelectIndex) onSelectIndex(index);
     }
-  });
+  }));
 
-  return [pathLayer, sphereLayer];
+  return layers;
 }
 
-export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps) {
+export default function Map3D({ data, selectedIndex, onSelectIndex, heatmap, heatmapMode = "heatmap" }: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<GoogleMapsOverlay | null>(null);
   const latestDataRef = useRef<MeasurementPoint[]>(data);
+  const heatmapDataRef = useRef<HeatmapPoint[]>(heatmap ?? []);
+  const heatmapModeRef = useRef<"heatmap" | "grid">(heatmapMode ?? "heatmap");
   const selectedIndexRef = useRef<number>(selectedIndex);
   const onSelectRef = useRef<typeof onSelectIndex>(onSelectIndex);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
@@ -142,6 +217,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
   const devicePixelRatioRef = useRef(resolvePreferredDevicePixelRatio());
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
+  useEffect(() => { heatmapDataRef.current = heatmap ?? []; }, [heatmap]);
+  useEffect(() => { heatmapModeRef.current = heatmapMode ?? "heatmap"; }, [heatmapMode]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => { onSelectRef.current = onSelectIndex; }, [onSelectIndex]);
   useEffect(() => {
@@ -180,6 +257,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
     overlay.setProps({
       layers: createLayers(
         latestDataRef.current,
+        heatmapDataRef.current,
+        heatmapModeRef.current,
         selectedIndexRef.current,
         (index) => onSelectRef.current?.(index),
         sphereGeometryRef.current
@@ -200,7 +279,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
         }
       }
     }
-  }, [data, selectedIndex]);
+  }, [data, selectedIndex, heatmap, heatmapMode]);
 
   useEffect(() => {
     if (!divRef.current) return;
@@ -272,6 +351,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
       const overlay = new GoogleMapsOverlay({
         layers: createLayers(
           currentSeries,
+          heatmapDataRef.current,
+          heatmapModeRef.current,
           selectedIndexRef.current,
           (index) => onSelectRef.current?.(index),
           sphereGeometry

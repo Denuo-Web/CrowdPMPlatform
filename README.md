@@ -27,6 +27,7 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 
 ## Repository Layout
 - `frontend/` – Vite + React client, Google Maps visualisation, admin UI
+- `atm-service/` – Fastify microservice that downloads CAMS PM2.5 forecasts, converts NetCDF to points, and serves heatmap payloads
 - `functions/` – Firebase Functions (REST API, ingest gateway, Pub/Sub worker), shared auth/lib utilities, Vitest suites
 - `docs/` – Developer guides (`development.md` and supporting installation notes)
 - `infra/` – CI configuration and automation assets
@@ -63,7 +64,8 @@ java --version
    cp .firebaserc.example .firebaserc
    cp frontend/.env.example frontend/.env.local
    cp functions/.env.example functions/.env.local
-   ```
+   cp atm-service/.env.example atm-service/.env.local
+  ```
 4. Supply real secrets:
    - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
    - `functions/.env.local`: device token signing key, activation URL overrides, and optional ingest topic.
@@ -77,6 +79,7 @@ java --version
 | `VITE_API_BASE` | Base URL for the Firebase HTTPS API. | `http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi` |
 | `VITE_GOOGLE_MAPS_API_KEY` | Maps JavaScript API key with WebGL overlay access. | `AIza...` |
 | `VITE_GOOGLE_MAP_ID` | Vector map style ID for WebGL overlay (required). | `test-map-id` |
+| `VITE_PM25_API_BASE_URL` | Base URL for the PM2.5 microservice (`atm-service`). | `http://127.0.0.1:4010` |
 
 `functions/.env.local`
 
@@ -91,6 +94,20 @@ java --version
 | `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS` | Registration token lifetime (default 60). | `60` |
 | `INGEST_TOPIC` | Pub/Sub topic name for ingest batches (defaults to `ingest.raw`). | `ingest.raw` |
 
+`atm-service/.env.local`
+
+| Name | Purpose | Example |
+| --- | --- | --- |
+| `CAMS_API_KEY` | Copernicus Atmosphere Data Store API key (`uid:secret`). | `12345:abcdef...` |
+| `CAMS_API_URL` | ADS API base URL. | `https://ads.atmosphere.copernicus.eu/api/v2` |
+| `CAMS_DATASET_ID` | Dataset identifier to request. | `cams-global-atmospheric-composition-forecasts` |
+| `CAMS_PM_VARIABLE` | Variable name within the NetCDF file. | `pm2p5` |
+| `CRON_SCHEDULE` | Cron string for periodic refresh. | `0 * * * *` |
+| `CACHE_TTL_MINUTES` | Minutes before cached batches are reprocessed. | `90` |
+| `PORT` | Local port for the microservice. | `4010` |
+| `HOST` | Bind address. | `0.0.0.0` |
+| `DATA_DIR` | Directory for cached JSON.gz payloads. | `var/pm25` |
+
 ## Running Locally
 Launch the entire stack from the repo root:
 ```bash
@@ -99,8 +116,18 @@ pnpm dev
 - `crowdpm-frontend`: Vite dev server at `http://localhost:5173`
 - `crowdpm-functions emulate`: Firebase Emulator Suite (Functions, Firestore, Storage, Auth, Pub/Sub, Emulator UI at `http://localhost:4000`)
 - `crowdpm-functions build:watch`: TypeScript compiler emitting to `functions/lib/`
+- `crowdpm-atm-service`: Fastify PM2.5 microservice at `http://localhost:4010`
 
 Keep this terminal open; rebuilds stream into the emulator automatically.
+
+## CAMS PM2.5 Microservice
+The `atm-service` workspace is a standalone Fastify server that periodically requests CAMS atmospheric composition forecasts, converts PM2.5 NetCDF payloads into `{lat, lon, value}` samples, and exposes them to the frontend:
+
+- `GET /pm25?batchId=ID&start=ISO&end=ISO&bbox=south,west,north,east[&deviceId=ID]` – returns the most recent cached grid for the supplied batch metadata. If the cache is missing or expired, the service downloads the NetCDF file on-demand before responding.
+- Responses are gzipped JSON and cached to `atm-service/var/pm25`. Refresh cadence is controlled by `CRON_SCHEDULE` and `CACHE_TTL_MINUTES`.
+- Schedule and dataset identifiers are configurable through `atm-service/.env.local`. Keep the Copernicus API key private and never commit the generated `.env.local`.
+
+The frontend points to this service via `VITE_PM25_API_BASE_URL` and uses SWR to refresh heatmap overlays whenever a batch selection changes.
 
 ## Testing & Quality Gates
 - Unit tests: `pnpm --filter crowdpm-functions test`

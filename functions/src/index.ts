@@ -1,5 +1,15 @@
 import * as https from "firebase-functions/v2/https";
 import Fastify from "fastify";
+import {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyPluginCallback,
+  type FastifyPluginOptions,
+  type FastifyTypeProviderDefault,
+  type RawReplyDefaultExpression,
+  type RawRequestDefaultExpression,
+  type RawServerDefault,
+} from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { Readable } from "node:stream";
@@ -14,7 +24,13 @@ import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
 adminApp();
 
-const api = Fastify({ logger: true });
+const api: FastifyInstance<
+  RawServerDefault,
+  RawRequestDefaultExpression<RawServerDefault>,
+  RawReplyDefaultExpression<RawServerDefault>,
+  FastifyBaseLogger,
+  FastifyTypeProviderDefault
+> = Fastify({ logger: true });
 
 const parseJsonBody = (req: unknown, body: unknown, done: (err: Error | null, value?: unknown) => void) => {
   try {
@@ -47,8 +63,12 @@ api.addHook("preParsing", (request, reply, payload, done) => {
 
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
 const apiSetup = (async () => {
-  await api.register(cors, { origin: true });
-  await api.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  // Align plugin typings with Fastify's default type provider expectations.
+  const corsPlugin = cors as unknown as FastifyPluginCallback<FastifyPluginOptions, RawServerDefault, FastifyTypeProviderDefault, FastifyBaseLogger>;
+  const rateLimitPlugin = rateLimit as unknown as FastifyPluginCallback<FastifyPluginOptions, RawServerDefault, FastifyTypeProviderDefault, FastifyBaseLogger>;
+
+  await api.register<FastifyPluginOptions, RawServerDefault, FastifyTypeProviderDefault>(corsPlugin, { origin: true });
+  await api.register<FastifyPluginOptions, RawServerDefault, FastifyTypeProviderDefault>(rateLimitPlugin, { max: 100, timeWindow: "1 minute" });
 
   api.get("/health", async () => ({ ok: true }));
   await api.register(devicesRoutes);

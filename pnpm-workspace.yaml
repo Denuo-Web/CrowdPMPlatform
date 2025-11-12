@@ -1,3 +1,4 @@
 packages:
   - "functions"
   - "frontend"
+  - "atm-service"

@@ -141,12 +141,12 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
       </Box>
 
       <Card>
-        <Flex direction="column" gap="3">
+        <Flex direction="column" gap="3" align="start">
           <Heading as="h3" size="4">Add a device</Heading>
           <Text color="gray">
             Plug in your node, wait for the pairing code to appear, and open the activation UI to approve the request.
           </Text>
-          <Button onClick={handleOpenActivation} alignSelf="start">
+          <Button onClick={handleOpenActivation}>
             Open activation UI
           </Button>
         </Flex>
