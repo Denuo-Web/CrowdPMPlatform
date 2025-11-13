@@ -16,7 +16,12 @@ import { canonicalRequestUrl } from "../lib/http.js";
 import { getDevice, updateDeviceLastSeen } from "./deviceRegistry.js";
 
 const pubsub = new PubSub();
-const TOPIC = getIngestTopic();
+let cachedTopicName: string | null = null;
+
+function resolveIngestTopic(): string {
+  if (!cachedTopicName) cachedTopicName = getIngestTopic();
+  return cachedTopicName;
+}
 
 type RequestWithRawBody = Request & { rawBody?: Buffer | string };
 type IngestPoint = {
@@ -65,7 +70,7 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
   const batchId = crypto.randomUUID();
   const path = `ingest/${deviceId}/${batchId}.json`;
   await bucket().file(path).save(raw, { contentType: "application/json" });
-  await pubsub.topic(TOPIC).publishMessage({ json: { deviceId, batchId, path, visibility } });
+  await pubsub.topic(resolveIngestTopic()).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
   await updateDeviceLastSeen(deviceId).catch(() => {});
 

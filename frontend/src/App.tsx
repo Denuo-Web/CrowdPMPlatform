@@ -25,30 +25,35 @@ import { GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 const TEAM_MEMBERS: Array<{
   name: string;
   role: string;
+  email: string;
   github: string;
   linkedin: string;
 }> = [
   {
     name: "Jaron Rosenau",
     role: "Team Lead",
+    email: "rosenauj@oregonstate.edu",
     github: "https://github.com/denuoweb",
     linkedin: "https://www.linkedin.com/in/jaronrosenau/",
   },
   {
     name: "Jack Armstrong",
     role: "Team Manager",
+    email: "armsjack@oregonstate.edu",
     github: "https://github.com/JackArmstrong22",
     linkedin: "https://www.linkedin.com/in/jack-t-armstrong/",
   },
   {
     name: "Skylar Soon",
     role: "Developer",
+    email: "soonsk@oregonstate.edu",
     github: "https://github.com/skylarsoon",
     linkedin: "https://www.linkedin.com/in/skylar-soon/",
   },
   {
     name: "Mark Sparhawk",
     role: "Developer",
+    email: "sparhawm@oregonstate.edu",
     github: "https://github.com/MarkSparhawk",
     linkedin: "https://www.linkedin.com/in/mark-sparhawk/",
   },
@@ -64,7 +69,11 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
     href: "https://drive.google.com/drive/folders/1Yh_4dku-TqYAlbGtKzT0UM0-LubAig17?usp=sharing",
   },
   {
-    label: "Monorepo",
+    label: "Technical Requirements Doc",
+    href: "https://docs.google.com/document/d/1i0fjx2_IagNerPkSPpG9JzbErKNKuu0caAm-F-koBTo/edit?usp=sharing",
+  },
+  {
+    label: "GitHub Monorepo",
     href: "https://github.com/Denuo-Web/CrowdPMPlatform/",
   },
   {
@@ -203,7 +212,9 @@ export default function App() {
                         fallback={member.name.charAt(0).toUpperCase() || "?"}
                       />
                       <Text size="2" weight="medium">
-                        {member.name}
+                        <Link href={`mailto:${member.email}`} color="iris" highContrast>
+                          {member.name}
+                        </Link>
                       </Text>
                     </Flex>
                     <Text

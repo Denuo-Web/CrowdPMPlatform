@@ -1,5 +1,6 @@
 .env
 .env.local
+.firebase/
 node_modules/
 pnpm-debug.log
 npm-debug.log
@@ -13,3 +14,6 @@ shared/dist/
 firebase-debug.log
 firestore-debug.log
 pubsub-debug.log
+
+# Local secret overrides for Firebase emulator
+functions/.secret.local
