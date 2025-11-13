@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
+import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 
 type MeasurementsQuery = {
   device_id?: string;
@@ -37,6 +38,7 @@ function timestampToMillis(value: MeasurementDoc["timestamp"]) {
 export const measurementsRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: MeasurementsQuery }>("/v1/measurements", async (req) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`measurements:user:${user.uid}`, 30, 60_000);
     const {
       device_id: deviceIdParam,
       pollutant = "pm25",
@@ -50,6 +52,8 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
     const t1 = new Date(t1Param ?? "");
     const limit = Math.min(Number(limitParam ?? 2000), 5000);
     if (!deviceId || Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime())) return [];
+    rateLimitOrThrow(`measurements:device:${deviceId}`, 60, 60_000);
+    rateLimitOrThrow("measurements:global", 2_000, 60_000);
 
     const doc = await db().collection("devices").doc(deviceId).get();
     if (!doc.exists) return [];

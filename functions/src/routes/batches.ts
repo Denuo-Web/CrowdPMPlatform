@@ -8,6 +8,7 @@ import {
   normalizeBatchVisibility,
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
+import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 
 type BatchSummary = {
   batchId: string;
@@ -68,6 +69,8 @@ async function loadOwnedDevices(userId: string) {
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", async (req) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`batches:list:${user.uid}`, 30, 60_000);
+    rateLimitOrThrow("batches:list:global", 1_000, 60_000);
     const { devices, seen } = await loadOwnedDevices(user.uid);
 
     const summaries = await Promise.all(
@@ -106,7 +109,10 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
 
   app.get<{ Params: { deviceId: string; batchId: string } }>("/v1/batches/:deviceId/:batchId", async (req, rep) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`batches:detail:${user.uid}`, 60, 60_000);
     const { deviceId, batchId } = req.params;
+    rateLimitOrThrow(`batches:detail:device:${deviceId}`, 120, 60_000);
+    rateLimitOrThrow("batches:detail:global", 1_000, 60_000);
 
     const devRef = db().collection("devices").doc(deviceId);
     const devSnap = await devRef.get();

@@ -1,7 +1,7 @@
 import * as https from "firebase-functions/v2/https";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import rateLimit from "@fastify/rate-limit";
+import rateLimit from "fastify-rate-limit";
 import { Readable } from "node:stream";
 import { app as adminApp } from "./lib/fire.js";
 import { devicesRoutes } from "./routes/devices.js";

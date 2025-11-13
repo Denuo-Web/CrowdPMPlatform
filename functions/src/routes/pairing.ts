@@ -13,7 +13,7 @@ import {
 } from "../services/devicePairing.js";
 import { canonicalRequestUrl, coarsenIpForDisplay, deriveNetworkHint, extractClientIp } from "../lib/http.js";
 import { verifyDpopProof } from "../lib/dpop.js";
-import { globalRateLimiter } from "../lib/rateLimiter.js";
+import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
 import { registerDevice, getDevice } from "../services/deviceRegistry.js";
 
@@ -41,17 +41,6 @@ const deviceTokenSchema = z.object({
   device_id: z.string().min(10),
   scope: z.array(z.string()).max(8).optional(),
 });
-
-function httpError(statusCode: number, message: string) {
-  return Object.assign(new Error(message), { statusCode });
-}
-
-function rateLimitOrThrow(key: string, limit: number, windowMs: number) {
-  const attempt = globalRateLimiter.hit(key, limit, windowMs);
-  if (!attempt.allowed) {
-    throw httpError(429, `rate_limited:${attempt.retryAfterSeconds}`);
-  }
-}
 
 function fastifyRequestUrl(req: FastifyRequest): string {
   return canonicalRequestUrl(req.raw.url ?? req.url, req.headers);
@@ -113,6 +102,8 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     }
+    rateLimitOrThrow(`pairing:device-token:${parsed.data.device_code}`, 15, 60_000);
+    rateLimitOrThrow("pairing:device-token:global", 1_000, 60_000);
     let session: SessionSnapshot;
     try {
       session = await findSessionByDeviceCode(parsed.data.device_code);
@@ -186,6 +177,9 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     catch (err) {
       return rep.code(401).send({ error: "invalid_token", error_description: err instanceof Error ? err.message : "invalid registration token" });
     }
+    rateLimitOrThrow(`pairing:register:device:${verifiedToken.device_code}`, 10, 60_000);
+    rateLimitOrThrow(`pairing:register:account:${verifiedToken.acc_id}`, 50, 60_000);
+    rateLimitOrThrow("pairing:register:global", 1_000, 60_000);
 
     const proof = req.headers["dpop"];
     let session: SessionSnapshot;

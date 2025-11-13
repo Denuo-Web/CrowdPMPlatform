@@ -154,13 +154,33 @@ function scopePoints(points: SmokeTestPoint[], ownerSegment: string, requestedDe
 
 function slugify(value: string | undefined | null, fallback: string) {
   if (!value) return fallback;
-  const normalised = value
-    .toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-  return normalised || fallback;
+
+  const source = value.toString().toLowerCase();
+  const result: string[] = [];
+  let lastWasDash = true; // treat start as dash to avoid leading separators
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const isAlphanumeric =
+      (char >= "a" && char <= "z") || (char >= "0" && char <= "9");
+
+    if (isAlphanumeric) {
+      result.push(char);
+      lastWasDash = false;
+      continue;
+    }
+
+    if (!lastWasDash) {
+      result.push("-");
+      lastWasDash = true;
+    }
+  }
+
+  if (result[result.length - 1] === "-") {
+    result.pop();
+  }
+
+  return result.join("") || fallback;
 }
 
 function scopeDeviceId(ownerSegment: string, rawDeviceId: string) {
