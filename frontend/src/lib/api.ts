@@ -2,6 +2,7 @@ import { auth } from "./firebase";
 
 const rawBase = import.meta.env.VITE_API_BASE as string | undefined;
 const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "";
+const FIREBASE_HOSTING_DOMAINS = ["web.app", "firebaseapp.com"] as const;
 
 function ensureBase(): string {
   if (!BASE) {
@@ -14,6 +15,14 @@ function buildUrl(path: string): string {
   const base = ensureBase();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${base}${normalizedPath}`;
+}
+
+function isFirebaseHostingHost(hostname: string | null | undefined): boolean {
+  if (!hostname) {
+    return false;
+  }
+  const normalized = hostname.toLowerCase();
+  return FIREBASE_HOSTING_DOMAINS.some((domain) => normalized === domain || normalized.endsWith(`.${domain}`));
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -51,16 +60,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!contentType.includes("application/json")) {
-    const host = (() => {
+    const { host, hostname } = (() => {
       try {
-        return new URL(url).host;
+        const parsed = new URL(url);
+        return { host: parsed.host, hostname: parsed.hostname };
       }
       catch {
-        return url;
+        return { host: url, hostname: null };
       }
     })();
     const snippet = bodyText.trim().replace(/\s+/g, " ").slice(0, 160);
-    const hint = host.includes(".web.app") || host.includes(".firebaseapp.com")
+    const hint = isFirebaseHostingHost(hostname)
       ? "Ensure VITE_API_BASE points to your Functions endpoint instead of the Hosting URL."
       : "Ensure VITE_API_BASE points to your Functions endpoint.";
     const responsePreview = snippet ? ` Response starts with: ${snippet}` : "";
