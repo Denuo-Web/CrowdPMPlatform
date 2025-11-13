@@ -49,15 +49,16 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/v1/device-activation/authorize", async (req, rep) => {
-    const user = await requireUser(req, { requireSecondFactorIfEnrolled: true });
-    rateLimitOrThrow(`activation:authorize:${user.uid}`, 20, 60_000);
-    rateLimitOrThrow("activation:authorize:global", 500, 60_000);
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     }
+    rateLimitOrThrow("activation:authorize:global", 500, 60_000);
     const normalizedCode = normalizeCode(parsed.data.user_code);
     rateLimitOrThrow(`activation:code:${normalizedCode}`, 40, 60_000);
+
+    const user = await requireUser(req, { requireSecondFactorIfEnrolled: true });
+    rateLimitOrThrow(`activation:authorize:${user.uid}`, 20, 60_000);
     try {
       const session = await authorizeSession(normalizedCode, user.uid);
       return rep.code(200).send({
