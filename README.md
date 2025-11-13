@@ -67,6 +67,7 @@ java --version
 4. Supply real secrets:
    - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
    - `functions/.env.local`: device token signing key, activation URL overrides, and optional ingest topic.
+   - `functions/.secret.local` (not committed): secrets declared via `defineSecret`, e.g. `DEVICE_TOKEN_PRIVATE_KEY`. The Firebase Functions emulator refuses to start without local overrides, so copy the private key from `.env.local` into this file as `DEVICE_TOKEN_PRIVATE_KEY=...`.
 
 ### Environment Variables
 
@@ -90,6 +91,18 @@ java --version
 | `DEVICE_ACCESS_TOKEN_TTL_SECONDS` | Access token lifetime (default 600). | `600` |
 | `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS` | Registration token lifetime (default 60). | `60` |
 | `INGEST_TOPIC` | Pub/Sub topic name for ingest batches (defaults to `ingest.raw`). | `ingest.raw` |
+
+### Firebase Secret Overrides
+
+Functions that declare secrets with `defineSecret` must be supplied locally through `functions/.secret.local`. Without this file the emulator attempts to read Secret Manager and fails with 403 errors (`Unable to access secret environment variables...`). Populate the file with shell-style assignments; multiline PEM values can stay escaped exactly like `.env.local`.
+
+```bash
+cat > functions/.secret.local <<'EOF'
+DEVICE_TOKEN_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\\nMC4CAQAwBQYDK2VwBCIEIPreplace-me-with-a-real-key\\n-----END PRIVATE KEY-----
+EOF
+```
+
+The file is ignored via `.gitignore`, so it is safe to keep real credentials there for local testing.
 
 ## Running Locally
 Launch the entire stack from the repo root:
