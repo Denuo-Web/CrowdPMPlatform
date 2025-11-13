@@ -91,6 +91,8 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
 
     const user = await requireUser(req, { requireSecondFactorIfEnrolled: true });
     if (enforceRateLimit(rep, `activation:authorize:${user.uid}`, 20, 60_000)) return;
+    // Prevent the same account from hammering a single code repeatedly.
+    if (enforceRateLimit(rep, `activation:authorize:${user.uid}:code:${normalizedCode}`, 5, 300_000)) return;
     try {
       const session = await authorizeSession(normalizedCode, user.uid);
       return rep.code(200).send({
