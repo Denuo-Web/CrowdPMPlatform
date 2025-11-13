@@ -23,4 +23,19 @@ export class MemoryRateLimiter {
   }
 }
 
+export class RateLimitError extends Error {
+  readonly statusCode = 429;
+  constructor(readonly retryAfterSeconds: number) {
+    super(`rate_limited:${retryAfterSeconds}`);
+  }
+}
+
 export const globalRateLimiter = new MemoryRateLimiter();
+
+export function rateLimitOrThrow(key: string, limit: number, windowMs: number) {
+  const attempt = globalRateLimiter.hit(key, limit, windowMs);
+  if (!attempt.allowed) {
+    throw new RateLimitError(attempt.retryAfterSeconds);
+  }
+  return attempt;
+}

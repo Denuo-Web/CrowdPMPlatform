@@ -2,10 +2,13 @@ import type { FastifyPluginAsync } from "fastify";
 import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { revokeDevice } from "../services/deviceRegistry.js";
+import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/devices", async (req) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`devices:list:${user.uid}`, 60, 60_000);
+    rateLimitOrThrow("devices:list:global", 2_000, 60_000);
     const devices = db().collection("devices");
     const [multiOwnerSnap, legacySnap] = await Promise.all([
       devices.where("ownerUserIds", "array-contains", user.uid).get(),
@@ -26,6 +29,8 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: { name?: string } }>("/v1/devices", async (req, rep) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`devices:create:${user.uid}`, 10, 60_000);
+    rateLimitOrThrow("devices:create:global", 500, 60_000);
     const { name } = req.body ?? {};
     const ref = db().collection("devices").doc();
     await ref.set({
@@ -40,7 +45,10 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Params: { deviceId: string } }>("/v1/devices/:deviceId/revoke", async (req, rep) => {
     const user = await requireUser(req);
+    rateLimitOrThrow(`devices:revoke:${user.uid}`, 30, 60_000);
     const { deviceId } = req.params;
+    rateLimitOrThrow(`devices:revoke:device:${deviceId}`, 10, 60_000);
+    rateLimitOrThrow("devices:revoke:global", 500, 60_000);
     const doc = await db().collection("devices").doc(deviceId).get();
     if (!doc.exists) {
       return rep.code(404).send({ error: "not_found", message: "Device not found" });
