@@ -1,50 +1,39 @@
-import { config } from "firebase-functions";
-import { defineSecret } from "firebase-functions/params";
+import { defineInt, defineSecret, defineString } from "firebase-functions/params";
+
+const DEFAULT_INGEST_TOPIC = "ingest.raw";
+const DEFAULT_ACTIVATION_URL = "https://crowdpmplatform.web.app/activate";
+const DEFAULT_TOKEN_ISSUER = "crowdpm";
+const DEFAULT_TOKEN_AUDIENCE = "crowdpm_device_api";
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 600;
+const DEFAULT_REGISTRATION_TOKEN_TTL_SECONDS = 60;
+
+const ingestTopicParam = defineString("INGEST_TOPIC", { default: DEFAULT_INGEST_TOPIC });
+const activationUrlParam = defineString("DEVICE_ACTIVATION_URL", { default: DEFAULT_ACTIVATION_URL });
+const verificationUriParam = defineString("DEVICE_VERIFICATION_URI", { default: DEFAULT_ACTIVATION_URL });
+const deviceTokenIssuerParam = defineString("DEVICE_TOKEN_ISSUER", { default: DEFAULT_TOKEN_ISSUER });
+const deviceTokenAudienceParam = defineString("DEVICE_TOKEN_AUDIENCE", { default: DEFAULT_TOKEN_AUDIENCE });
+const accessTokenTtlSecondsParam = defineInt("DEVICE_ACCESS_TOKEN_TTL_SECONDS", {
+  default: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
+});
+const registrationTokenTtlSecondsParam = defineInt("DEVICE_REGISTRATION_TOKEN_TTL_SECONDS", {
+  default: DEFAULT_REGISTRATION_TOKEN_TTL_SECONDS,
+});
 
 export const deviceTokenPrivateKeySecret = defineSecret("DEVICE_TOKEN_PRIVATE_KEY");
 
-type CrowdpmConfig = {
-  ingest?: {
-    topic?: string;
-  };
-  pairing?: {
-    activation_url?: string;
-    verification_uri?: string;
-  };
-  tokens?: {
-    issuer?: string;
-    audience?: string;
-    access_ttl_seconds?: number;
-    registration_ttl_seconds?: number;
-  };
-};
-
-function readConfig(): CrowdpmConfig {
-  try {
-    return config() as CrowdpmConfig;
-  }
-  catch {
-    return {};
-  }
-}
-
 export function getIngestTopic(): string {
-  const cfg = readConfig();
-  return process.env.INGEST_TOPIC || cfg.ingest?.topic || "ingest.raw";
+  const value = ingestTopicParam.value().trim();
+  return value || DEFAULT_INGEST_TOPIC;
 }
 
 export function getActivationBaseUrl(): string {
-  const cfg = readConfig();
-  return process.env.DEVICE_ACTIVATION_URL
-    || cfg.pairing?.activation_url
-    || "https://crowdpmplatform.web.app/activate";
+  const value = activationUrlParam.value().trim();
+  return value || DEFAULT_ACTIVATION_URL;
 }
 
 export function getVerificationUri(): string {
-  const cfg = readConfig();
-  return process.env.DEVICE_VERIFICATION_URI
-    || cfg.pairing?.verification_uri
-    || getActivationBaseUrl();
+  const value = verificationUriParam.value().trim();
+  return value || getActivationBaseUrl();
 }
 
 export function getDeviceTokenPrivateKey(): string {
@@ -61,33 +50,23 @@ export function getDeviceTokenPrivateKey(): string {
 }
 
 export function getDeviceTokenIssuer(): string {
-  const cfg = readConfig();
-  return process.env.DEVICE_TOKEN_ISSUER
-    || cfg.tokens?.issuer
-    || "crowdpm";
+  const value = deviceTokenIssuerParam.value().trim();
+  return value || DEFAULT_TOKEN_ISSUER;
 }
 
 export function getDeviceTokenAudience(): string {
-  const cfg = readConfig();
-  return process.env.DEVICE_TOKEN_AUDIENCE
-    || cfg.tokens?.audience
-    || "crowdpm_device_api";
+  const value = deviceTokenAudienceParam.value().trim();
+  return value || DEFAULT_TOKEN_AUDIENCE;
 }
 
 export function getAccessTokenTtlSeconds(): number {
-  const cfg = readConfig();
-  const envValue = Number(process.env.DEVICE_ACCESS_TOKEN_TTL_SECONDS);
-  if (Number.isFinite(envValue) && envValue > 0) return envValue;
-  const cfgValue = Number(cfg.tokens?.access_ttl_seconds);
-  if (Number.isFinite(cfgValue) && cfgValue > 0) return cfgValue;
-  return 600; // 10 minutes default
+  const value = accessTokenTtlSecondsParam.value();
+  if (Number.isFinite(value) && value > 0) return value;
+  return DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
 }
 
 export function getRegistrationTokenTtlSeconds(): number {
-  const cfg = readConfig();
-  const envValue = Number(process.env.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS);
-  if (Number.isFinite(envValue) && envValue > 0) return envValue;
-  const cfgValue = Number(cfg.tokens?.registration_ttl_seconds);
-  if (Number.isFinite(cfgValue) && cfgValue > 0) return cfgValue;
-  return 60; // 1 minute default
+  const value = registrationTokenTtlSecondsParam.value();
+  if (Number.isFinite(value) && value > 0) return value;
+  return DEFAULT_REGISTRATION_TOKEN_TTL_SECONDS;
 }
