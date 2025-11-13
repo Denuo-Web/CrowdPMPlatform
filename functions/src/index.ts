@@ -12,6 +12,7 @@ import { deviceTokenPrivateKeySecret } from "./lib/runtimeConfig.js";
 import { userSettingsRoutes } from "./routes/userSettings.js";
 import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
+import { ensureDevAuthUser } from "./lib/devAuthUser.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -47,6 +48,7 @@ api.addHook("preParsing", (request, reply, payload, done) => {
 
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
 const apiSetup = (async () => {
+  await ensureDevAuthUser();
   await api.register(cors, { origin: true });
   await api.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
