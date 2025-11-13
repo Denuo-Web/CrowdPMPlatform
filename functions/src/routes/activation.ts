@@ -1,8 +1,9 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { authorizeSession, findSessionByUserCode, sessionForClient } from "../services/devicePairing.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
+import { extractClientIp } from "../lib/http.js";
 
 const querySchema = z.object({
   user_code: z.string().min(8),
@@ -24,8 +25,13 @@ function normalizeCode(input: string): string {
   return input.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
+function requestIp(req: FastifyRequest): string {
+  return extractClientIp(req.headers) ?? req.ip ?? "unknown";
+}
+
 export const activationRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/device-activation", async (req, rep) => {
+    rateLimitOrThrow(`activation:get:ip:${requestIp(req)}`, 60, 60_000);
     const user = await requireUser(req);
     rateLimitOrThrow(`activation:get:${user.uid}`, 30, 60_000);
     rateLimitOrThrow("activation:get:global", 1_000, 60_000);
@@ -53,6 +59,7 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     }
+    rateLimitOrThrow(`activation:authorize:ip:${requestIp(req)}`, 60, 60_000);
     rateLimitOrThrow("activation:authorize:global", 500, 60_000);
     const normalizedCode = normalizeCode(parsed.data.user_code);
     rateLimitOrThrow(`activation:code:${normalizedCode}`, 40, 60_000);
