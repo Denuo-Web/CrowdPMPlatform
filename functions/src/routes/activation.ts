@@ -54,7 +54,14 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post("/v1/device-activation/authorize", async (req, rep) => {
+  app.post("/v1/device-activation/authorize", {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: "1 minute",
+      },
+    },
+  }, async (req, rep) => {
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
