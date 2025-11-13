@@ -1,4 +1,3 @@
-import "./env.js";
 import { config } from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
 

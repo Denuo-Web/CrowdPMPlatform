@@ -1,4 +1,3 @@
-import "./env.js";
 import { app } from "./fire.js";
 
 function isEmulatorRuntime() {
@@ -11,10 +10,6 @@ const DEFAULT_DISPLAY_NAME = process.env.DEV_AUTH_USER_DISPLAY_NAME?.trim() || "
 
 export async function ensureDevAuthUser() {
   if (!isEmulatorRuntime()) return;
-  if (!DEFAULT_EMAIL || !DEFAULT_PASSWORD) {
-    console.warn("[dev-bootstrap] DEV_AUTH_USER_EMAIL and DEV_AUTH_USER_PASSWORD must be set to seed a test user.");
-    return;
-  }
 
   const auth = app().auth();
   try {
