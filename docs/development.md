@@ -114,6 +114,7 @@ cp functions/.env.example functions/.env.local
 ```
 - Replace the placeholder `DEVICE_TOKEN_PRIVATE_KEY` with a real Ed25519 private key (PKCS8 PEM). The emulator can reuse the sample key from `.env.example`, but production-like flows should generate their own.
 - Adjust `DEVICE_ACTIVATION_URL`, `DEVICE_VERIFICATION_URI`, and `INGEST_TOPIC` only when testing alternative activation sites or Pub/Sub topics.
+- (Optional) Override the default Auth emulator test account with `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME`. If you leave them unset, the emulator seeds `smoke-tester@crowdpm.dev / crowdpm-dev` for you each time `pnpm dev` runs.
 
 ---
 
@@ -148,6 +149,9 @@ Expected JSON: `{ "ok": true }`.
 
 ### 8.3 Emulator UI
 Visit `http://localhost:4000` to inspect Firestore documents, Pub/Sub messages, Storage files, and emulator logs.
+
+### 8.4 Default Auth Emulator User
+The Functions emulator now auto-creates a test account every time you run `pnpm dev`, so you no longer need to sign up manually after restarts. Log in with `smoke-tester@crowdpm.dev` / `crowdpm-dev` out of the box. Set `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME` in `functions/.env.local` if you prefer different credentials (they apply only to the local emulator).
 
 If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fixing the issue.
 
