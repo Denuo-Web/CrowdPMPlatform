@@ -1,7 +1,7 @@
 import { onMessagePublished } from "firebase-functions/v2/pubsub";
 import { bucket, db, hourBucket } from "../lib/fire.js";
 import { IngestBatch } from "../lib/validation.js";
-import { getIngestTopic } from "../lib/runtimeConfig.js";
+import { ingestTopicParam } from "../lib/runtimeConfig.js";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
@@ -9,7 +9,10 @@ import {
 } from "../lib/batchVisibility.js";
 
 export const ingestWorker = onMessagePublished(
-  { topic: getIngestTopic() },
+  {
+    // Allow the runtime to resolve the topic param lazily without calling `.value()` during deploys.
+    topic: ingestTopicParam as unknown as string,
+  },
   async (event) => {
     const msg = event.data.message.json as { deviceId: string; batchId: string; path: string; visibility?: string };
     const [buf] = await bucket().file(msg.path).download();

@@ -7,15 +7,15 @@ const DEFAULT_TOKEN_AUDIENCE = "crowdpm_device_api";
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 600;
 const DEFAULT_REGISTRATION_TOKEN_TTL_SECONDS = 60;
 
-const ingestTopicParam = defineString("INGEST_TOPIC", { default: DEFAULT_INGEST_TOPIC });
-const activationUrlParam = defineString("DEVICE_ACTIVATION_URL", { default: DEFAULT_ACTIVATION_URL });
-const verificationUriParam = defineString("DEVICE_VERIFICATION_URI", { default: DEFAULT_ACTIVATION_URL });
-const deviceTokenIssuerParam = defineString("DEVICE_TOKEN_ISSUER", { default: DEFAULT_TOKEN_ISSUER });
-const deviceTokenAudienceParam = defineString("DEVICE_TOKEN_AUDIENCE", { default: DEFAULT_TOKEN_AUDIENCE });
-const accessTokenTtlSecondsParam = defineInt("DEVICE_ACCESS_TOKEN_TTL_SECONDS", {
+export const ingestTopicParam = defineString("INGEST_TOPIC", { default: DEFAULT_INGEST_TOPIC });
+export const activationUrlParam = defineString("DEVICE_ACTIVATION_URL", { default: DEFAULT_ACTIVATION_URL });
+export const verificationUriParam = defineString("DEVICE_VERIFICATION_URI", { default: DEFAULT_ACTIVATION_URL });
+export const deviceTokenIssuerParam = defineString("DEVICE_TOKEN_ISSUER", { default: DEFAULT_TOKEN_ISSUER });
+export const deviceTokenAudienceParam = defineString("DEVICE_TOKEN_AUDIENCE", { default: DEFAULT_TOKEN_AUDIENCE });
+export const accessTokenTtlSecondsParam = defineInt("DEVICE_ACCESS_TOKEN_TTL_SECONDS", {
   default: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
 });
-const registrationTokenTtlSecondsParam = defineInt("DEVICE_REGISTRATION_TOKEN_TTL_SECONDS", {
+export const registrationTokenTtlSecondsParam = defineInt("DEVICE_REGISTRATION_TOKEN_TTL_SECONDS", {
   default: DEFAULT_REGISTRATION_TOKEN_TTL_SECONDS,
 });
 
