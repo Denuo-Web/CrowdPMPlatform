@@ -62,12 +62,12 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
       },
     },
   }, async (req, rep) => {
+    rateLimitOrThrow(`activation:authorize:ip:${requestIp(req)}`, 60, 60_000);
+    rateLimitOrThrow("activation:authorize:global", 500, 60_000);
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
     }
-    rateLimitOrThrow(`activation:authorize:ip:${requestIp(req)}`, 60, 60_000);
-    rateLimitOrThrow("activation:authorize:global", 500, 60_000);
     const normalizedCode = normalizeCode(parsed.data.user_code);
     rateLimitOrThrow(`activation:code:${normalizedCode}`, 40, 60_000);
 
