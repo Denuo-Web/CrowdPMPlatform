@@ -3,28 +3,15 @@ import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { revokeDevice } from "../services/deviceRegistry.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
+import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/devices", async (req) => {
     const user = await requireUser(req);
     rateLimitOrThrow(`devices:list:${user.uid}`, 60, 60_000);
     rateLimitOrThrow("devices:list:global", 2_000, 60_000);
-    const devices = db().collection("devices");
-    const [multiOwnerSnap, legacySnap] = await Promise.all([
-      devices.where("ownerUserIds", "array-contains", user.uid).get(),
-      devices.where("ownerUserId", "==", user.uid).get(),
-    ]);
-
-    const seen = new Map<string, Record<string, unknown>>();
-    [multiOwnerSnap, legacySnap].forEach((snap) => {
-      snap.forEach((doc) => {
-        if (!seen.has(doc.id)) {
-          seen.set(doc.id, doc.data());
-        }
-      });
-    });
-
-    return Array.from(seen.entries()).map(([id, data]) => ({ id, ...data }));
+    const { docs } = await loadOwnedDeviceDocs(user.uid);
+    return Array.from(docs.entries()).map(([id, data]) => ({ id, ...data }));
   });
 
   app.post<{ Body: { name?: string } }>("/v1/devices", async (req, rep) => {
@@ -53,12 +40,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     if (!doc.exists) {
       return rep.code(404).send({ error: "not_found", message: "Device not found" });
     }
-    const data = doc.data() as { ownerUserId?: string | null; ownerUserIds?: unknown } | undefined;
-    const owners = Array.isArray(data?.ownerUserIds)
-      ? data?.ownerUserIds.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : [];
-    const ownerUserId = typeof data?.ownerUserId === "string" ? data.ownerUserId : null;
-    if (ownerUserId !== user.uid && !owners.includes(user.uid)) {
+    if (!userOwnsDevice(doc.data(), user.uid)) {
       return rep.code(403).send({ error: "forbidden", message: "You do not own this device." });
     }
     await revokeDevice(deviceId, user.uid, "user_initiated");

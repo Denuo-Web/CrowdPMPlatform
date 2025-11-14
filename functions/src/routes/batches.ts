@@ -9,6 +9,7 @@ import {
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
+import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
 
 type BatchSummary = {
   batchId: string;
@@ -22,8 +23,6 @@ type BatchSummary = {
 type BatchDetail = BatchSummary & {
   points: IngestBatch["points"];
 };
-
-type DeviceRecord = Record<string, unknown>;
 
 function normaliseTimestamp(input: unknown): string | null {
   if (!input) return null;
@@ -48,30 +47,12 @@ function normaliseTimestamp(input: unknown): string | null {
   return null;
 }
 
-async function loadOwnedDevices(userId: string) {
-  const devices = db().collection("devices");
-  const [multiOwnerSnap, legacySnap] = await Promise.all([
-    devices.where("ownerUserIds", "array-contains", userId).get(),
-    devices.where("ownerUserId", "==", userId).get(),
-  ]);
-
-  const seen = new Map<string, DeviceRecord>();
-  [multiOwnerSnap, legacySnap].forEach((snap) => {
-    snap.forEach((doc) => {
-      if (!seen.has(doc.id)) {
-        seen.set(doc.id, doc.data());
-      }
-    });
-  });
-  return { devices, seen };
-}
-
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", async (req) => {
     const user = await requireUser(req);
     rateLimitOrThrow(`batches:list:${user.uid}`, 30, 60_000);
     rateLimitOrThrow("batches:list:global", 1_000, 60_000);
-    const { devices, seen } = await loadOwnedDevices(user.uid);
+    const { collection: devices, docs: seen } = await loadOwnedDeviceDocs(user.uid);
 
     const summaries = await Promise.all(
       Array.from(seen.entries()).map(async ([deviceId, deviceData]) => {
@@ -120,13 +101,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       return rep.code(404).send({ error: "not_found", message: "Device not found." });
     }
 
-    const ownerUserId = devSnap.get("ownerUserId");
-    const ownerUserIds = devSnap.get("ownerUserIds");
-    const ownerList = Array.isArray(ownerUserIds)
-      ? ownerUserIds.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : [];
-    const isOwner = ownerUserId === user.uid || ownerList.includes(user.uid);
-    if (!isOwner) {
+    if (!userOwnsDevice(devSnap.data(), user.uid)) {
       return rep.code(403).send({ error: "forbidden", message: "You do not have access to this device." });
     }
 
