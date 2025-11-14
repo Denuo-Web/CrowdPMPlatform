@@ -17,10 +17,44 @@ import { getDevice, updateDeviceLastSeen } from "./deviceRegistry.js";
 
 const pubsub = new PubSub();
 let cachedTopicName: string | null = null;
+const ensuredTopics = new Map<string, Promise<void>>();
 
 function resolveIngestTopic(): string {
   if (!cachedTopicName) cachedTopicName = getIngestTopic();
   return cachedTopicName;
+}
+
+function isEmulatorPubSub(): boolean {
+  return process.env.FUNCTIONS_EMULATOR === "true" || Boolean(process.env.PUBSUB_EMULATOR_HOST);
+}
+
+function isAlreadyExistsError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const code = Number((err as { code?: unknown }).code);
+  return code === 6 || code === 409;
+}
+
+async function ensureTopicExists(topicName: string): Promise<void> {
+  if (!isEmulatorPubSub()) return;
+  if (!ensuredTopics.has(topicName)) {
+    const ensurePromise = (async () => {
+      const topic = pubsub.topic(topicName);
+      const [exists] = await topic.exists();
+      if (exists) return;
+      try {
+        await pubsub.createTopic(topicName);
+      }
+      catch (err) {
+        if (!isAlreadyExistsError(err)) throw err;
+      }
+    })().catch((err) => {
+      ensuredTopics.delete(topicName);
+      throw err;
+    });
+    ensuredTopics.set(topicName, ensurePromise);
+  }
+  const pending = ensuredTopics.get(topicName);
+  if (pending) await pending;
 }
 
 type RequestWithRawBody = Request & { rawBody?: Buffer | string };
@@ -70,7 +104,9 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
   const batchId = crypto.randomUUID();
   const path = `ingest/${deviceId}/${batchId}.json`;
   await bucket().file(path).save(raw, { contentType: "application/json" });
-  await pubsub.topic(resolveIngestTopic()).publishMessage({ json: { deviceId, batchId, path, visibility } });
+  const topicName = resolveIngestTopic();
+  await ensureTopicExists(topicName);
+  await pubsub.topic(topicName).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
   await updateDeviceLastSeen(deviceId).catch(() => {});
 

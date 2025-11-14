@@ -10,6 +10,7 @@ import {
 } from "../lib/batchVisibility.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
+import { timestampToIsoString, timestampToMillis } from "../lib/time.js";
 
 type BatchSummary = {
   batchId: string;
@@ -23,29 +24,6 @@ type BatchSummary = {
 type BatchDetail = BatchSummary & {
   points: IngestBatch["points"];
 };
-
-function normaliseTimestamp(input: unknown): string | null {
-  if (!input) return null;
-  if (typeof input === "string") {
-    const parsed = Date.parse(input);
-    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
-  }
-  if (typeof input === "number") {
-    return Number.isFinite(input) ? new Date(input).toISOString() : null;
-  }
-  if (input instanceof Date) {
-    return input.toISOString();
-  }
-  if (typeof input === "object" && "toDate" in input && typeof (input as { toDate?: () => Date }).toDate === "function") {
-    try {
-      return (input as { toDate: () => Date }).toDate().toISOString();
-    }
-    catch {
-      return null;
-    }
-  }
-  return null;
-}
 
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", async (req) => {
@@ -65,7 +43,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
         return batchSnap.docs.map((doc) => {
           const data = doc.data() as { count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
           const count = typeof data?.count === "number" ? data.count : 0;
-          const processedAt = normaliseTimestamp(data?.processedAt);
+          const processedAt = timestampToIsoString(data?.processedAt);
           const visibility = normalizeBatchVisibility(data?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
           return {
             batchId: doc.id,
@@ -82,8 +60,8 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     return summaries
       .flat()
       .sort((a, b) => {
-        const timeA = a.processedAt ? Date.parse(a.processedAt) : 0;
-        const timeB = b.processedAt ? Date.parse(b.processedAt) : 0;
+        const timeA = timestampToMillis(a.processedAt) ?? 0;
+        const timeB = timestampToMillis(b.processedAt) ?? 0;
         return timeB - timeA;
       });
   });
@@ -131,7 +109,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       return rep.code(500).send({ error: "storage_error", message: "Unable to read batch payload." });
     }
 
-    const processedAt = normaliseTimestamp(batchData?.processedAt);
+    const processedAt = timestampToIsoString(batchData?.processedAt);
     const count = typeof batchData?.count === "number" ? batchData.count : points.length;
     const visibility = normalizeBatchVisibility(batchData?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
 

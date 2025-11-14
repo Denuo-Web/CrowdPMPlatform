@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { firestore } from "firebase-admin";
 import { db } from "../lib/fire.js";
 import { revokeTokensForDevice } from "./deviceTokens.js";
+import { toDate } from "../lib/time.js";
 
 type DocumentData = firestore.DocumentData;
 
@@ -20,25 +21,6 @@ export type DeviceRecord = {
   pubKlThumbprint: string;
   keThumbprint: string;
 };
-
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return new Date(value);
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : new Date(parsed);
-  }
-  if (typeof value === "object" && value && "toDate" in value) {
-    try {
-      return (value as { toDate: () => Date }).toDate();
-    }
-    catch {
-      return null;
-    }
-  }
-  return null;
-}
 
 function normalizeDevice(id: string, data: DocumentData | undefined): DeviceRecord | null {
   if (!data) return null;

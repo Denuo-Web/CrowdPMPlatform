@@ -41,6 +41,8 @@ import { useUserSettings } from "../providers/UserSettingsProvider";
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
 const LAST_DEVICE_STORAGE_KEY = "crowdpm:lastSmokeTestDevice";
+const LAST_SELECTION_STORAGE_KEY = "crowdpm:lastSmokeSelection";
+const LAST_BATCH_CACHE_STORAGE_KEY = "crowdpm:lastSmokeBatchCache";
 
 const DEFAULT_POINT_COUNT = 60;
 
@@ -311,6 +313,20 @@ function rewritePoints(
   return JSON.stringify({ points: nextPoints }, null, 2);
 }
 
+function encodeBatchKey(deviceId: string, batchId: string): string {
+  return `${deviceId}::${batchId}`;
+}
+
+function decodeBatchKey(raw: string | null | undefined): { deviceId: string; batchId: string } | null {
+  if (!raw) return null;
+  const separator = raw.indexOf("::");
+  if (separator === -1) return null;
+  const deviceId = raw.slice(0, separator);
+  const batchId = raw.slice(separator + 2);
+  if (!deviceId || !batchId) return null;
+  return { deviceId, batchId };
+}
+
 export default function SmokeTestLab() {
   const { user } = useAuth();
   const { settings } = useUserSettings();
@@ -349,6 +365,14 @@ export default function SmokeTestLab() {
   );
   const scopedLastDeviceKey = useMemo(
     () => user?.uid ? `${LAST_DEVICE_STORAGE_KEY}:${user.uid}` : LAST_DEVICE_STORAGE_KEY,
+    [user?.uid]
+  );
+  const scopedSelectionKey = useMemo(
+    () => user?.uid ? `${LAST_SELECTION_STORAGE_KEY}:${user.uid}` : LAST_SELECTION_STORAGE_KEY,
+    [user?.uid]
+  );
+  const scopedLastBatchCacheKey = useMemo(
+    () => user?.uid ? `${LAST_BATCH_CACHE_STORAGE_KEY}:${user.uid}` : LAST_BATCH_CACHE_STORAGE_KEY,
     [user?.uid]
   );
 
@@ -515,6 +539,22 @@ export default function SmokeTestLab() {
       if (typeof window !== "undefined" && user) {
         window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
         window.localStorage.setItem(scopedLastDeviceKey, result.deviceId);
+        window.localStorage.setItem(scopedSelectionKey, encodeBatchKey(result.deviceId, result.batchId));
+        const cachePoints = Array.isArray(result.points) && result.points.length ? result.points : payload.points;
+        if (cachePoints.length) {
+          const cachePayload = {
+            summary: {
+              batchId: result.batchId,
+              deviceId: result.deviceId,
+              deviceName: null,
+              count: cachePoints.length,
+              processedAt: new Date().toISOString(),
+              visibility: result.visibility ?? batchVisibility,
+            },
+            points: cachePoints,
+          };
+          window.localStorage.setItem(scopedLastBatchCacheKey, JSON.stringify(cachePayload));
+        }
       }
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:completed", { detail: result }));
     }
@@ -547,6 +587,22 @@ export default function SmokeTestLab() {
         const last = window.localStorage.getItem(scopedLastDeviceKey);
         if (last && targetIds.includes(last)) {
           window.localStorage.removeItem(scopedLastDeviceKey);
+        }
+        const lastSelection = decodeBatchKey(window.localStorage.getItem(scopedSelectionKey));
+        if (lastSelection && targetIds.includes(lastSelection.deviceId)) {
+          window.localStorage.removeItem(scopedSelectionKey);
+        }
+        const cachedRaw = window.localStorage.getItem(scopedLastBatchCacheKey);
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw) as { summary?: { deviceId?: string } };
+            if (cached?.summary && cached.summary.deviceId && targetIds.includes(cached.summary.deviceId)) {
+              window.localStorage.removeItem(scopedLastBatchCacheKey);
+            }
+          }
+          catch {
+            window.localStorage.removeItem(scopedLastBatchCacheKey);
+          }
         }
       }
       window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
@@ -581,6 +637,30 @@ export default function SmokeTestLab() {
       historyRef.current = updatedHistory;
       if (typeof window !== "undefined" && user) {
         window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
+        const lastSelection = decodeBatchKey(window.localStorage.getItem(scopedSelectionKey));
+        if (
+          lastSelection
+          && lastSelection.batchId === entry.response.batchId
+          && lastSelection.deviceId === entry.response.deviceId
+        ) {
+          window.localStorage.removeItem(scopedSelectionKey);
+        }
+        const cachedRaw = window.localStorage.getItem(scopedLastBatchCacheKey);
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw) as { summary?: { deviceId?: string; batchId?: string } };
+            if (
+              cached?.summary
+              && cached.summary.deviceId === entry.response.deviceId
+              && cached.summary.batchId === entry.response.batchId
+            ) {
+              window.localStorage.removeItem(scopedLastBatchCacheKey);
+            }
+          }
+          catch {
+            window.localStorage.removeItem(scopedLastBatchCacheKey);
+          }
+        }
       }
       if (smokeResult?.batchId === entry.response.batchId) {
         setSmokeResult(null);

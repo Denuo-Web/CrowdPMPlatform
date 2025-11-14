@@ -1,9 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { firestore } from "firebase-admin";
 import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { revokeDevice } from "../services/deviceRegistry.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
+import { timestampToIsoString } from "../lib/time.js";
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/devices", async (req) => {
@@ -11,7 +13,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     rateLimitOrThrow(`devices:list:${user.uid}`, 60, 60_000);
     rateLimitOrThrow("devices:list:global", 2_000, 60_000);
     const { docs } = await loadOwnedDeviceDocs(user.uid);
-    return Array.from(docs.entries()).map(([id, data]) => ({ id, ...data }));
+    return Array.from(docs.entries()).map(([id, data]) => serializeDeviceDoc(id, data));
   });
 
   app.post<{ Body: { name?: string } }>("/v1/devices", async (req, rep) => {
@@ -47,3 +49,12 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     return rep.code(200).send({ status: "revoked" });
   });
 };
+
+function serializeDeviceDoc(id: string, data: firestore.DocumentData | undefined) {
+  const createdAt = timestampToIsoString(data?.createdAt);
+  const lastSeenAt = timestampToIsoString(data?.lastSeenAt);
+  const payload: Record<string, unknown> = { id, ...data };
+  payload.createdAt = createdAt ?? null;
+  payload.lastSeenAt = lastSeenAt ?? null;
+  return payload;
+}

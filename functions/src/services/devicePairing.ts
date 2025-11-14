@@ -4,6 +4,7 @@ import { db } from "../lib/fire.js";
 import { decodeBase64Url, encodeBase64Url } from "../lib/encoding.js";
 import { fingerprintForPublicKey, generateDeviceCode, generateUserCode } from "../lib/pairingCodes.js";
 import { getVerificationUri } from "../lib/runtimeConfig.js";
+import { toDate } from "../lib/time.js";
 
 type DocumentData = firestore.DocumentData;
 type DocumentReference = firestore.DocumentReference<DocumentData>;
@@ -42,25 +43,6 @@ export type PairingSession = {
 
 function httpError(statusCode: number, message: string) {
   return Object.assign(new Error(message), { statusCode });
-}
-
-function toDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "number") return Number.isFinite(value) ? new Date(value) : null;
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : new Date(parsed);
-  }
-  if (typeof value === "object" && "toDate" in (value as Record<string, unknown>)) {
-    try {
-      return (value as { toDate: () => Date }).toDate();
-    }
-    catch {
-      return null;
-    }
-  }
-  return null;
 }
 
 function canonicalizeUserCode(input: string): string {
