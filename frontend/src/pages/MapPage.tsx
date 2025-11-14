@@ -182,7 +182,10 @@ export default function MapPage() {
     return parseStoredSmokeBatch(window.localStorage.getItem(userScopedCacheKey));
   }, [userScopedCacheKey]);
 
-  const visibleBatches = user && batchesOwner === user.uid ? batches : [];
+  const visibleBatches = useMemo(
+    () => (user && batchesOwner === user.uid ? batches : []),
+    [batches, batchesOwner, user]
+  );
 
   const resetRows = useCallback(() => {
     setRows([]);
@@ -263,7 +266,7 @@ export default function MapPage() {
   }, [applyRecords, getCachedBatch, selectedBatchKey, setBatches, setSelectedBatchKey, user, userScopedCacheKey]);
 
   useEffect(() => {
-    hydrateCachedBatch();
+    deferStateUpdate(() => { hydrateCachedBatch(); });
   }, [hydrateCachedBatch]);
 
   const loadBatchRecords = useCallback(async (key: string) => {
