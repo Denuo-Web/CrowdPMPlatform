@@ -12,6 +12,7 @@ import { useAuth } from "../providers/AuthProvider";
 
 const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
+const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 
 function scopedKey(base: string, uid?: string | null) {
   return uid ? `${base}:${uid}` : base;
@@ -41,6 +42,49 @@ function decodeBatchKey(value: string): BatchKey | null {
   const batchId = value.slice(separator + 2);
   if (!deviceId || !batchId) return null;
   return { deviceId, batchId };
+}
+
+type StoredSmokeBatch = {
+  summary: BatchSummary;
+  points: IngestSmokeTestPoint[];
+};
+
+function parseStoredSmokeBatch(raw: string | null): StoredSmokeBatch | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { summary?: Partial<BatchSummary>; points?: IngestSmokeTestPoint[] } | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    const summary = parsed.summary;
+    if (
+      !summary
+      || typeof summary.batchId !== "string"
+      || typeof summary.deviceId !== "string"
+    ) {
+      return null;
+    }
+    if (!Array.isArray(parsed.points) || !parsed.points.length) {
+      return null;
+    }
+    const normalizedSummary: BatchSummary = {
+      batchId: summary.batchId,
+      deviceId: summary.deviceId,
+      deviceName: typeof summary.deviceName === "string" ? summary.deviceName : null,
+      count: typeof summary.count === "number" ? summary.count : parsed.points.length,
+      processedAt: typeof summary.processedAt === "string" ? summary.processedAt : new Date().toISOString(),
+      visibility: summary.visibility === "public" ? "public" : "private",
+    };
+    return { summary: normalizedSummary, points: parsed.points };
+  }
+  catch {
+    return null;
+  }
+}
+
+function mergeCachedSummary(list: BatchSummary[], cached: StoredSmokeBatch | null): BatchSummary[] {
+  if (!cached) return list;
+  const exists = list.some((batch) => batch.batchId === cached.summary.batchId && batch.deviceId === cached.summary.deviceId);
+  if (exists) return list;
+  return [cached.summary, ...list];
 }
 
 function formatBatchLabel(batch: BatchSummary) {
@@ -131,6 +175,12 @@ export default function MapPage() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const batchCacheRef = useRef(new Map<string, MeasurementRecord[]>());
   const pendingSelectionRef = useRef<{ key: string | null; attempts: number }>({ key: null, attempts: 0 });
+  const cacheHydratedRef = useRef<string | null>(null);
+  const userScopedCacheKey = useMemo(() => scopedKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined), [user?.uid]);
+  const getCachedBatch = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    return parseStoredSmokeBatch(window.localStorage.getItem(userScopedCacheKey));
+  }, [userScopedCacheKey]);
 
   const visibleBatches = user && batchesOwner === user.uid ? batches : [];
 
@@ -142,16 +192,17 @@ export default function MapPage() {
   const refreshBatches = useCallback(async () => {
     if (!user) return;
     const targetUid = user.uid;
+    const mergeWithCached = (list: BatchSummary[]) => mergeCachedSummary(list, getCachedBatch());
     try {
       const list = await listBatches();
-      setBatches(list);
+      setBatches(mergeWithCached(list));
       setBatchesOwner(targetUid);
     }
     catch {
-      setBatches([]);
+      setBatches(mergeWithCached([]));
       setBatchesOwner(targetUid);
     }
-  }, [user]);
+  }, [getCachedBatch, user]);
 
   useEffect(() => {
     if (!user) {
@@ -187,6 +238,33 @@ export default function MapPage() {
     resetRows();
     return false;
   }, [resetRows]);
+
+  const hydrateCachedBatch = useCallback(() => {
+    if (typeof window === "undefined" || !user) return;
+    if (cacheHydratedRef.current === userScopedCacheKey) return;
+    const cached = getCachedBatch();
+    if (!cached) return;
+    cacheHydratedRef.current = userScopedCacheKey;
+    const key = encodeBatchKey(cached.summary.deviceId, cached.summary.batchId);
+    const records = pointsToMeasurementRecords(cached.points, cached.summary.deviceId, cached.summary.batchId);
+    batchCacheRef.current.set(key, records);
+    setBatches((prev) => {
+      const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
+      return [cached.summary, ...filtered];
+    });
+    setBatchesOwner(user.uid);
+    if (!selectedBatchKey) {
+      setSelectedBatchKey(key);
+      applyRecords(records);
+    }
+    else if (selectedBatchKey === key) {
+      applyRecords(records);
+    }
+  }, [applyRecords, getCachedBatch, selectedBatchKey, setBatches, setSelectedBatchKey, user, userScopedCacheKey]);
+
+  useEffect(() => {
+    hydrateCachedBatch();
+  }, [hydrateCachedBatch]);
 
   const loadBatchRecords = useCallback(async (key: string) => {
     if (!key) return [];
@@ -259,15 +337,15 @@ export default function MapPage() {
         resetRows();
       }
       setBatchesOwner(user.uid);
+      const summary: BatchSummary = {
+        batchId: detail.batchId,
+        deviceId: deviceForBatch,
+        deviceName: null,
+        count: rawPoints.length,
+        processedAt: new Date().toISOString(),
+        visibility: detail.visibility ?? "private",
+      };
       setBatches((prev) => {
-        const summary: BatchSummary = {
-          batchId: detail.batchId,
-          deviceId: deviceForBatch,
-          deviceName: null,
-          count: rawPoints.length,
-          processedAt: new Date().toISOString(),
-          visibility: detail.visibility ?? "private",
-        };
         const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
         return [summary, ...filtered];
       });
@@ -276,6 +354,12 @@ export default function MapPage() {
       if (typeof window !== "undefined") {
         try {
           window.localStorage.setItem(userScopedSelectionKey, key);
+          if (rawPoints.length) {
+            window.localStorage.setItem(userScopedCacheKey, JSON.stringify({ summary, points: rawPoints }));
+          }
+          else {
+            window.localStorage.removeItem(userScopedCacheKey);
+          }
         }
         catch (err) {
           console.warn(err);
@@ -302,6 +386,10 @@ export default function MapPage() {
         if (typeof window !== "undefined") {
           try {
             window.localStorage.removeItem(userScopedSelectionKey);
+            const cached = getCachedBatch();
+            if (cached && cleared.has(cached.summary.deviceId)) {
+              window.localStorage.removeItem(userScopedCacheKey);
+            }
           }
           catch (err) {
             console.warn(err);
@@ -317,7 +405,7 @@ export default function MapPage() {
       window.removeEventListener("ingest-smoke-test:completed", handleCompleted);
       window.removeEventListener("ingest-smoke-test:cleared", handleCleared);
     };
-  }, [refreshBatches, resetRows, selectedBatchKey, user, userScopedSelectionKey]);
+  }, [getCachedBatch, refreshBatches, resetRows, selectedBatchKey, user, userScopedCacheKey, userScopedSelectionKey]);
 
   useEffect(() => {
     if (!user || !selectedBatchKey) {
