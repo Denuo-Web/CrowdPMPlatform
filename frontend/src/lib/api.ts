@@ -220,11 +220,16 @@ export async function runIngestSmokeTest(
   });
 }
 
-export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Promise<{ clearedDeviceId: string | null; clearedDeviceIds?: string[] }> {
+export type IngestSmokeTestCleanupResponse = {
+  clearedDeviceId: string | null;
+  clearedDeviceIds?: string[];
+};
+
+export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Promise<IngestSmokeTestCleanupResponse> {
   const payload = Array.isArray(deviceId)
     ? (deviceId.length ? { deviceIds: deviceId } : {})
     : (deviceId ? { deviceId } : {});
-  return requestJson<{ clearedDeviceId: string | null; clearedDeviceIds?: string[] }>("/v1/admin/ingest-smoke-test/cleanup", {
+  return requestJson<IngestSmokeTestCleanupResponse>("/v1/admin/ingest-smoke-test/cleanup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)

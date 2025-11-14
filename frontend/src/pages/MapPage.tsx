@@ -7,6 +7,7 @@ import {
   type MeasurementRecord,
   type IngestSmokeTestResponse,
   type IngestSmokeTestPoint,
+  type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -122,9 +123,14 @@ function pointsToMeasurementRecords(points: IngestSmokeTestPoint[], fallbackDevi
     });
 }
 
-type CleanupDetail = { clearedDeviceId: string | null; clearedDeviceIds?: string[] };
+type MapPageProps = {
+  pendingSmokeResult?: IngestSmokeTestResponse | null;
+  onSmokeResultConsumed?: () => void;
+  pendingCleanupDetail?: IngestSmokeTestCleanupResponse | null;
+  onCleanupDetailConsumed?: () => void;
+};
 
-function buildClearedSet(detail?: CleanupDetail) {
+function buildClearedSet(detail?: IngestSmokeTestCleanupResponse | null) {
   const cleared = new Set<string>();
   if (!detail) return cleared;
   if (Array.isArray(detail.clearedDeviceIds)) {
@@ -146,12 +152,18 @@ function deferStateUpdate(action: () => void) {
   Promise.resolve().then(action).catch(() => {});
 }
 
-export default function MapPage() {
+export default function MapPage({
+  pendingSmokeResult = null,
+  onSmokeResultConsumed,
+  pendingCleanupDetail = null,
+  onCleanupDetailConsumed,
+}: MapPageProps = {}) {
   const { user } = useAuth();
   const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
   const userScopedLegacyKey = useMemo(() => scopedKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [batchesOwner, setBatchesOwner] = useState<string | null>(null);
+  const [isLoadingBatch, setIsLoadingBatch] = useState(false);
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>(() => {
     if (typeof window === "undefined" || !user) return "";
     try {
@@ -183,9 +195,16 @@ export default function MapPage() {
   }, [userScopedCacheKey]);
 
   const visibleBatches = useMemo(
-    () => (user && batchesOwner === user.uid ? batches : []),
-    [batches, batchesOwner, user]
+    () => (user ? batches : []),
+    [batches, user]
   );
+
+  const summaryForSelection = useMemo(() => {
+    if (!selectedBatchKey) return null;
+    const parsed = decodeBatchKey(selectedBatchKey);
+    if (!parsed) return null;
+    return visibleBatches.find((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId) ?? null;
+  }, [selectedBatchKey, visibleBatches]);
 
   const resetRows = useCallback(() => {
     setRows([]);
@@ -213,6 +232,8 @@ export default function MapPage() {
         setSelectedBatchKey("");
         batchCacheRef.current.clear();
         resetRows();
+        setBatches([]);
+        setBatchesOwner(null);
       });
       return;
     }
@@ -236,9 +257,11 @@ export default function MapPage() {
     if (records.length) {
       setRows(records);
       setSelectedIndex(records.length - 1);
+      setIsLoadingBatch(false);
       return true;
     }
     resetRows();
+    setIsLoadingBatch(false);
     return false;
   }, [resetRows]);
 
@@ -284,23 +307,38 @@ export default function MapPage() {
   useEffect(() => {
     if (!user || !selectedBatchKey) {
       if (!selectedBatchKey) deferStateUpdate(resetRows);
+      setIsLoadingBatch(false);
       return;
     }
     let cancelled = false;
-    (async () => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const expectsData = Boolean(summaryForSelection && summaryForSelection.count > 0);
+    setIsLoadingBatch(true);
+
+    const attemptLoad = async (attempt: number) => {
       try {
         const records = await loadBatchRecords(selectedBatchKey);
-        if (!cancelled) applyRecords(records);
+        if (cancelled) return;
+        if (!records.length && expectsData && attempt < 5) {
+          retryTimer = setTimeout(() => { attemptLoad(attempt + 1); }, 1_500);
+          return;
+        }
+        applyRecords(records);
       }
       catch (err) {
         if (!cancelled) {
           console.warn("Failed to load batch measurements", err);
-          resetRows();
+          setIsLoadingBatch(false);
         }
       }
-    })();
-    return () => { cancelled = true; };
-  }, [applyRecords, loadBatchRecords, resetRows, selectedBatchKey, user]);
+    };
+
+    attemptLoad(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [applyRecords, loadBatchRecords, resetRows, selectedBatchKey, summaryForSelection, user]);
 
   const handleBatchSelect = useCallback((value: string) => {
     setSelectedBatchKey(value);
@@ -318,49 +356,75 @@ export default function MapPage() {
     }
   }, [resetRows, user, userScopedSelectionKey]);
 
-  useEffect(() => {
-    const handleCompleted = (event: Event) => {
-      if (!user) return;
-      const detail = (event as CustomEvent<IngestSmokeTestResponse>).detail;
-      if (!detail?.batchId) return;
-      const deviceForBatch = detail.deviceId || detail.seededDeviceId;
-      if (!deviceForBatch) return;
-      const key = encodeBatchKey(deviceForBatch, detail.batchId);
-      const rawPoints = detail.points?.length
-        ? detail.points
-        : detail.payload?.points ?? [];
-      if (rawPoints.length) {
-        const provisional = pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId);
-        batchCacheRef.current.set(key, provisional);
-        setRows(provisional);
-        setSelectedIndex(provisional.length - 1);
+  const processSmokeResult = useCallback((detail: IngestSmokeTestResponse) => {
+    if (!user || !detail?.batchId) return;
+    const deviceForBatch = detail.deviceId || detail.seededDeviceId;
+    if (!deviceForBatch) return;
+    const key = encodeBatchKey(deviceForBatch, detail.batchId);
+    const rawPoints = detail.points?.length ? detail.points : detail.payload?.points ?? [];
+    if (rawPoints.length) {
+      const provisional = pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId);
+      batchCacheRef.current.set(key, provisional);
+      setRows(provisional);
+      setSelectedIndex(provisional.length - 1);
+    }
+    else {
+      batchCacheRef.current.delete(key);
+      resetRows();
+    }
+    setBatchesOwner(user.uid);
+    const summary: BatchSummary = {
+      batchId: detail.batchId,
+      deviceId: deviceForBatch,
+      deviceName: null,
+      count: rawPoints.length,
+      processedAt: new Date().toISOString(),
+      visibility: detail.visibility ?? "private",
+    };
+    setBatches((prev) => {
+      const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
+      return [summary, ...filtered];
+    });
+    setSelectedBatchKey(key);
+    pendingSelectionRef.current = { key, attempts: 0 };
+    setIsLoadingBatch(false);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(userScopedSelectionKey, key);
+        if (rawPoints.length) {
+          window.localStorage.setItem(userScopedCacheKey, JSON.stringify({ summary, points: rawPoints }));
+        }
+        else {
+          window.localStorage.removeItem(userScopedCacheKey);
+        }
       }
-      else {
+      catch (err) {
+        console.warn(err);
+      }
+    }
+    refreshBatches();
+  }, [refreshBatches, resetRows, user, userScopedCacheKey, userScopedSelectionKey]);
+
+  const processCleanupDetail = useCallback((detail: IngestSmokeTestCleanupResponse) => {
+    if (!user) return;
+    const cleared = buildClearedSet(detail);
+    if (!cleared.size) return;
+    for (const key of Array.from(batchCacheRef.current.keys())) {
+      const parsed = decodeBatchKey(key);
+      if (parsed && cleared.has(parsed.deviceId)) {
         batchCacheRef.current.delete(key);
-        resetRows();
       }
-      setBatchesOwner(user.uid);
-      const summary: BatchSummary = {
-        batchId: detail.batchId,
-        deviceId: deviceForBatch,
-        deviceName: null,
-        count: rawPoints.length,
-        processedAt: new Date().toISOString(),
-        visibility: detail.visibility ?? "private",
-      };
-      setBatches((prev) => {
-        const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
-        return [summary, ...filtered];
-      });
-      setSelectedBatchKey(key);
-      pendingSelectionRef.current = { key, attempts: 0 };
+    }
+    const current = decodeBatchKey(selectedBatchKey);
+    if (current && cleared.has(current.deviceId)) {
+      setSelectedBatchKey("");
+      resetRows();
+      setIsLoadingBatch(false);
       if (typeof window !== "undefined") {
         try {
-          window.localStorage.setItem(userScopedSelectionKey, key);
-          if (rawPoints.length) {
-            window.localStorage.setItem(userScopedCacheKey, JSON.stringify({ summary, points: rawPoints }));
-          }
-          else {
+          window.localStorage.removeItem(userScopedSelectionKey);
+          const cached = getCachedBatch();
+          if (cached && cleared.has(cached.summary.deviceId)) {
             window.localStorage.removeItem(userScopedCacheKey);
           }
         }
@@ -368,51 +432,26 @@ export default function MapPage() {
           console.warn(err);
         }
       }
-      refreshBatches();
-    };
-
-    const handleCleared = (event: Event) => {
-      if (!user) return;
-      const detail = (event as CustomEvent<CleanupDetail>).detail;
-      const cleared = buildClearedSet(detail);
-      if (!cleared.size) return;
-      for (const key of Array.from(batchCacheRef.current.keys())) {
-        const parsed = decodeBatchKey(key);
-        if (parsed && cleared.has(parsed.deviceId)) {
-          batchCacheRef.current.delete(key);
-        }
-      }
-      const current = decodeBatchKey(selectedBatchKey);
-      if (current && cleared.has(current.deviceId)) {
-        setSelectedBatchKey("");
-        resetRows();
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.removeItem(userScopedSelectionKey);
-            const cached = getCachedBatch();
-            if (cached && cleared.has(cached.summary.deviceId)) {
-              window.localStorage.removeItem(userScopedCacheKey);
-            }
-          }
-          catch (err) {
-            console.warn(err);
-          }
-        }
-      }
-      refreshBatches();
-    };
-
-    window.addEventListener("ingest-smoke-test:completed", handleCompleted);
-    window.addEventListener("ingest-smoke-test:cleared", handleCleared);
-    return () => {
-      window.removeEventListener("ingest-smoke-test:completed", handleCompleted);
-      window.removeEventListener("ingest-smoke-test:cleared", handleCleared);
-    };
+    }
+    refreshBatches();
   }, [getCachedBatch, refreshBatches, resetRows, selectedBatchKey, user, userScopedCacheKey, userScopedSelectionKey]);
+
+  useEffect(() => {
+    if (!pendingSmokeResult) return;
+    processSmokeResult(pendingSmokeResult);
+    onSmokeResultConsumed?.();
+  }, [onSmokeResultConsumed, pendingSmokeResult, processSmokeResult]);
+
+  useEffect(() => {
+    if (!pendingCleanupDetail) return;
+    processCleanupDetail(pendingCleanupDetail);
+    onCleanupDetailConsumed?.();
+  }, [onCleanupDetailConsumed, pendingCleanupDetail, processCleanupDetail]);
 
   useEffect(() => {
     if (!user || !selectedBatchKey) {
       pendingSelectionRef.current = { key: null, attempts: 0 };
+      setIsLoadingBatch(false);
       return;
     }
     if (pendingSelectionRef.current.key !== selectedBatchKey) {
@@ -444,6 +483,13 @@ export default function MapPage() {
     })),
     [rows]
   );
+
+  const autoCenterKey = useMemo(() => {
+    if (!rows.length) return "";
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    return [selectedBatchKey, first?.id ?? "first", last?.id ?? "last", rows.length].join(":");
+  }, [rows, selectedBatchKey]);
 
   const selectedPoint = rows[selectedIndex];
   const selectedMoment = selectedPoint ? new Date(normaliseTimestamp(selectedPoint.timestamp)) : null;
@@ -512,9 +558,13 @@ export default function MapPage() {
           ) : null}
         </div>
       ) : (
-        <p style={{ marginTop: 16 }}>Select a batch with recent measurements to explore the timeline.</p>
+        <p style={{ marginTop: 16 }}>
+          {selectedBatchKey
+            ? (isLoadingBatch ? "Loading measurements for the selected batch..." : "No measurements available for this batch.")
+            : "Select a batch with recent measurements to explore the timeline."}
+        </p>
       )}
-      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex}/>
+      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex} autoCenterKey={autoCenterKey}/>
     </div>
   );
 }

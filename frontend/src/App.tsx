@@ -5,6 +5,7 @@ import SmokeTestLab from "./pages/SmokeTestLab";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
 import { useAuth } from "./providers/AuthProvider";
 import { ActivationPage } from "./pages/ActivationPage";
+import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
 import {
   Theme,
   ThemePanel,
@@ -98,6 +99,8 @@ export default function App() {
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
+  const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
+  const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
 
   const isSignedIn = Boolean(user);
   const activeTab = !isSignedIn && tab !== "map" ? "map" : tab;
@@ -124,12 +127,6 @@ export default function App() {
       console.warn("Sign out failed", err);
     }
   };
-
-  useEffect(() => {
-    const handler = () => setTab("map");
-    window.addEventListener("ingest-smoke-test:completed", handler);
-    return () => window.removeEventListener("ingest-smoke-test:completed", handler);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -159,6 +156,29 @@ export default function App() {
       return;
     }
     setActivationModalOpen(true);
+  };
+
+  const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
+    setPendingSmokeResult(result);
+    setPendingSmokeCleanup(null);
+    setTab("map");
+  };
+
+  const handleSmokeTestCleanup = (detail: IngestSmokeTestCleanupResponse) => {
+    setPendingSmokeCleanup(detail);
+    setPendingSmokeResult((prev) => {
+      if (!prev) return prev;
+      const cleared = new Set<string>();
+      if (typeof detail.clearedDeviceId === "string" && detail.clearedDeviceId.length) {
+        cleared.add(detail.clearedDeviceId);
+      }
+      if (Array.isArray(detail.clearedDeviceIds)) {
+        detail.clearedDeviceIds.forEach((id) => {
+          if (typeof id === "string" && id.length) cleared.add(id);
+        });
+      }
+      return cleared.has(prev.deviceId) ? null : prev;
+    });
   };
 
   return (
@@ -342,9 +362,19 @@ export default function App() {
                   {activeTab === "dashboard" && user ? (
                     <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
                   ) : activeTab === "smoke" && user ? (
-                    <SmokeTestLab key={`smoke:${userScopedKey}`} />
+                    <SmokeTestLab
+                      key={`smoke:${userScopedKey}`}
+                      onSmokeTestComplete={handleSmokeTestComplete}
+                      onSmokeTestCleared={handleSmokeTestCleanup}
+                    />
                   ) : activeTab === "map" && user ? (
-                    <MapPage key={`map:${userScopedKey}`} />
+                    <MapPage
+                      key={`map:${userScopedKey}`}
+                      pendingSmokeResult={pendingSmokeResult}
+                      onSmokeResultConsumed={() => setPendingSmokeResult(null)}
+                      pendingCleanupDetail={pendingSmokeCleanup}
+                      onCleanupDetailConsumed={() => setPendingSmokeCleanup(null)}
+                    />
                   ) : (
                     <Flex
                       direction="column"
