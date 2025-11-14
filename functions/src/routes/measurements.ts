@@ -4,6 +4,7 @@ import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
+import { timestampToIsoString, timestampToMillis } from "../lib/time.js";
 
 type MeasurementsQuery = {
   device_id?: string;
@@ -27,14 +28,6 @@ type MeasurementDoc = {
 };
 
 type MeasurementRecord = MeasurementDoc & { id: string };
-
-function timestampToMillis(value: MeasurementDoc["timestamp"]) {
-  if (value instanceof Timestamp) return value.toMillis();
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === "number") return value;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
 
 export const measurementsRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: MeasurementsQuery }>("/v1/measurements", async (req) => {
@@ -92,13 +85,12 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
       snap.forEach((doc) => {
         const data = doc.data() as MeasurementDoc;
         if (pollutant && data.pollutant !== pollutant) return;
-        const ms = timestampToMillis(data.timestamp);
-        const timestamp = Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
+        const timestamp = timestampToIsoString(data.timestamp) ?? new Date().toISOString();
         out.push({ id: doc.id, ...data, timestamp });
       });
     }
 
-    out.sort((a, b) => timestampToMillis(a.timestamp) - timestampToMillis(b.timestamp));
+    out.sort((a, b) => (timestampToMillis(a.timestamp) ?? 0) - (timestampToMillis(b.timestamp) ?? 0));
     return out.slice(0, limit);
   });
 };
