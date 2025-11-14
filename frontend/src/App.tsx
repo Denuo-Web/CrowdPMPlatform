@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MapPage from "./pages/MapPage";
 import UserDashboard from "./pages/UserDashboard";
 import SmokeTestLab from "./pages/SmokeTestLab";
@@ -21,7 +21,7 @@ import {
   IconButton,
   Dialog,
 } from "@radix-ui/themes";
-import { GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
+import { ChevronDownIcon, GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
 const TEAM_MEMBERS: Array<{
   name: string;
@@ -91,6 +91,11 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
   },
 ];
 
+const COORDINATION_LINKS_COLLAPSE_WIDTH = 1024;
+const COORDINATION_LINKS_CONTENT_ID = "coordination-links-content";
+const getShouldCollapseCoordinationLinks = () =>
+  typeof window !== "undefined" ? window.innerWidth < COORDINATION_LINKS_COLLAPSE_WIDTH : false;
+
 export default function App() {
   const { user, isLoading, signOut } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
@@ -101,6 +106,10 @@ export default function App() {
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
+  const [shouldCollapseResourceLinks, setShouldCollapseResourceLinks] = useState(() => getShouldCollapseCoordinationLinks());
+  const [areResourceLinksExpanded, setResourceLinksExpanded] = useState(!getShouldCollapseCoordinationLinks());
+  const resourceLinksInnerRef = useRef<HTMLDivElement | null>(null);
+  const [resourceLinksHeight, setResourceLinksHeight] = useState(0);
 
   const isSignedIn = Boolean(user);
   const activeTab = !isSignedIn && tab !== "map" ? "map" : tab;
@@ -158,6 +167,41 @@ export default function App() {
     setActivationModalOpen(true);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateShouldCollapse = () => {
+      setShouldCollapseResourceLinks(getShouldCollapseCoordinationLinks());
+    };
+    updateShouldCollapse();
+    window.addEventListener("resize", updateShouldCollapse);
+    return () => window.removeEventListener("resize", updateShouldCollapse);
+  }, []);
+
+  useEffect(() => {
+    setResourceLinksExpanded(!shouldCollapseResourceLinks);
+  }, [shouldCollapseResourceLinks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const measureHeight = () => {
+      if (!resourceLinksInnerRef.current) return;
+      setResourceLinksHeight(resourceLinksInnerRef.current.offsetHeight);
+    };
+    measureHeight();
+    let observer: ResizeObserver | null = null;
+    if ("ResizeObserver" in window && resourceLinksInnerRef.current) {
+      observer = new ResizeObserver(() => {
+        measureHeight();
+      });
+      observer.observe(resourceLinksInnerRef.current);
+    }
+    window.addEventListener("resize", measureHeight);
+    return () => {
+      window.removeEventListener("resize", measureHeight);
+      observer?.disconnect();
+    };
+  }, [isSignedIn]);
+
   const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
     setPendingSmokeResult(result);
     setPendingSmokeCleanup(null);
@@ -180,6 +224,12 @@ export default function App() {
       return cleared.has(prev.deviceId) ? null : prev;
     });
   };
+
+  const expandedLinksMaxHeight = areResourceLinksExpanded
+    ? resourceLinksHeight > 0
+      ? `${resourceLinksHeight}px`
+      : "none"
+    : "0px";
 
   return (
     <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
@@ -206,7 +256,7 @@ export default function App() {
             align="stretch"
             style={{ width: "100%" }}
           >
-            <Card size="4" style={{ flexBasis: "320px", flexShrink: 0 }}>
+            <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
               <Heading as="h2" size="5" trim="start">
                 <Link
                   href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
@@ -274,23 +324,78 @@ export default function App() {
               {isSignedIn ? (
                 <>
                   <Separator my="4" />
-                  <Text size="2" color="gray">
-                    Coordination links
-                  </Text>
-                  <Flex direction="column" gap="2" mt="2">
-                    {RESOURCE_LINKS.map((resource) => (
-                      <Link
-                        key={resource.href}
-                        href={resource.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        color="iris"
-                        size="2"
+                  {shouldCollapseResourceLinks ? (
+                    <Box>
+                      <Flex align="center" justify="between" gap="2" wrap="wrap">
+                        <Text size="2" color="gray">
+                          Coordination links
+                        </Text>
+                        <Button
+                          variant="soft"
+                          size="1"
+                          onClick={() => setResourceLinksExpanded((prev) => !prev)}
+                          aria-expanded={areResourceLinksExpanded}
+                          aria-controls={COORDINATION_LINKS_CONTENT_ID}
+                        >
+                          {areResourceLinksExpanded ? "Hide" : "Show"} links
+                          <ChevronDownIcon
+                            style={{
+                              marginLeft: "var(--space-1)",
+                              transition: "transform 200ms ease",
+                              transform: areResourceLinksExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                            }}
+                            aria-hidden
+                          />
+                        </Button>
+                      </Flex>
+                      <Box
+                        id={COORDINATION_LINKS_CONTENT_ID}
+                        aria-hidden={!areResourceLinksExpanded}
+                        style={{
+                          overflow: areResourceLinksExpanded ? "visible" : "hidden",
+                          maxHeight: expandedLinksMaxHeight,
+                          opacity: areResourceLinksExpanded ? 1 : 0,
+                          marginTop: areResourceLinksExpanded ? "var(--space-2)" : "0px",
+                          transition: "max-height 240ms ease, opacity 200ms ease, margin-top 200ms ease",
+                        }}
                       >
-                        {resource.label}
-                      </Link>
-                    ))}
-                  </Flex>
+                        <Flex ref={resourceLinksInnerRef} direction="column" gap="2">
+                          {RESOURCE_LINKS.map((resource) => (
+                            <Link
+                              key={resource.href}
+                              href={resource.href}
+                              target="_blank"
+                              rel="noreferrer"
+                              color="iris"
+                              size="2"
+                            >
+                              {resource.label}
+                            </Link>
+                          ))}
+                        </Flex>
+                      </Box>
+                    </Box>
+                  ) : (
+                    <>
+                      <Text size="2" color="gray">
+                        Coordination links
+                      </Text>
+                      <Flex direction="column" gap="2" mt="2">
+                        {RESOURCE_LINKS.map((resource) => (
+                          <Link
+                            key={resource.href}
+                            href={resource.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            color="iris"
+                            size="2"
+                          >
+                            {resource.label}
+                          </Link>
+                        ))}
+                      </Flex>
+                    </>
+                  )}
                 </>
               ) : null}
             </Card>
