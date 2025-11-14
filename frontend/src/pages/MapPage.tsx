@@ -162,7 +162,6 @@ export default function MapPage({
   const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
   const userScopedLegacyKey = useMemo(() => scopedKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
-  const [batchesOwner, setBatchesOwner] = useState<string | null>(null);
   const [isLoadingBatch, setIsLoadingBatch] = useState(false);
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>(() => {
     if (typeof window === "undefined" || !user) return "";
@@ -213,16 +212,13 @@ export default function MapPage({
 
   const refreshBatches = useCallback(async () => {
     if (!user) return;
-    const targetUid = user.uid;
     const mergeWithCached = (list: BatchSummary[]) => mergeCachedSummary(list, getCachedBatch());
     try {
       const list = await listBatches();
       setBatches(mergeWithCached(list));
-      setBatchesOwner(targetUid);
     }
     catch {
       setBatches(mergeWithCached([]));
-      setBatchesOwner(targetUid);
     }
   }, [getCachedBatch, user]);
 
@@ -233,7 +229,6 @@ export default function MapPage({
         batchCacheRef.current.clear();
         resetRows();
         setBatches([]);
-        setBatchesOwner(null);
       });
       return;
     }
@@ -278,7 +273,6 @@ export default function MapPage({
       const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
       return [cached.summary, ...filtered];
     });
-    setBatchesOwner(user.uid);
     if (!selectedBatchKey) {
       setSelectedBatchKey(key);
       applyRecords(records);
@@ -307,13 +301,13 @@ export default function MapPage({
   useEffect(() => {
     if (!user || !selectedBatchKey) {
       if (!selectedBatchKey) deferStateUpdate(resetRows);
-      setIsLoadingBatch(false);
+      deferStateUpdate(() => { setIsLoadingBatch(false); });
       return;
     }
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const expectsData = Boolean(summaryForSelection && summaryForSelection.count > 0);
-    setIsLoadingBatch(true);
+    deferStateUpdate(() => { setIsLoadingBatch(true); });
 
     const attemptLoad = async (attempt: number) => {
       try {
@@ -328,7 +322,7 @@ export default function MapPage({
       catch (err) {
         if (!cancelled) {
           console.warn("Failed to load batch measurements", err);
-          setIsLoadingBatch(false);
+          deferStateUpdate(() => { setIsLoadingBatch(false); });
         }
       }
     };
@@ -372,7 +366,6 @@ export default function MapPage({
       batchCacheRef.current.delete(key);
       resetRows();
     }
-    setBatchesOwner(user.uid);
     const summary: BatchSummary = {
       batchId: detail.batchId,
       deviceId: deviceForBatch,
@@ -438,20 +431,24 @@ export default function MapPage({
 
   useEffect(() => {
     if (!pendingSmokeResult) return;
-    processSmokeResult(pendingSmokeResult);
-    onSmokeResultConsumed?.();
+    deferStateUpdate(() => {
+      processSmokeResult(pendingSmokeResult);
+      onSmokeResultConsumed?.();
+    });
   }, [onSmokeResultConsumed, pendingSmokeResult, processSmokeResult]);
 
   useEffect(() => {
     if (!pendingCleanupDetail) return;
-    processCleanupDetail(pendingCleanupDetail);
-    onCleanupDetailConsumed?.();
+    deferStateUpdate(() => {
+      processCleanupDetail(pendingCleanupDetail);
+      onCleanupDetailConsumed?.();
+    });
   }, [onCleanupDetailConsumed, pendingCleanupDetail, processCleanupDetail]);
 
   useEffect(() => {
     if (!user || !selectedBatchKey) {
       pendingSelectionRef.current = { key: null, attempts: 0 };
-      setIsLoadingBatch(false);
+      deferStateUpdate(() => { setIsLoadingBatch(false); });
       return;
     }
     if (pendingSelectionRef.current.key !== selectedBatchKey) {
