@@ -130,6 +130,7 @@ export default function MapPage() {
   const [rows, setRows] = useState<MeasurementRecord[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const batchCacheRef = useRef(new Map<string, MeasurementRecord[]>());
+  const pendingSelectionRef = useRef<{ key: string | null; attempts: number }>({ key: null, attempts: 0 });
 
   const visibleBatches = user && batchesOwner === user.uid ? batches : [];
 
@@ -249,13 +250,29 @@ export default function MapPage() {
         : detail.payload?.points ?? [];
       if (rawPoints.length) {
         const provisional = pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId);
+        batchCacheRef.current.set(key, provisional);
         setRows(provisional);
         setSelectedIndex(provisional.length - 1);
       }
       else {
+        batchCacheRef.current.delete(key);
         resetRows();
       }
+      setBatchesOwner(user.uid);
+      setBatches((prev) => {
+        const summary: BatchSummary = {
+          batchId: detail.batchId,
+          deviceId: deviceForBatch,
+          deviceName: null,
+          count: rawPoints.length,
+          processedAt: new Date().toISOString(),
+          visibility: detail.visibility ?? "private",
+        };
+        const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
+        return [summary, ...filtered];
+      });
       setSelectedBatchKey(key);
+      pendingSelectionRef.current = { key, attempts: 0 };
       if (typeof window !== "undefined") {
         try {
           window.localStorage.setItem(userScopedSelectionKey, key);
@@ -301,6 +318,29 @@ export default function MapPage() {
       window.removeEventListener("ingest-smoke-test:cleared", handleCleared);
     };
   }, [refreshBatches, resetRows, selectedBatchKey, user, userScopedSelectionKey]);
+
+  useEffect(() => {
+    if (!user || !selectedBatchKey) {
+      pendingSelectionRef.current = { key: null, attempts: 0 };
+      return;
+    }
+    if (pendingSelectionRef.current.key !== selectedBatchKey) {
+      pendingSelectionRef.current = { key: selectedBatchKey, attempts: 0 };
+    }
+    const hasSelection = visibleBatches.some(
+      (batch) => encodeBatchKey(batch.deviceId, batch.batchId) === selectedBatchKey
+    );
+    if (hasSelection) {
+      pendingSelectionRef.current.attempts = 0;
+      return;
+    }
+    if (pendingSelectionRef.current.attempts >= 5) return;
+    const timer = setTimeout(() => {
+      pendingSelectionRef.current.attempts += 1;
+      refreshBatches();
+    }, 1_500);
+    return () => clearTimeout(timer);
+  }, [refreshBatches, selectedBatchKey, user, visibleBatches]);
 
   const data = useMemo(
     () => rows.map((r) => ({
