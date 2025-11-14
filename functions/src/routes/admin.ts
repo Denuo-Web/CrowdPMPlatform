@@ -8,6 +8,7 @@ import {
   getUserDefaultBatchVisibility,
   normalizeBatchVisibility,
 } from "../lib/batchVisibility.js";
+import { userOwnsDevice } from "../lib/deviceOwnership.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
@@ -84,15 +85,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         allowedIds.push(deviceId); // stale device reference; allow cleanup to continue
         return;
       }
-      const data = snap.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
-      const owners = Array.isArray(data?.ownerUserIds)
-        ? data.ownerUserIds.filter((id): id is string => typeof id === "string" && id.length > 0)
-        : [];
-      const ownerUserId = typeof data?.ownerUserId === "string" && data.ownerUserId.length > 0
-        ? data.ownerUserId
-        : null;
-      const isOwner = ownerUserId === user.uid || owners.includes(user.uid);
-      if (isOwner) {
+      if (userOwnsDevice(snap.data(), user.uid)) {
         allowedIds.push(deviceId);
         return;
       }

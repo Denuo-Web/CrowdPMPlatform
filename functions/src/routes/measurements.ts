@@ -3,6 +3,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
+import { userOwnsDevice } from "../lib/deviceOwnership.js";
 
 type MeasurementsQuery = {
   device_id?: string;
@@ -57,10 +58,7 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
 
     const doc = await db().collection("devices").doc(deviceId).get();
     if (!doc.exists) return [];
-    const data = doc.data() as { ownerUserId?: string | null; ownerUserIds?: string[] | null } | undefined;
-    const owners = Array.isArray(data?.ownerUserIds) ? data?.ownerUserIds : [];
-    const isOwner = data?.ownerUserId === user.uid || owners.includes(user.uid);
-    if (!isOwner) {
+    if (!userOwnsDevice(doc.data(), user.uid)) {
       const error = new Error("forbidden");
       (error as Error & { statusCode?: number }).statusCode = 403;
       throw error;
