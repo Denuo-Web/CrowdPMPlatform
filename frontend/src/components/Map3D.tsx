@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
@@ -19,6 +19,7 @@ type Map3DProps = {
   data: MeasurementPoint[];
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
+  autoCenterKey?: string;
 };
 
 const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
@@ -129,7 +130,7 @@ function createLayers(
   return [pathLayer, sphereLayer];
 }
 
-export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps) {
+export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKey }: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<GoogleMapsOverlay | null>(null);
@@ -170,7 +171,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
     };
   }, []);
 
-  useEffect(() => {
+  const syncOverlay = useCallback((options?: { forceCenter?: boolean }) => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     if (!sphereGeometryRef.current) {
@@ -192,7 +193,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
     if (current) {
       const center = { lat: current.lat, lng: current.lon };
       const map = mapRef.current;
-      if (map && !hasUserControlRef.current) {
+      if (map && (!hasUserControlRef.current || options?.forceCenter)) {
         if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: Math.max(map.getZoom() ?? 17, 16) });
         else {
           map.setCenter(center);
@@ -200,7 +201,17 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
         }
       }
     }
-  }, [data, selectedIndex]);
+  }, []);
+
+  useEffect(() => {
+    syncOverlay();
+  }, [data, selectedIndex, syncOverlay]);
+
+  useEffect(() => {
+    if (!autoCenterKey) return;
+    hasUserControlRef.current = false;
+    syncOverlay({ forceCenter: true });
+  }, [autoCenterKey, syncOverlay]);
 
   useEffect(() => {
     if (!divRef.current) return;
@@ -284,6 +295,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
         map.moveCamera({ tilt: 67.5, heading: 0, zoom: 18 });
       }
       overlayRef.current = overlay;
+      syncOverlay();
     })();
 
     return () => {
@@ -300,7 +312,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex }: Map3DProps
       overlayRef.current = null;
       mapRef.current = null;
     };
-  }, []);
+  }, [syncOverlay]);
 
   return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
 }

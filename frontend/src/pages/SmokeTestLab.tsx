@@ -34,6 +34,7 @@ import {
   type IngestSmokeTestPayload,
   type IngestSmokeTestPoint,
   type IngestSmokeTestResponse,
+  type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
@@ -317,6 +318,11 @@ function encodeBatchKey(deviceId: string, batchId: string): string {
   return `${deviceId}::${batchId}`;
 }
 
+type SmokeTestLabProps = {
+  onSmokeTestComplete?: (result: IngestSmokeTestResponse) => void;
+  onSmokeTestCleared?: (detail: IngestSmokeTestCleanupResponse) => void;
+};
+
 function decodeBatchKey(raw: string | null | undefined): { deviceId: string; batchId: string } | null {
   if (!raw) return null;
   const separator = raw.indexOf("::");
@@ -327,7 +333,7 @@ function decodeBatchKey(raw: string | null | undefined): { deviceId: string; bat
   return { deviceId, batchId };
 }
 
-export default function SmokeTestLab() {
+export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }: SmokeTestLabProps = {}) {
   const { user } = useAuth();
   const { settings } = useUserSettings();
   const defaultPayload = useMemo(() => createDefaultSmokePayload(), []);
@@ -556,7 +562,7 @@ export default function SmokeTestLab() {
           window.localStorage.setItem(scopedLastBatchCacheKey, JSON.stringify(cachePayload));
         }
       }
-      window.dispatchEvent(new CustomEvent("ingest-smoke-test:completed", { detail: result }));
+      onSmokeTestComplete?.(result);
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
@@ -605,7 +611,7 @@ export default function SmokeTestLab() {
           }
         }
       }
-      window.dispatchEvent(new CustomEvent("ingest-smoke-test:cleared", { detail: response }));
+      onSmokeTestCleared?.(response);
       const updatedHistory = historyRef.current.filter((item) => item.id !== entry.id);
       setSmokeHistory(updatedHistory);
       historyRef.current = updatedHistory;
