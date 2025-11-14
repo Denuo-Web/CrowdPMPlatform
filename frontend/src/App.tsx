@@ -107,7 +107,7 @@ export default function App() {
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
   const [shouldCollapseResourceLinks, setShouldCollapseResourceLinks] = useState(() => getShouldCollapseCoordinationLinks());
-  const [areResourceLinksExpanded, setResourceLinksExpanded] = useState(!getShouldCollapseCoordinationLinks());
+  const [resourceLinksExpandedOverride, setResourceLinksExpandedOverride] = useState(false);
   const resourceLinksInnerRef = useRef<HTMLDivElement | null>(null);
   const [resourceLinksHeight, setResourceLinksHeight] = useState(0);
 
@@ -170,16 +170,18 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const updateShouldCollapse = () => {
-      setShouldCollapseResourceLinks(getShouldCollapseCoordinationLinks());
+      const nextShouldCollapse = getShouldCollapseCoordinationLinks();
+      setShouldCollapseResourceLinks((prev) => {
+        if (prev === nextShouldCollapse) return prev;
+        return nextShouldCollapse;
+      });
+      if (nextShouldCollapse) {
+        setResourceLinksExpandedOverride(false);
+      }
     };
-    updateShouldCollapse();
     window.addEventListener("resize", updateShouldCollapse);
     return () => window.removeEventListener("resize", updateShouldCollapse);
   }, []);
-
-  useEffect(() => {
-    setResourceLinksExpanded(!shouldCollapseResourceLinks);
-  }, [shouldCollapseResourceLinks]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -200,7 +202,7 @@ export default function App() {
       window.removeEventListener("resize", measureHeight);
       observer?.disconnect();
     };
-  }, [isSignedIn]);
+  }, [isSignedIn, shouldCollapseResourceLinks]);
 
   const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
     setPendingSmokeResult(result);
@@ -225,6 +227,7 @@ export default function App() {
     });
   };
 
+  const areResourceLinksExpanded = shouldCollapseResourceLinks ? resourceLinksExpandedOverride : true;
   const expandedLinksMaxHeight = areResourceLinksExpanded
     ? resourceLinksHeight > 0
       ? `${resourceLinksHeight}px`
@@ -333,7 +336,7 @@ export default function App() {
                         <Button
                           variant="soft"
                           size="1"
-                          onClick={() => setResourceLinksExpanded((prev) => !prev)}
+                          onClick={() => setResourceLinksExpandedOverride((prev) => !prev)}
                           aria-expanded={areResourceLinksExpanded}
                           aria-controls={COORDINATION_LINKS_CONTENT_ID}
                         >
