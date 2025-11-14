@@ -182,7 +182,7 @@ export default function App() {
   };
 
   return (
-    <Theme appearance="light" accentColor="iris" radius="full" scaling="100%">
+    <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
       <ThemePanel defaultOpen={false} />
       <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
       <Box
