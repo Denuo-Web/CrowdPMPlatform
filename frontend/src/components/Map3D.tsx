@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
-import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SphereGeometry } from "@luma.gl/engine";
 import type { Layer } from "@deck.gl/core";
 import { getMapsLoader } from "../lib/mapsLoader";
+import GoogleMapsOverlay from "../lib/PatchedGoogleMapsOverlay";
 
 type MeasurementPoint = {
   lat: number;
