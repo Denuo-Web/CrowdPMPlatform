@@ -108,6 +108,16 @@ export async function ingestPayload(raw: string, body: IngestBody, options: Inge
   await ensureTopicExists(topicName);
   await pubsub.topic(topicName).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
+  const matchingPointCount = Array.isArray(body.points)
+    ? body.points.filter((point) => point.device_id === deviceId).length
+    : 0;
+  await db().collection("devices").doc(deviceId).collection("batches").doc(batchId).set({
+    path,
+    count: matchingPointCount,
+    processedAt: null,
+    visibility,
+  }, { merge: true });
+
   await updateDeviceLastSeen(deviceId).catch(() => {});
 
   return { accepted: true, batchId, deviceId, storagePath: path, visibility };
