@@ -195,8 +195,9 @@ export default function MapPage({
     }
     return "";
   });
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // const [selectedIndex, setSelectedIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
+
 
   const getCachedBatch = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -221,7 +222,7 @@ export default function MapPage({
     [batchesQuery.data, user]
   );
 
-  const summaryForSelection = useMemo(() => {
+  useMemo(() => {
     if (!selectedBatchKey) return null;
     const parsed = decodeBatchKey(selectedBatchKey);
     if (!parsed) return null;
@@ -248,24 +249,43 @@ export default function MapPage({
     },
   });
 
-  const rows = measurementQuery.data ?? [];
+  const rows = useMemo(
+    () => measurementQuery.data ?? [],
+    [measurementQuery.data]
+  );
+
   const isLoadingBatch = measurementQuery.isFetching || measurementQuery.isLoading;
 
   // Whenever a new batch or fresh data arrives, snap the slider to the latest point.
+  // useEffect(() => {
+  //   const newIndex = rows.length ? rows.length - 1 : 0;
+  //   setSelectedIndex(newIndex);
+  //   // This effect synchronizes state with data changes - intentional pattern
+  //   // eslint-disable-next-line react-hooks/set-state-in-effect
+  // }, [rows.length, selectedBatchKey]);
+  const [indexOverride, setIndexOverride] = useState<number | null>(null);
+
+  // Always derive the index
+  const selectedIndex = indexOverride ?? (rows.length ? rows.length - 1 : 0);
+
+  // Only reset override when the BATCH changes, not when data changes
   useEffect(() => {
-    if (!rows.length) {
-      setSelectedIndex(0);
-      return;
-    }
-    setSelectedIndex(rows.length - 1);
-  }, [rows, selectedBatchKey]);
+    deferStateUpdate(() => {
+      setIndexOverride(null);
+    });
+  }, [selectedBatchKey]); // Remove rows.length from dependencies
+
+  // // Reset override when data changes
+  // useEffect(() => {
+  //   setIndexOverride(null);
+  // }, [selectedBatchKey, rows.length]);
 
   // Restore the last selection after sign-in so the map shows familiar data.
   useEffect(() => {
     if (!user) {
       deferStateUpdate(() => {
         setSelectedBatchKey("");
-        setSelectedIndex(0);
+        setIndexOverride(0);
       });
       return;
     }
@@ -299,7 +319,9 @@ export default function MapPage({
       return [cached.summary, ...filtered];
     });
     if (!selectedBatchKey) {
-      setSelectedBatchKey(key);
+      deferStateUpdate(() => {
+        setSelectedBatchKey(key);
+      })
     }
   }, [getCachedBatch, queryClient, selectedBatchKey, user, userScopedCacheKey]);
 
@@ -345,11 +367,11 @@ export default function MapPage({
 
     if (records.length) {
       queryClient.setQueryData(BATCH_DETAIL_QUERY_KEY(user.uid, key), records);
-      setSelectedIndex(records.length - 1);
+      setIndexOverride(records.length - 1);
     }
     else {
       queryClient.removeQueries({ queryKey: BATCH_DETAIL_QUERY_KEY(user.uid, key), exact: true });
-      setSelectedIndex(0);
+      setIndexOverride(0);
     }
 
     setSelectedBatchKey(key);
@@ -393,7 +415,7 @@ export default function MapPage({
     const current = decodeBatchKey(selectedBatchKey);
     if (current && cleared.has(current.deviceId)) {
       setSelectedBatchKey("");
-      setSelectedIndex(0);
+      setIndexOverride(0);
       if (typeof window !== "undefined") {
         try {
           window.localStorage.removeItem(userScopedSelectionKey);
@@ -476,7 +498,7 @@ export default function MapPage({
             max={rows.length - 1}
             step={1}
             value={selectedIndex}
-            onChange={(e) => setSelectedIndex(Number(e.target.value))}
+            onChange={(e) => setIndexOverride(Number(e.target.value))}
             style={{ width: "100%", marginTop: 8 }}
           />
           {selectedPoint ? (
@@ -519,7 +541,7 @@ export default function MapPage({
             : "Select a batch with recent measurements to explore the timeline."}
         </p>
       )}
-      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setSelectedIndex} autoCenterKey={autoCenterKey}/>
+      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setIndexOverride} autoCenterKey={autoCenterKey}/>
     </div>
   );
 }
