@@ -139,9 +139,6 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
     devDependencies:
-      '@crowdpm/types':
-        specifier: workspace:*
-        version: link:../shared-types
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
