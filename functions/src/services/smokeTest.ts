@@ -35,8 +35,8 @@ export function prepareSmokeTestPlan(userId: string, body?: SmokeTestBody): Smok
     throw new Error("payload must include at least one point");
   }
 
-  const { scopedPoints, scopedDeviceIds, scopedToRawIds } = scopePoints(displayPoints, ownerSegment, requestedDeviceId);
-  const primaryDeviceId = scopedDeviceIds[0] ?? scopeDeviceId(ownerSegment, requestedDeviceId);
+  const { scopedPoints, scopedDeviceIds, scopedToRawIds } = scopePoints(displayPoints, requestedDeviceId);
+  const primaryDeviceId = scopedDeviceIds[0] ?? scopeDeviceId(requestedDeviceId);
   const seedTargets = scopedDeviceIds.length ? scopedDeviceIds : [primaryDeviceId];
 
   const payload: IngestBody & { points: SmokeTestPoint[] } = {
@@ -114,7 +114,7 @@ function buildDefaultPoints(deviceId: string, overrides: Partial<SmokeTestPoint>
   });
 }
 
-function scopePoints(points: SmokeTestPoint[], ownerSegment: string, requestedDeviceId: string) {
+function scopePoints(points: SmokeTestPoint[], requestedDeviceId: string) {
   const rawDeviceIds = Array.from(new Set(
     points
       .map((point) => point.device_id)
@@ -131,7 +131,7 @@ function scopePoints(points: SmokeTestPoint[], ownerSegment: string, requestedDe
     const rawId = point.device_id || rawDeviceIds[idx % rawDeviceIds.length] || requestedDeviceId;
     let scopedId = rawToScoped.get(rawId);
     if (!scopedId) {
-      scopedId = scopeDeviceId(ownerSegment, rawId);
+      scopedId = scopeDeviceId(rawId);
       rawToScoped.set(rawId, scopedId);
       scopedToRaw.set(scopedId, rawId);
     }
@@ -178,9 +178,11 @@ function slugify(value: string | undefined | null, fallback: string) {
   return result.join("") || fallback;
 }
 
-function scopeDeviceId(ownerSegment: string, rawDeviceId: string) {
-  const deviceSegment = slugify(rawDeviceId, "device");
-  return `${ownerSegment}-${deviceSegment}`;
+function scopeDeviceId(rawDeviceId: string) {
+  // Legacy namespaced IDs prefixed device IDs with the owner segment.
+  // Now that multiple batches per device are supported, keep the caller-provided
+  // ID (just slugged for safety) without the extra prefix.
+  return slugify(rawDeviceId, "device");
 }
 
 function ensureDeviceId(candidate: unknown, fallback: string): string {
