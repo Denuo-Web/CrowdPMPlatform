@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,8 +17,8 @@ function log(message) {
   console.log(`${prefix} ${message}`);
 }
 
-function run(command, cwd = repoRoot) {
-  execSync(command, { cwd, stdio: "inherit" });
+function run(command, args = [], cwd = repoRoot) {
+  execFileSync(command, args, { cwd, stdio: "inherit" });
 }
 
 function ensureSharedTypes() {
@@ -30,10 +30,10 @@ function ensureSharedTypes() {
 
 function packSharedTypes() {
   log("Building shared-types");
-  run("corepack pnpm --filter @crowdpm/types build");
+  run("corepack", ["pnpm", "--filter", "@crowdpm/types", "build"]);
 
   log("Packing shared-types into functions/local-deps");
-  run(`corepack pnpm --filter @crowdpm/types pack --pack-destination ${localDepsDir}`);
+  run("corepack", ["pnpm", "--filter", "@crowdpm/types", "pack", "--pack-destination", localDepsDir]);
 
   const tarballs = readdirSync(localDepsDir)
     .filter((file) => file.endsWith(".tgz"))
@@ -75,7 +75,11 @@ function installIntoFunctions(tarballPath) {
   }
   mkdirSync(targetDir, { recursive: true });
 
-  run(`tar -xzf "${tarballPath}" -C "${targetDir}" --strip-components=1`, functionsDir);
+  run(
+    "tar",
+    ["-xzf", tarballPath, "-C", targetDir, "--strip-components=1"],
+    functionsDir
+  );
 }
 
 function main() {
