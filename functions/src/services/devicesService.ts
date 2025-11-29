@@ -3,7 +3,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
-import { timestampToIsoString } from "../lib/time.js";
+import { normalizeTimestamp, parseDeviceId } from "../lib/httpValidation.js";
 import { revokeDevice as revokeRegistryDevice } from "./deviceRegistry.js";
 
 export type DeviceRecord = Record<string, unknown> & {
@@ -63,10 +63,7 @@ export class DevicesService {
     if (!userId) {
       throw httpError(401, "unauthorized", "Authentication required");
     }
-    const trimmedId = deviceId.trim();
-    if (!trimmedId) {
-      throw httpError(400, "invalid_device_id", "Device id is required");
-    }
+    const trimmedId = parseDeviceId(deviceId);
 
     const snap = await this.deps.db.collection("devices").doc(trimmedId).get();
     if (!snap.exists) {
@@ -80,8 +77,8 @@ export class DevicesService {
   }
 
   private serialize(id: string, data: firestore.DocumentData | undefined): DeviceRecord {
-    const createdAt = timestampToIsoString(data?.createdAt);
-    const lastSeenAt = timestampToIsoString(data?.lastSeenAt);
+    const createdAt = normalizeTimestamp(data?.createdAt);
+    const lastSeenAt = normalizeTimestamp(data?.lastSeenAt);
     const payload: Record<string, unknown> = { id, ...data };
     payload.createdAt = createdAt ?? null;
     payload.lastSeenAt = lastSeenAt ?? null;

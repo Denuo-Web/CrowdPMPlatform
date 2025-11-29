@@ -1,10 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { db } from "../lib/fire.js";
-import {
-  DEFAULT_BATCH_VISIBILITY,
-  normalizeBatchVisibility,
-  type BatchVisibility,
-} from "../lib/batchVisibility.js";
+import type { BatchVisibility } from "../lib/batchVisibility.js";
+import { normalizeVisibility } from "../lib/httpValidation.js";
 import { rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
 
 const DEFAULT_INTERLEAVED_RENDERING = false;
@@ -38,9 +35,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     ],
   }, async (req) => {
     const snap = await db().collection("userSettings").doc(requestUserId(req)).get();
-    const visibility = snap.exists
-      ? normalizeBatchVisibility(snap.get("defaultBatchVisibility")) ?? DEFAULT_BATCH_VISIBILITY
-      : DEFAULT_BATCH_VISIBILITY;
+    const visibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
     const interleavedRendering = snap.exists
       ? normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING
       : DEFAULT_INTERLEAVED_RENDERING;
@@ -66,7 +61,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
 
     let visibility: BatchVisibility | null = null;
     if (hasVisibility) {
-      visibility = normalizeBatchVisibility(req.body?.defaultBatchVisibility);
+      visibility = normalizeVisibility(req.body?.defaultBatchVisibility, null);
       if (!visibility) {
         return rep.code(400).send({
           error: "invalid_visibility",
@@ -93,7 +88,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     await docRef.set(payload, { merge: true });
 
     const snap = await docRef.get();
-    const nextVisibility = normalizeBatchVisibility(snap.get("defaultBatchVisibility")) ?? DEFAULT_BATCH_VISIBILITY;
+    const nextVisibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
     const nextInterleaved = normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING;
     return {
       defaultBatchVisibility: nextVisibility,

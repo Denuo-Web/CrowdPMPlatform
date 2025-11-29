@@ -4,11 +4,11 @@ import type { Firestore } from "firebase-admin/firestore";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getUserDefaultBatchVisibility,
-  normalizeBatchVisibility,
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
 import { app as getFirebaseApp, db as getDb } from "../lib/fire.js";
 import type { IngestService, IngestResult } from "./ingestService.js";
+import { normalizeVisibility } from "../lib/httpValidation.js";
 import { prepareSmokeTestPlan, type SmokeTestBody, type SmokeTestPlan } from "./smokeTest.js";
 
 export type SmokeTestRequest = {
@@ -125,9 +125,8 @@ export class IngestSmokeTestService {
   }
 
   private async resolveVisibility(userId: string, requestedVisibility: BatchVisibility | null | undefined): Promise<BatchVisibility> {
-    const normalized = normalizeBatchVisibility(requestedVisibility);
     const defaultVisibility = await this.deps.getUserDefaultBatchVisibility(userId);
-    return normalized ?? defaultVisibility ?? DEFAULT_BATCH_VISIBILITY;
+    return normalizeVisibility(requestedVisibility, defaultVisibility ?? DEFAULT_BATCH_VISIBILITY);
   }
 
   private async resolveIngest(): Promise<Pick<IngestService, "ingest">> {

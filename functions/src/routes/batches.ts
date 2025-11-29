@@ -2,14 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { bucket } from "../lib/fire.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
-import {
-  DEFAULT_BATCH_VISIBILITY,
-  normalizeBatchVisibility,
-  type BatchVisibility,
-} from "../lib/batchVisibility.js";
+import { type BatchVisibility } from "../lib/batchVisibility.js";
 import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
-import { timestampToIsoString, timestampToMillis } from "../lib/time.js";
+import { timestampToMillis } from "../lib/time.js";
 import { httpError } from "../lib/httpError.js";
+import { normalizeTimestamp, normalizeVisibility } from "../lib/httpValidation.js";
 import {
   getRequestUser,
   requestParam,
@@ -54,8 +51,8 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
         return batchSnap.docs.map((doc) => {
           const data = doc.data() as { count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
           const count = typeof data?.count === "number" ? data.count : 0;
-          const processedAt = timestampToIsoString(data?.processedAt);
-          const visibility = normalizeBatchVisibility(data?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
+          const processedAt = normalizeTimestamp(data?.processedAt);
+          const visibility = normalizeVisibility(data?.visibility);
           return {
             batchId: doc.id,
             deviceId,
@@ -116,9 +113,9 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       throw httpError(500, "storage_error", "Unable to read batch payload.");
     }
 
-    const processedAt = timestampToIsoString(batchData?.processedAt);
+    const processedAt = normalizeTimestamp(batchData?.processedAt);
     const count = typeof batchData?.count === "number" ? batchData.count : points.length;
-    const visibility = normalizeBatchVisibility(batchData?.visibility) ?? DEFAULT_BATCH_VISIBILITY;
+    const visibility = normalizeVisibility(batchData?.visibility);
 
     const response: BatchDetail = {
       batchId,

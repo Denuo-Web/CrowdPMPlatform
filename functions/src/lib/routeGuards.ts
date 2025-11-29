@@ -5,6 +5,7 @@ import { requireUser, type RequireUserOptions } from "../auth/firebaseVerify.js"
 import { userOwnsDevice } from "./deviceOwnership.js";
 import { db } from "./fire.js";
 import { httpError } from "./httpError.js";
+import { parseDeviceId } from "./httpValidation.js";
 import { rateLimitOrThrow } from "./rateLimiter.js";
 
 type GuardedRequest = FastifyRequest & {
@@ -55,10 +56,7 @@ export function requireDeviceOwnerGuard(
     const deviceId = typeof deviceIdSelector === "function"
       ? deviceIdSelector(req)
       : (req.params as Record<string, unknown>)[deviceIdSelector];
-    const trimmedId = typeof deviceId === "string" ? deviceId.trim() : "";
-    if (!trimmedId) {
-      throw httpError(400, "invalid_device_id", "Device id is required");
-    }
+    const trimmedId = parseDeviceId(deviceId);
     const doc = await db().collection("devices").doc(trimmedId).get();
     if (!doc.exists) {
       throw httpError(404, "not_found", "Device not found");

@@ -3,7 +3,8 @@ import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
-import { timestampToIsoString, timestampToMillis, toDate } from "../lib/time.js";
+import { timestampToMillis, toDate } from "../lib/time.js";
+import { normalizeTimestamp } from "../lib/httpValidation.js";
 
 export type MeasurementsQuery = {
   userId: string;
@@ -138,7 +139,7 @@ export class MeasurementsService {
   }
 
   private serializeMeasurement(id: string, data: MeasurementDoc): MeasurementRecord {
-    const timestamp = timestampToIsoString(data.timestamp) ?? new Date().toISOString();
+    const timestamp = normalizeTimestamp(data.timestamp) ?? new Date().toISOString();
     return { id, ...data, timestamp };
   }
 }

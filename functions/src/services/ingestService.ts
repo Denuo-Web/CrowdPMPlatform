@@ -4,11 +4,11 @@ import crypto from "node:crypto";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
-  normalizeBatchVisibility,
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
 import { getIngestTopic } from "../lib/runtimeConfig.js";
+import { normalizeVisibility } from "../lib/httpValidation.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
 
 export type IngestPoint = {
@@ -116,9 +116,8 @@ export class IngestService {
       throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
     }
 
-    const requestedVisibility = normalizeBatchVisibility(request.visibility);
     const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
-    const visibility = requestedVisibility ?? ownerDefaultVisibility ?? DEFAULT_BATCH_VISIBILITY;
+    const visibility = normalizeVisibility(request.visibility, ownerDefaultVisibility ?? DEFAULT_BATCH_VISIBILITY);
 
     const batchId = crypto.randomUUID();
     const path = `ingest/${deviceId}/${batchId}.json`;
