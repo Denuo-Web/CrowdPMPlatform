@@ -3,6 +3,7 @@
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
+    "prebuild": "node ../scripts/prepare-functions-deps.mjs",
     "build": "tsc",
     "build:watch": "tsc --watch --preserveWatchOutput",
     "predev": "pnpm run build",
