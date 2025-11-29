@@ -13,6 +13,5 @@ function serializeError(err: unknown): Record<string, unknown> | undefined {
 
 export function logWarning(message: string, context?: LogContext, err?: unknown): void {
   const payload = { ...context, error: serializeError(err) };
-  // eslint-disable-next-line no-console
   console.warn(`[CrowdPM] ${message}`, payload);
 }

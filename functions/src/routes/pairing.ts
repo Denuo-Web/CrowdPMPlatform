@@ -9,7 +9,6 @@ import {
   updatePollMetadata,
   recordRegistrationToken,
   markSessionRedeemed,
-  type SessionSnapshot,
 } from "../services/devicePairing.js";
 import { canonicalRequestUrl, coarsenIpForDisplay, deriveNetworkHint, extractClientIp } from "../lib/http.js";
 import { verifyDpopProof } from "../lib/dpop.js";

@@ -443,7 +443,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update precision");
     }
-  }, []);
+  }, [setSmokePayload]);
 
   const handleApplyDeviceId = useCallback(() => {
     try {
@@ -454,7 +454,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update device IDs");
     }
-  }, [smokePayload, massDeviceId]);
+  }, [smokePayload, massDeviceId, setSmokePayload]);
 
   const handleApplyPollutant = useCallback(() => {
     try {
@@ -465,7 +465,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update pollutant");
     }
-  }, [smokePayload, massPollutant]);
+  }, [smokePayload, massPollutant, setSmokePayload]);
 
   const handleRewriteTimestamps = useCallback(() => {
     try {
@@ -480,7 +480,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to rewrite timestamps");
     }
-  }, [smokePayload, useCurrentTime, customDate, customTime]);
+  }, [smokePayload, useCurrentTime, customDate, customTime, setSmokePayload]);
 
   const handleRegeneratePath = useCallback(() => {
     try {
@@ -505,7 +505,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to regenerate path");
     }
-  }, [selectedCity, precisionLevel, smokePayload, useCurrentTime, customDate, customTime, jitterMeters, massDeviceId, massPollutant, syncControlsFromPayload]);
+  }, [selectedCity, precisionLevel, smokePayload, useCurrentTime, customDate, customTime, jitterMeters, massDeviceId, massPollutant, syncControlsFromPayload, setSmokePayload]);
 
   async function handleSmokeTest() {
     if (!user) {
