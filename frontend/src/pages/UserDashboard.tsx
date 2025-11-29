@@ -28,7 +28,7 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
-  const [activationUrl, setActivationUrl] = useState<string>(() => buildActivationLink());
+  const activationUrl = useMemo(() => buildActivationLink(), []);
   const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
