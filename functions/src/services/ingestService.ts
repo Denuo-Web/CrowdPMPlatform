@@ -9,6 +9,7 @@ import {
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
 import { getIngestTopic } from "../lib/runtimeConfig.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
+import { IngestPayload } from "../lib/validation.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
 
 export type IngestBody = SharedIngestBody;
@@ -20,7 +21,7 @@ export type IngestRequest = {
   visibility?: BatchVisibility | null;
 };
 
-export type IngestErrorReason = "MISSING_DEVICE_ID" | "DEVICE_FORBIDDEN";
+export type IngestErrorReason = "MISSING_DEVICE_ID" | "DEVICE_FORBIDDEN" | "INVALID_PAYLOAD";
 
 export class IngestServiceError extends Error {
   readonly statusCode: number;
@@ -91,9 +92,14 @@ export class IngestService {
   }
 
   async ingest(request: IngestRequest): Promise<IngestResult> {
-    const deviceId = request.deviceId || request.body.points?.[0]?.device_id || request.body.device_id;
+    const { parsedBody, canonicalRawBody } = this.normalizeIngestPayload(request.rawBody);
+    const payloadDeviceId = parsedBody.device_id || parsedBody.points?.[0]?.device_id;
+    const deviceId = request.deviceId || payloadDeviceId;
     if (!deviceId) {
       throw new IngestServiceError("MISSING_DEVICE_ID", "missing device_id", 400);
+    }
+    if (payloadDeviceId && payloadDeviceId !== deviceId) {
+      throw new IngestServiceError("INVALID_PAYLOAD", "device_id mismatch between payload and request", 400);
     }
 
     const devRef = this.deps.db.collection("devices").doc(deviceId);
@@ -112,15 +118,13 @@ export class IngestService {
 
     const batchId = crypto.randomUUID();
     const path = `ingest/${deviceId}/${batchId}.json`;
-    await this.deps.bucket.file(path).save(request.rawBody, { contentType: "application/json" });
+    await this.deps.bucket.file(path).save(canonicalRawBody, { contentType: "application/json" });
 
     const topicName = this.resolveIngestTopic();
     await this.ensureTopicExists(topicName);
     await this.deps.pubsub.topic(topicName).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
-    const matchingPointCount = Array.isArray(request.body.points)
-      ? request.body.points.filter((point: IngestPoint) => point.device_id === deviceId).length
-      : 0;
+    const matchingPointCount = parsedBody.points.filter((point: IngestPoint) => point.device_id === deviceId).length;
     await devRef.collection("batches").doc(batchId).set({
       path,
       count: matchingPointCount,
@@ -163,6 +167,26 @@ export class IngestService {
     }
     const pending = this.ensuredTopics.get(topicName);
     if (pending) await pending;
+  }
+
+  private normalizeIngestPayload(rawBody: string): { parsedBody: IngestPayload; canonicalRawBody: string } {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawBody);
+    }
+    catch {
+      throw new IngestServiceError("INVALID_PAYLOAD", "invalid JSON payload", 400);
+    }
+
+    const parsed = IngestPayload.safeParse(parsedJson);
+    if (!parsed.success) {
+      throw new IngestServiceError("INVALID_PAYLOAD", "invalid ingest payload", 400);
+    }
+
+    return {
+      parsedBody: parsed.data,
+      canonicalRawBody: JSON.stringify(parsed.data),
+    };
   }
 }
 

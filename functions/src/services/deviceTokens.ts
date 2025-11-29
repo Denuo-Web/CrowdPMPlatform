@@ -42,6 +42,22 @@ let cachedKeys: KeyMaterial | null = null;
 let signingKeyPromise: Promise<SigningKey> | null = null;
 let verificationKeyPromise: Promise<VerificationKey> | null = null;
 
+class DeviceTokenKeyError extends Error {
+  readonly statusCode = 500;
+  readonly code = "missing_device_token_private_key";
+
+  constructor(message: string) {
+    super(message);
+    Object.setPrototypeOf(this, DeviceTokenKeyError.prototype);
+  }
+}
+
+function allowEphemeralKeys(): boolean {
+  return process.env.FUNCTIONS_EMULATOR === "true"
+    || process.env.NODE_ENV === "test"
+    || process.env.ALLOW_EPHEMERAL_DEVICE_TOKEN_KEYS === "true";
+}
+
 function loadOrCreateKeyMaterial(): KeyMaterial {
   if (cachedKeys) return cachedKeys;
   const configured = getDeviceTokenPrivateKey()?.trim();
@@ -56,13 +72,16 @@ function loadOrCreateKeyMaterial(): KeyMaterial {
     };
     return cachedKeys;
   }
+  if (!allowEphemeralKeys()) {
+    throw new DeviceTokenKeyError("DEVICE_TOKEN_PRIVATE_KEY is not configured; refusing to issue device tokens.");
+  }
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
   const fallback: KeyMaterial = {
     privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
     publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
     generated: true,
   };
-  console.warn("DEVICE_TOKEN_PRIVATE_KEY is not set. Generated ephemeral signing key for this instance.");
+  console.warn("DEVICE_TOKEN_PRIVATE_KEY is not set. Generated ephemeral signing key for this instance (emulator/test only).");
   cachedKeys = fallback;
   return fallback;
 }
@@ -129,6 +148,7 @@ export async function verifyRegistrationToken(raw: string): Promise<VerifiedRegi
     payload = { ...verified.payload, jti: verified.payload.jti };
   }
   catch (err) {
+    if (err instanceof DeviceTokenKeyError) throw err;
     throw unauthorized(err instanceof Error ? err.message : "invalid registration token");
   }
   if (payload.kind !== "registration") throw unauthorized("Invalid registration token");
@@ -196,6 +216,7 @@ export async function verifyDeviceAccessToken(raw: string): Promise<VerifiedDevi
     payload = { ...verified.payload, jti: verified.payload.jti };
   }
   catch (err) {
+    if (err instanceof DeviceTokenKeyError) throw err;
     throw unauthorized(err instanceof Error ? err.message : "invalid device token");
   }
   if (payload.kind !== "device_access") throw unauthorized("Invalid device access token");
