@@ -77,23 +77,49 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const cleared: string[] = [];
+    const failures: Array<{ deviceId: string; stage: string; message: string }> = [];
     for (const deviceId of allowedIds) {
       const ref = db().collection("devices").doc(deviceId);
-      await getFirebaseApp().firestore().recursiveDelete(ref).catch((err: unknown) => {
-        console.warn("Failed to recursively delete Firestore data", err);
-      });
+      try {
+        await getFirebaseApp().firestore().recursiveDelete(ref);
+      }
+      catch (err) {
+        req.log.warn({ err, deviceId }, "failed to recursively delete Firestore data");
+        failures.push({
+          deviceId,
+          stage: "firestore",
+          message: err instanceof Error ? err.message : "failed to delete firestore data",
+        });
+      }
       try {
         await bucket().deleteFiles({ prefix: `ingest/${deviceId}/` });
       }
       catch (err) {
-        console.warn("Failed to delete storage files", err);
+        req.log.warn({ err, deviceId }, "failed to delete storage files");
+        failures.push({
+          deviceId,
+          stage: "storage",
+          message: err instanceof Error ? err.message : "failed to delete storage files",
+        });
       }
-      await db().collection("devices").doc(deviceId).delete().catch(() => {});
-      cleared.push(deviceId);
+      try {
+        await db().collection("devices").doc(deviceId).delete();
+        cleared.push(deviceId);
+      }
+      catch (err) {
+        req.log.error({ err, deviceId }, "failed to delete device document");
+        failures.push({
+          deviceId,
+          stage: "device",
+          message: err instanceof Error ? err.message : "failed to delete device document",
+        });
+      }
     }
-    return rep.code(200).send({
+    const status = failures.length ? 207 : 200;
+    return rep.code(status).send({
       clearedDeviceId: cleared[0] || null,
       clearedDeviceIds: cleared,
+      failedDeletions: failures,
     });
   });
 };

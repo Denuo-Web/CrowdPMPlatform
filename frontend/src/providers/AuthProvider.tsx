@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { auth } from "../lib/firebase";
+import { safeLocalStorageRemove } from "../lib/storage";
 
 type AuthContextValue = {
   user: User | null;
@@ -31,13 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
       if (!nextUser) {
         queryClient.clear();
-        try {
-          window.localStorage.removeItem("crowdpm:lastSmokeSelection");
-          window.localStorage.removeItem("crowdpm:lastSmokeBatchCache");
-        }
-        catch {
-          // ignore storage errors
-        }
+        safeLocalStorageRemove(
+          ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache"],
+          { context: "auth:clear-storage" }
+        );
       }
     });
     return unsubscribe;
@@ -45,13 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearCachesOnSignOut = useCallback(() => {
     queryClient.clear();
-    try {
-      window.localStorage.removeItem("crowdpm:lastSmokeSelection");
-      window.localStorage.removeItem("crowdpm:lastSmokeBatchCache");
-    }
-    catch {
-      // ignore storage errors
-    }
+    safeLocalStorageRemove(
+      ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache"],
+      { context: "auth:sign-out-clear" }
+    );
   }, [queryClient]);
 
   const value = useMemo<AuthContextValue>(

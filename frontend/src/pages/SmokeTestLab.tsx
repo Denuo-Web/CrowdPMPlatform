@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import {
   Badge,
   Box,
@@ -36,8 +36,12 @@ import {
   type IngestSmokeTestResponse,
   type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
+import { usePersistedSmokePayload, useSmokeTestStorage } from "../hooks/useSmokeTestStorage";
+import { logWarning } from "../lib/logger";
+import { scopedStorageKey } from "../lib/storage";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
+import type { SmokeHistoryItem } from "../types/smokeTest";
 
 const PAYLOAD_STORAGE_KEY = "crowdpm:lastSmokePayload";
 const HISTORY_STORAGE_KEY = "crowdpm:smokeHistory";
@@ -45,16 +49,9 @@ const LAST_DEVICE_STORAGE_KEY = "crowdpm:lastSmokeTestDevice";
 const LAST_SELECTION_STORAGE_KEY = "crowdpm:lastSmokeSelection";
 const LAST_BATCH_CACHE_STORAGE_KEY = "crowdpm:lastSmokeBatchCache";
 
-const DEFAULT_POINT_COUNT = 60;
+const DEFAULT_POINT_COUNT = 60; // one minute of per-second readings
 
-const UNIT_LABEL = "\u00b5g/m\u00b3";
-
-type SmokeHistoryItem = {
-  id: string;
-  createdAt: number;
-  deviceIds: string[];
-  response: IngestSmokeTestResponse;
-};
+const UNIT_LABEL = "\u00b5g/m\u00b3"; // micrograms per cubic meter
 
 type CityPreset = {
   value: string;
@@ -130,6 +127,18 @@ const PRECISION_PRESETS = [
 
 type PrecisionLevel = (typeof PRECISION_PRESETS)[number]["value"];
 
+type ControlState = {
+  massDeviceId: string;
+  massPollutant: string;
+  batchVisibility: BatchVisibility;
+  selectedCity: string;
+  jitterMeters: number;
+  useCurrentTime: boolean;
+  customDate: string;
+  customTime: string;
+  precisionLevel: PrecisionLevel;
+};
+
 function createDefaultSmokePayload(deviceId = "device-123"): IngestSmokeTestPayload {
   const now = Date.now();
   const points = Array.from({ length: DEFAULT_POINT_COUNT }, (_, idx) => {
@@ -180,7 +189,7 @@ function parseSmokeHistory(raw: string | null): SmokeHistoryItem[] {
       .filter((item): item is SmokeHistoryItem => Boolean(item));
   }
   catch (err) {
-    console.warn("Unable to parse smoke test history", err);
+    logWarning("Unable to parse smoke test history", { rawLength: raw.length }, err);
     return [];
   }
 }
@@ -314,24 +323,10 @@ function rewritePoints(
   return JSON.stringify({ points: nextPoints }, null, 2);
 }
 
-function encodeBatchKey(deviceId: string, batchId: string): string {
-  return `${deviceId}::${batchId}`;
-}
-
 type SmokeTestLabProps = {
   onSmokeTestComplete?: (result: IngestSmokeTestResponse) => void;
   onSmokeTestCleared?: (detail: IngestSmokeTestCleanupResponse) => void;
 };
-
-function decodeBatchKey(raw: string | null | undefined): { deviceId: string; batchId: string } | null {
-  if (!raw) return null;
-  const separator = raw.indexOf("::");
-  if (separator === -1) return null;
-  const deviceId = raw.slice(0, separator);
-  const batchId = raw.slice(separator + 2);
-  if (!deviceId || !batchId) return null;
-  return { deviceId, batchId };
-}
 
 export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }: SmokeTestLabProps = {}) {
   const { user } = useAuth();
@@ -341,44 +336,60 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
   const defaultDeviceId = defaultPayload.points[0]?.device_id ?? "device-123";
   const defaultPollutant = defaultPayload.points[0]?.pollutant ?? "pm25";
 
-  const [smokePayload, setSmokePayload] = useState<string>(defaultPayloadString);
   const [payloadError, setPayloadError] = useState<string | null>(null);
   const [smokeResult, setSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
-  const [smokeHistory, setSmokeHistory] = useState<SmokeHistoryItem[]>([]);
   const [smokeError, setSmokeError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
-  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
-  const [massDeviceId, setMassDeviceId] = useState(defaultDeviceId);
-  const [massPollutant, setMassPollutant] = useState(defaultPollutant);
-  const [batchVisibility, setBatchVisibility] = useState<BatchVisibility>(settings.defaultBatchVisibility);
-  const [selectedCity, setSelectedCity] = useState(CITY_PRESETS[0].value);
-  const [jitterMeters, setJitterMeters] = useState(40);
-  const [useCurrentTime, setUseCurrentTime] = useState(true);
-  const [customDate, setCustomDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [customTime, setCustomTime] = useState(() => new Date().toISOString().slice(11, 16));
-  const [precisionLevel, setPrecisionLevel] = useState<PrecisionLevel>("medium");
-
-  const historyRef = useRef<SmokeHistoryItem[]>([]);
+  const [deletions, setDeletions] = useState<{ batchId: string | null; deviceId: string | null }>({
+    batchId: null,
+    deviceId: null,
+  });
+  const [controls, setControls] = useReducer(
+    (state: ControlState, updates: Partial<ControlState>) => ({ ...state, ...updates }),
+    {
+      massDeviceId: defaultDeviceId,
+      massPollutant: defaultPollutant,
+      batchVisibility: settings.defaultBatchVisibility,
+      selectedCity: CITY_PRESETS[0].value,
+      jitterMeters: 40,
+      useCurrentTime: true,
+      customDate: new Date().toISOString().slice(0, 10),
+      customTime: new Date().toISOString().slice(11, 16),
+      precisionLevel: "medium",
+    }
+  );
+  const deletingBatchId = deletions.batchId;
+  const deletingDeviceId = deletions.deviceId;
+  const {
+    massDeviceId,
+    massPollutant,
+    batchVisibility,
+    selectedCity,
+    jitterMeters,
+    useCurrentTime,
+    customDate,
+    customTime,
+    precisionLevel,
+  } = controls;
 
   const scopedPayloadKey = useMemo(
-    () => user?.uid ? `${PAYLOAD_STORAGE_KEY}:${user.uid}` : PAYLOAD_STORAGE_KEY,
+    () => scopedStorageKey(PAYLOAD_STORAGE_KEY, user?.uid),
     [user?.uid]
   );
   const scopedHistoryKey = useMemo(
-    () => user?.uid ? `${HISTORY_STORAGE_KEY}:${user.uid}` : HISTORY_STORAGE_KEY,
+    () => scopedStorageKey(HISTORY_STORAGE_KEY, user?.uid),
     [user?.uid]
   );
   const scopedLastDeviceKey = useMemo(
-    () => user?.uid ? `${LAST_DEVICE_STORAGE_KEY}:${user.uid}` : LAST_DEVICE_STORAGE_KEY,
+    () => scopedStorageKey(LAST_DEVICE_STORAGE_KEY, user?.uid),
     [user?.uid]
   );
   const scopedSelectionKey = useMemo(
-    () => user?.uid ? `${LAST_SELECTION_STORAGE_KEY}:${user.uid}` : LAST_SELECTION_STORAGE_KEY,
+    () => scopedStorageKey(LAST_SELECTION_STORAGE_KEY, user?.uid),
     [user?.uid]
   );
   const scopedLastBatchCacheKey = useMemo(
-    () => user?.uid ? `${LAST_BATCH_CACHE_STORAGE_KEY}:${user.uid}` : LAST_BATCH_CACHE_STORAGE_KEY,
+    () => scopedStorageKey(LAST_BATCH_CACHE_STORAGE_KEY, user?.uid),
     [user?.uid]
   );
 
@@ -386,62 +397,40 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     try {
       const payload = parsePayload(raw);
       const first = payload.points[0];
-      if (first?.device_id) setMassDeviceId(first.device_id);
-      if (first?.pollutant) setMassPollutant(first.pollutant);
+      const updates: Partial<ControlState> = {};
+      if (first?.device_id) updates.massDeviceId = first.device_id;
+      if (first?.pollutant) updates.massPollutant = first.pollutant;
+      if (Object.keys(updates).length) setControls(updates);
     }
     catch {
       // ignore sync failures when payload is mid-edit
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem(scopedPayloadKey) ?? defaultPayloadString;
-      setSmokePayload(stored);
-      syncControlsFromPayload(stored);
-    }
-    catch (err) {
-      console.warn("Unable to load smoke payload", err);
-      setSmokePayload(defaultPayloadString);
-    }
-  }, [scopedPayloadKey, defaultPayloadString, syncControlsFromPayload]);
+  const [smokePayload, setSmokePayload] = usePersistedSmokePayload({
+    storageKey: scopedPayloadKey,
+    defaultPayload: defaultPayloadString,
+    userId: user?.uid,
+    onLoad: syncControlsFromPayload,
+  });
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      setSmokeHistory([]);
-      historyRef.current = [];
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(scopedHistoryKey);
-      const parsed = parseSmokeHistory(stored);
-      setSmokeHistory(parsed);
-      historyRef.current = parsed;
-    }
-    catch (err) {
-      console.warn("Unable to load smoke test history", err);
-      setSmokeHistory([]);
-      historyRef.current = [];
-    }
-  }, [scopedHistoryKey]);
-
-  useEffect(() => {
-    historyRef.current = smokeHistory;
-  }, [smokeHistory]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !user) return;
-    try {
-      window.localStorage.setItem(scopedPayloadKey, smokePayload);
-    }
-    catch (err) {
-      console.warn("Unable to store smoke payload", err);
-    }
-  }, [smokePayload, scopedPayloadKey, user]);
+  const {
+    history: smokeHistory,
+    updateHistory,
+    persistRunArtifacts,
+    clearArtifactsForDevices,
+    clearArtifactsForBatch,
+  } = useSmokeTestStorage({
+    historyKey: scopedHistoryKey,
+    lastDeviceKey: scopedLastDeviceKey,
+    selectionKey: scopedSelectionKey,
+    batchCacheKey: scopedLastBatchCacheKey,
+    userId: user?.uid,
+    parseHistory: parseSmokeHistory,
+  });
 
   const applyPrecisionRange = useCallback((nextLevel: PrecisionLevel) => {
-    setPrecisionLevel(nextLevel);
+    setControls({ precisionLevel: nextLevel });
     try {
       setSmokePayload((prev) => rewritePoints(prev, (point) => ({
         ...point,
@@ -454,7 +443,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update precision");
     }
-  }, []);
+  }, [setSmokePayload]);
 
   const handleApplyDeviceId = useCallback(() => {
     try {
@@ -465,7 +454,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update device IDs");
     }
-  }, [smokePayload, massDeviceId]);
+  }, [smokePayload, massDeviceId, setSmokePayload]);
 
   const handleApplyPollutant = useCallback(() => {
     try {
@@ -476,7 +465,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to update pollutant");
     }
-  }, [smokePayload, massPollutant]);
+  }, [smokePayload, massPollutant, setSmokePayload]);
 
   const handleRewriteTimestamps = useCallback(() => {
     try {
@@ -491,7 +480,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to rewrite timestamps");
     }
-  }, [smokePayload, useCurrentTime, customDate, customTime]);
+  }, [smokePayload, useCurrentTime, customDate, customTime, setSmokePayload]);
 
   const handleRegeneratePath = useCallback(() => {
     try {
@@ -516,7 +505,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     catch (err) {
       setPayloadError(err instanceof Error ? err.message : "Unable to regenerate path");
     }
-  }, [selectedCity, precisionLevel, smokePayload, useCurrentTime, customDate, customTime, jitterMeters, massDeviceId, massPollutant, syncControlsFromPayload]);
+  }, [selectedCity, precisionLevel, smokePayload, useCurrentTime, customDate, customTime, jitterMeters, massDeviceId, massPollutant, syncControlsFromPayload, setSmokePayload]);
 
   async function handleSmokeTest() {
     if (!user) {
@@ -536,32 +525,11 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
         deviceIds: uniqueDeviceIdsFromResult(result),
         response: result,
       };
-      const updatedHistory = [
+      updateHistory((prev) => [
         historyEntry,
-        ...historyRef.current.filter((item) => item.response.batchId !== result.batchId),
-      ].slice(0, 10);
-      setSmokeHistory(updatedHistory);
-      historyRef.current = updatedHistory;
-      if (typeof window !== "undefined" && user) {
-        window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
-        window.localStorage.setItem(scopedLastDeviceKey, result.deviceId);
-        window.localStorage.setItem(scopedSelectionKey, encodeBatchKey(result.deviceId, result.batchId));
-        const cachePoints = Array.isArray(result.points) && result.points.length ? result.points : payload.points;
-        if (cachePoints.length) {
-          const cachePayload = {
-            summary: {
-              batchId: result.batchId,
-              deviceId: result.deviceId,
-              deviceName: null,
-              count: cachePoints.length,
-              processedAt: new Date().toISOString(),
-              visibility: result.visibility ?? batchVisibility,
-            },
-            points: cachePoints,
-          };
-          window.localStorage.setItem(scopedLastBatchCacheKey, JSON.stringify(cachePayload));
-        }
-      }
+        ...prev.filter((item) => item.response.batchId !== result.batchId),
+      ].slice(0, 10));
+      persistRunArtifacts({ result, payload, visibility: batchVisibility });
       onSmokeTestComplete?.(result);
     }
     catch (err) {
@@ -585,39 +553,13 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
     }
     if (!entry.deviceIds.length) return;
     const targetIds = entry.deviceIds;
-    setDeletingDeviceId(targetIds[0]);
+    setDeletions((prev) => ({ ...prev, deviceId: targetIds[0] }));
     setSmokeError(null);
     try {
       const response = await cleanupIngestSmokeTest(targetIds);
-      if (typeof window !== "undefined") {
-        const last = window.localStorage.getItem(scopedLastDeviceKey);
-        if (last && targetIds.includes(last)) {
-          window.localStorage.removeItem(scopedLastDeviceKey);
-        }
-        const lastSelection = decodeBatchKey(window.localStorage.getItem(scopedSelectionKey));
-        if (lastSelection && targetIds.includes(lastSelection.deviceId)) {
-          window.localStorage.removeItem(scopedSelectionKey);
-        }
-        const cachedRaw = window.localStorage.getItem(scopedLastBatchCacheKey);
-        if (cachedRaw) {
-          try {
-            const cached = JSON.parse(cachedRaw) as { summary?: { deviceId?: string } };
-            if (cached?.summary && cached.summary.deviceId && targetIds.includes(cached.summary.deviceId)) {
-              window.localStorage.removeItem(scopedLastBatchCacheKey);
-            }
-          }
-          catch {
-            window.localStorage.removeItem(scopedLastBatchCacheKey);
-          }
-        }
-      }
+      clearArtifactsForDevices(targetIds);
       onSmokeTestCleared?.(response);
-      const updatedHistory = historyRef.current.filter((item) => item.id !== entry.id);
-      setSmokeHistory(updatedHistory);
-      historyRef.current = updatedHistory;
-      if (typeof window !== "undefined" && user) {
-        window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
-      }
+      updateHistory((prev) => prev.filter((item) => item.id !== entry.id));
       if (smokeResult && uniqueDeviceIdsFromResult(smokeResult).some((id) => targetIds.includes(id))) {
         setSmokeResult(null);
       }
@@ -626,7 +568,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
       setSmokeError(err instanceof Error ? err.message : "Cleanup failed");
     }
     finally {
-      setDeletingDeviceId(null);
+      setDeletions((prev) => ({ ...prev, deviceId: null }));
     }
   }
 
@@ -635,39 +577,11 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
       setSmokeError("Sign in is required to delete smoke data.");
       return;
     }
-    setDeletingBatchId(entry.response.batchId);
+    setDeletions((prev) => ({ ...prev, batchId: entry.response.batchId }));
     setSmokeError(null);
     try {
-      const updatedHistory = historyRef.current.filter((item) => item.response.batchId !== entry.response.batchId);
-      setSmokeHistory(updatedHistory);
-      historyRef.current = updatedHistory;
-      if (typeof window !== "undefined" && user) {
-        window.localStorage.setItem(scopedHistoryKey, JSON.stringify(updatedHistory));
-        const lastSelection = decodeBatchKey(window.localStorage.getItem(scopedSelectionKey));
-        if (
-          lastSelection
-          && lastSelection.batchId === entry.response.batchId
-          && lastSelection.deviceId === entry.response.deviceId
-        ) {
-          window.localStorage.removeItem(scopedSelectionKey);
-        }
-        const cachedRaw = window.localStorage.getItem(scopedLastBatchCacheKey);
-        if (cachedRaw) {
-          try {
-            const cached = JSON.parse(cachedRaw) as { summary?: { deviceId?: string; batchId?: string } };
-            if (
-              cached?.summary
-              && cached.summary.deviceId === entry.response.deviceId
-              && cached.summary.batchId === entry.response.batchId
-            ) {
-              window.localStorage.removeItem(scopedLastBatchCacheKey);
-            }
-          }
-          catch {
-            window.localStorage.removeItem(scopedLastBatchCacheKey);
-          }
-        }
-      }
+      updateHistory((prev) => prev.filter((item) => item.response.batchId !== entry.response.batchId));
+      clearArtifactsForBatch(entry.response.deviceId, entry.response.batchId);
       if (smokeResult?.batchId === entry.response.batchId) {
         setSmokeResult(null);
       }
@@ -676,7 +590,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
       setSmokeError(err instanceof Error ? err.message : "Cleanup failed");
     }
     finally {
-      setDeletingBatchId(null);
+      setDeletions((prev) => ({ ...prev, batchId: null }));
     }
   }
 
@@ -698,7 +612,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
   );
 
   useEffect(() => {
-    setBatchVisibility(settings.defaultBatchVisibility);
+    setControls({ batchVisibility: settings.defaultBatchVisibility });
   }, [settings.defaultBatchVisibility]);
 
   return (
@@ -723,7 +637,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
                 <TextField.Root
                   style={{ flex: 1 }}
                   value={massDeviceId}
-                  onChange={(event) => setMassDeviceId(event.target.value)}
+                  onChange={(event) => setControls({ massDeviceId: event.target.value })}
                   placeholder="device-123"
                 />
                 <Button onClick={handleApplyDeviceId} variant="soft">
@@ -735,7 +649,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
                 <TextField.Root
                   style={{ flex: 1 }}
                   value={massPollutant}
-                  onChange={(event) => setMassPollutant(event.target.value)}
+                  onChange={(event) => setControls({ massPollutant: event.target.value })}
                   placeholder="pm25"
                 />
                 <Button onClick={handleApplyPollutant} variant="soft">
@@ -747,7 +661,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
 
             <Flex direction="column" gap="3">
               <Text size="2" color="gray">City path</Text>
-              <Select.Root value={selectedCity} onValueChange={setSelectedCity}>
+              <Select.Root value={selectedCity} onValueChange={(value) => setControls({ selectedCity: value })}>
                 <Select.Trigger />
                 <Select.Content>
                   {CITY_PRESETS.map((preset) => (
@@ -766,7 +680,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
                     min={5}
                     max={250}
                     step={5}
-                    onValueChange={(value) => setJitterMeters(value[0])}
+                    onValueChange={(value) => setControls({ jitterMeters: value[0] })}
                   />
                 </div>
                 <Badge variant="soft">{jitterLabel}</Badge>
@@ -780,13 +694,13 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
               <Flex direction="column" gap="3">
                 <Text size="2" color="gray">Timestamp alignment</Text>
                 <Flex align="center" gap="2">
-                  <Switch checked={useCurrentTime} onCheckedChange={setUseCurrentTime} />
+                  <Switch checked={useCurrentTime} onCheckedChange={(checked) => setControls({ useCurrentTime: checked })} />
                   <Text>{useCurrentTime ? "Use now" : "Use custom time"}</Text>
                 </Flex>
                 {!useCurrentTime ? (
                   <Flex gap="3">
-                    <TextField.Root type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} />
-                    <TextField.Root type="time" value={customTime} onChange={(event) => setCustomTime(event.target.value)} />
+                    <TextField.Root type="date" value={customDate} onChange={(event) => setControls({ customDate: event.target.value })} />
+                    <TextField.Root type="time" value={customTime} onChange={(event) => setControls({ customTime: event.target.value })} />
                   </Flex>
                 ) : null}
                 <Button onClick={handleRewriteTimestamps} variant="soft">
@@ -835,7 +749,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
             </Flex>
             <SegmentedControl.Root
               value={batchVisibility}
-              onValueChange={(value) => setBatchVisibility(value as BatchVisibility)}
+              onValueChange={(value) => setControls({ batchVisibility: value as BatchVisibility })}
               style={{ alignSelf: "flex-start" }}
             >
               <SegmentedControl.Item value="public">Public</SegmentedControl.Item>

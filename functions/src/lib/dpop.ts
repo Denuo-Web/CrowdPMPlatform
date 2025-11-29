@@ -18,6 +18,8 @@ export type VerifiedDpop = {
 };
 
 const decoder = new TextDecoder();
+const DEFAULT_DPOP_MAX_AGE_SECONDS = 120;
+const DEFAULT_DPOP_CLOCK_SKEW_SECONDS = 5;
 
 function unauthorized(message: string) {
   return Object.assign(new Error(message), { statusCode: 401 });
@@ -68,8 +70,8 @@ export async function verifyDpopProof(proof: string | undefined, options: Verify
     throw unauthorized("DPoP htu mismatch");
   }
 
-  const maxAge = options.maxAgeSeconds ?? 120;
-  const skew = options.clockSkewSeconds ?? 5;
+  const maxAge = options.maxAgeSeconds ?? DEFAULT_DPOP_MAX_AGE_SECONDS;
+  const skew = options.clockSkewSeconds ?? DEFAULT_DPOP_CLOCK_SKEW_SECONDS;
   const now = Math.floor(Date.now() / 1000);
   if (iat < now - maxAge - skew || iat > now + skew) {
     throw unauthorized("DPoP iat outside acceptable window");

@@ -10,6 +10,8 @@ import {
   type IngestSmokeTestPoint,
   type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
+import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
+import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet, scopedStorageKey } from "../lib/storage";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 
@@ -17,14 +19,11 @@ import { useUserSettings } from "../providers/UserSettingsProvider";
 const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
+const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
-
-function scopedKey(base: string, uid?: string | null) {
-  return uid ? `${base}:${uid}` : base;
-}
 
 function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
   if (typeof ts === "number") return ts;
@@ -34,22 +33,6 @@ function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
   }
   if (ts instanceof Date) return ts.getTime();
   return ts.toMillis();
-}
-
-type BatchKey = { deviceId: string; batchId: string };
-
-function encodeBatchKey(deviceId: string, batchId: string): string {
-  return `${deviceId}::${batchId}`;
-}
-
-function decodeBatchKey(value: string): BatchKey | null {
-  if (!value) return null;
-  const separator = value.indexOf("::");
-  if (separator === -1) return null;
-  const deviceId = value.slice(0, separator);
-  const batchId = value.slice(separator + 2);
-  if (!deviceId || !batchId) return null;
-  return { deviceId, batchId };
 }
 
 type StoredSmokeBatch = {
@@ -173,27 +156,45 @@ export default function MapPage({
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
-  const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
-  const userScopedLegacyKey = useMemo(() => scopedKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined), [user?.uid]);
-  const userScopedCacheKey = useMemo(() => scopedKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined), [user?.uid]);
+  const userScopedSelectionKey = useMemo(
+    () => scopedStorageKey(LAST_SELECTION_KEY, user?.uid ?? undefined),
+    [user?.uid]
+  );
+  const userScopedLegacyKey = useMemo(
+    () => scopedStorageKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined),
+    [user?.uid]
+  );
+  const userScopedCacheKey = useMemo(
+    () => scopedStorageKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined),
+    [user?.uid]
+  );
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>(() => {
-    if (typeof window === "undefined" || !user) return "";
-    try {
-      const stored = window.localStorage.getItem(userScopedSelectionKey);
-      if (stored) return stored;
-      const legacyScoped = window.localStorage.getItem(userScopedLegacyKey);
-      if (legacyScoped) {
-        window.localStorage.removeItem(userScopedLegacyKey);
-      }
-      const legacy = window.localStorage.getItem(LEGACY_LAST_DEVICE_KEY);
-      if (legacy) {
-        window.localStorage.removeItem(LEGACY_LAST_DEVICE_KEY);
-      }
+    if (!user) return "";
+    const stored = safeLocalStorageGet(
+      userScopedSelectionKey,
+      "",
+      { context: "map:selected-batch:bootstrap", userId: user.uid }
+    );
+    if (stored) return stored;
+
+    const legacyScoped = safeLocalStorageGet(
+      userScopedLegacyKey,
+      null,
+      { context: "map:selected-batch:bootstrap-legacy", userId: user.uid }
+    );
+    if (legacyScoped) {
+      safeLocalStorageRemove(userScopedLegacyKey, { context: "map:selected-batch:cleanup-legacy", userId: user.uid });
     }
-    catch (err) {
-      console.warn(err);
+
+    const legacy = safeLocalStorageGet(
+      LEGACY_LAST_DEVICE_KEY,
+      null,
+      { context: "map:selected-batch:bootstrap-legacy-global", userId: user.uid }
+    );
+    if (legacy) {
+      safeLocalStorageRemove(LEGACY_LAST_DEVICE_KEY, { context: "map:selected-batch:cleanup-legacy-global", userId: user.uid });
     }
     return "";
   });
@@ -202,9 +203,13 @@ export default function MapPage({
 
 
   const getCachedBatch = useCallback(() => {
-    if (typeof window === "undefined") return null;
-    return parseStoredSmokeBatch(window.localStorage.getItem(userScopedCacheKey));
-  }, [userScopedCacheKey]);
+    const raw = safeLocalStorageGet(
+      userScopedCacheKey,
+      null,
+      { context: "map:cache:read", userId: user?.uid }
+    );
+    return parseStoredSmokeBatch(raw);
+  }, [user?.uid, userScopedCacheKey]);
 
   // Query #1: list of batches visible to the user.
   const batchesQuery = useQuery<BatchSummary[]>({
@@ -216,7 +221,7 @@ export default function MapPage({
     },
     enabled: Boolean(user) && !isAuthLoading,
     placeholderData: (prev) => prev ?? [],
-    staleTime: 30_000,
+    staleTime: BATCH_LIST_STALE_MS,
     retry: (failureCount, error) => {
       if (error instanceof Error && error.message.toLowerCase().includes("unauthorized")) return false;
       return failureCount < 3;
@@ -299,15 +304,13 @@ export default function MapPage({
       });
       return;
     }
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem(userScopedSelectionKey);
-      if (stored) {
-        deferStateUpdate(() => { setSelectedBatchKey(stored); });
-      }
-    }
-    catch (err) {
-      console.warn(err);
+    const stored = safeLocalStorageGet(
+      userScopedSelectionKey,
+      "",
+      { context: "map:selected-batch:hydrate", userId: user.uid }
+    );
+    if (stored) {
+      deferStateUpdate(() => { setSelectedBatchKey(stored); });
     }
   }, [user, userScopedSelectionKey]);
 
@@ -337,13 +340,19 @@ export default function MapPage({
 
   const handleBatchSelect = useCallback((value: string) => {
     setSelectedBatchKey(value);
-    if (typeof window !== "undefined" && user) {
-      try {
-        if (value) window.localStorage.setItem(userScopedSelectionKey, value);
-        else window.localStorage.removeItem(userScopedSelectionKey);
+    if (user) {
+      if (value) {
+        safeLocalStorageSet(
+          userScopedSelectionKey,
+          value,
+          { context: "map:selected-batch:update", userId: user.uid }
+        );
       }
-      catch (err) {
-        console.warn(err);
+      else {
+        safeLocalStorageRemove(
+          userScopedSelectionKey,
+          { context: "map:selected-batch:clear", userId: user.uid }
+        );
       }
     }
   }, [user, userScopedSelectionKey]);
@@ -385,18 +394,24 @@ export default function MapPage({
     }
 
     setSelectedBatchKey(key);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(userScopedSelectionKey, key);
-        if (rawPoints.length) {
-          window.localStorage.setItem(userScopedCacheKey, JSON.stringify({ summary, points: rawPoints }));
-        }
-        else {
-          window.localStorage.removeItem(userScopedCacheKey);
-        }
+    if (user) {
+      safeLocalStorageSet(
+        userScopedSelectionKey,
+        key,
+        { context: "map:selected-batch:save", userId: user.uid }
+      );
+      if (rawPoints.length) {
+        safeLocalStorageSet(
+          userScopedCacheKey,
+          JSON.stringify({ summary, points: rawPoints }),
+          { context: "map:cache:save", userId: user.uid }
+        );
       }
-      catch (err) {
-        console.warn(err);
+      else {
+        safeLocalStorageRemove(
+          userScopedCacheKey,
+          { context: "map:cache:clear", userId: user.uid }
+        );
       }
     }
 
@@ -426,17 +441,16 @@ export default function MapPage({
     if (current && cleared.has(current.deviceId)) {
       setSelectedBatchKey("");
       setIndexOverride(0);
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.removeItem(userScopedSelectionKey);
-          const cached = getCachedBatch();
-          if (cached && cleared.has(cached.summary.deviceId)) {
-            window.localStorage.removeItem(userScopedCacheKey);
-          }
-        }
-        catch (err) {
-          console.warn(err);
-        }
+      safeLocalStorageRemove(
+        userScopedSelectionKey,
+        { context: "map:selected-batch:clear-on-cleanup", userId: user.uid }
+      );
+      const cached = getCachedBatch();
+      if (cached && cleared.has(cached.summary.deviceId)) {
+        safeLocalStorageRemove(
+          userScopedCacheKey,
+          { context: "map:cache:clear-on-cleanup", userId: user.uid }
+        );
       }
     }
 
