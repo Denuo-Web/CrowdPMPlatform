@@ -1,8 +1,8 @@
+import type { BatchDetail, BatchSummary } from "@crowdpm/types";
 import type { FastifyPluginAsync } from "fastify";
 import { bucket } from "../lib/fire.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
-import { type BatchVisibility } from "../lib/batchVisibility.js";
 import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
 import { timestampToMillis } from "../lib/time.js";
 import { httpError } from "../lib/httpError.js";
@@ -15,19 +15,6 @@ import {
   requireUserGuard,
   requestUserId,
 } from "../lib/routeGuards.js";
-
-type BatchSummary = {
-  batchId: string;
-  deviceId: string;
-  deviceName?: string | null;
-  count: number;
-  processedAt: string | null;
-  visibility: BatchVisibility;
-};
-
-type BatchDetail = BatchSummary & {
-  points: IngestBatch["points"];
-};
 
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", {

@@ -1,4 +1,18 @@
 import { auth } from "./firebase";
+import type {
+  ActivationSession,
+  BatchDetail,
+  BatchSummary,
+  BatchVisibility,
+  DeviceSummary,
+  FirestoreTimestampLike,
+  IngestBatchPayload,
+  IngestPoint,
+  MeasurementRecord,
+  SmokeTestCleanupResponse,
+  SmokeTestResponse,
+  UserSettings,
+} from "@crowdpm/types";
 
 const rawBase = import.meta.env.VITE_API_BASE as string | undefined;
 const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "";
@@ -86,105 +100,20 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export type DeviceSummary = {
-  id: string;
-  name?: string | null;
-  status?: string | null;
-  registryStatus?: string | null;
-  ownerUserId?: string | null;
-  ownerUserIds?: string[] | null;
-  publicDeviceId?: string | null;
-  ownerScope?: string | null;
-  createdAt?: string | null;
-  fingerprint?: string | null;
-  lastSeenAt?: string | null;
+export type {
+  ActivationSession,
+  BatchDetail,
+  BatchSummary,
+  BatchVisibility,
+  DeviceSummary,
+  FirestoreTimestampLike,
+  MeasurementRecord,
+  UserSettings,
 };
-
-export type FirestoreTimestampLike = {
-  toDate(): Date;
-  toMillis(): number;
-};
-
-export type MeasurementRecord = {
-  id: string;
-  deviceId: string;
-  pollutant: "pm25";
-  value: number;
-  unit?: string | null;
-  lat: number;
-  lon: number;
-  altitude?: number | null;
-  precision?: number | null;
-  timestamp: string | number | Date | FirestoreTimestampLike;
-  flags?: number;
-};
-
-export type BatchVisibility = "public" | "private";
-
-export type IngestSmokeTestPoint = {
-  device_id: string;
-  pollutant: string;
-  value: number;
-  unit?: string | null;
-  lat?: number;
-  lon?: number;
-  timestamp: string;
-  altitude?: number | null;
-  precision?: number | null;
-  flags?: number;
-};
-
-export type IngestSmokeTestPayload = {
-  points: IngestSmokeTestPoint[];
-};
-
-export type IngestSmokeTestResponse = {
-  accepted: boolean;
-  batchId: string;
-  deviceId: string;
-  storagePath: string;
-  visibility: BatchVisibility;
-  seededDeviceId: string;
-  seededDeviceIds?: string[];
-  payload?: {
-    points?: IngestSmokeTestPoint[];
-  };
-  points?: IngestSmokeTestPoint[];
-};
-
-export type BatchSummary = {
-  batchId: string;
-  deviceId: string;
-  deviceName?: string | null;
-  count: number;
-  processedAt?: string | null;
-  visibility: BatchVisibility;
-};
-
-export type BatchDetail = BatchSummary & {
-  points: IngestSmokeTestPoint[];
-};
-
-export type UserSettings = {
-  defaultBatchVisibility: BatchVisibility;
-  interleavedRendering: boolean;
-};
-
-export type ActivationSession = {
-  device_code: string;
-  user_code: string;
-  model: string;
-  version: string;
-  fingerprint: string;
-  requested_at: string;
-  expires_at: string;
-  requester_ip?: string | null;
-  requester_asn?: string | null;
-  status: string;
-  poll_interval: number;
-  authorized_account?: string | null;
-  viewer_account?: string | null;
-};
+export type IngestSmokeTestPoint = IngestPoint;
+export type IngestSmokeTestPayload = IngestBatchPayload;
+export type IngestSmokeTestResponse = SmokeTestResponse;
+export type IngestSmokeTestCleanupResponse = SmokeTestCleanupResponse;
 
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
@@ -220,11 +149,6 @@ export async function runIngestSmokeTest(
     body: JSON.stringify(body),
   });
 }
-
-export type IngestSmokeTestCleanupResponse = {
-  clearedDeviceId: string | null;
-  clearedDeviceIds?: string[];
-};
 
 export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Promise<IngestSmokeTestCleanupResponse> {
   const payload = Array.isArray(deviceId)

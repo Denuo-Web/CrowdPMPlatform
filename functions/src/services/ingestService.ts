@@ -1,47 +1,23 @@
 import { PubSub } from "@google-cloud/pubsub";
 import type { Firestore } from "firebase-admin/firestore";
+import type { BatchVisibility, IngestBody as SharedIngestBody, IngestPoint, IngestResult } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
-  type BatchVisibility,
 } from "../lib/batchVisibility.js";
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
 import { getIngestTopic } from "../lib/runtimeConfig.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
 
-export type IngestPoint = {
-  device_id: string;
-  pollutant: string;
-  value: number;
-  unit?: string;
-  lat?: number;
-  lon?: number;
-  altitude?: number | null;
-  precision?: number | null;
-  timestamp: string;
-  flags?: number;
-};
-
-export type IngestBody = {
-  device_id?: string;
-  points?: IngestPoint[];
-};
+export type IngestBody = SharedIngestBody;
 
 export type IngestRequest = {
   rawBody: string;
   body: IngestBody;
   deviceId: string;
   visibility?: BatchVisibility | null;
-};
-
-export type IngestResult = {
-  accepted: true;
-  batchId: string;
-  deviceId: string;
-  storagePath: string;
-  visibility: BatchVisibility;
 };
 
 export type IngestErrorReason = "MISSING_DEVICE_ID" | "DEVICE_FORBIDDEN";

@@ -9,6 +9,7 @@ npm-debug.log
 functions/lib/
 frontend/dist/
 shared/dist/
+shared-types/dist/
 
 # Firebase emulator outputs
 firebase-debug.log

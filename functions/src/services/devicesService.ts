@@ -1,16 +1,13 @@
 import type { firestore } from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
+import type { DeviceSummary } from "@crowdpm/types";
 import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
 import { normalizeTimestamp, parseDeviceId } from "../lib/httpValidation.js";
 import { revokeDevice as revokeRegistryDevice } from "./deviceRegistry.js";
 
-export type DeviceRecord = Record<string, unknown> & {
-  id: string;
-  createdAt: string | null;
-  lastSeenAt: string | null;
-};
+export type DeviceRecord = DeviceSummary;
 
 type ResolvedDependencies = {
   db: Firestore;
@@ -35,7 +32,7 @@ export class DevicesService {
     };
   }
 
-  async list(userId: string): Promise<DeviceRecord[]> {
+  async list(userId: string): Promise<DeviceSummary[]> {
     if (!userId) {
       throw httpError(401, "unauthorized", "Authentication required");
     }
@@ -76,13 +73,30 @@ export class DevicesService {
     await this.deps.revokeDevice(trimmedId, userId, "user_initiated");
   }
 
-  private serialize(id: string, data: firestore.DocumentData | undefined): DeviceRecord {
-    const createdAt = normalizeTimestamp(data?.createdAt);
-    const lastSeenAt = normalizeTimestamp(data?.lastSeenAt);
-    const payload: Record<string, unknown> = { id, ...data };
-    payload.createdAt = createdAt ?? null;
-    payload.lastSeenAt = lastSeenAt ?? null;
-    return payload as DeviceRecord;
+  private serialize(id: string, data: firestore.DocumentData | undefined): DeviceSummary {
+    const createdAt = normalizeTimestamp(data?.createdAt) ?? null;
+    const lastSeenAt = normalizeTimestamp(data?.lastSeenAt) ?? null;
+
+    const ownerUserIds = Array.isArray(data?.ownerUserIds)
+      ? data?.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+      : null;
+
+    const extras = data && typeof data === "object" ? { ...data } : {};
+
+    return {
+      ...extras,
+      id,
+      name: typeof data?.name === "string" ? data.name : null,
+      status: typeof data?.status === "string" ? data.status : null,
+      registryStatus: typeof data?.registryStatus === "string" ? data.registryStatus : null,
+      ownerUserId: typeof data?.ownerUserId === "string" ? data.ownerUserId : null,
+      ownerUserIds,
+      publicDeviceId: typeof data?.publicDeviceId === "string" ? data.publicDeviceId : null,
+      ownerScope: typeof data?.ownerScope === "string" ? data.ownerScope : null,
+      createdAt,
+      fingerprint: typeof data?.fingerprint === "string" ? data.fingerprint : null,
+      lastSeenAt,
+    };
   }
 }
 

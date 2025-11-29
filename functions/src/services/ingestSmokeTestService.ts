@@ -1,13 +1,13 @@
 import type { firestore } from "firebase-admin";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import type { Firestore } from "firebase-admin/firestore";
+import type { BatchVisibility, SmokeTestResponse } from "@crowdpm/types";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getUserDefaultBatchVisibility,
-  type BatchVisibility,
 } from "../lib/batchVisibility.js";
 import { app as getFirebaseApp, db as getDb } from "../lib/fire.js";
-import type { IngestService, IngestResult } from "./ingestService.js";
+import type { IngestService } from "./ingestService.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { prepareSmokeTestPlan, type SmokeTestBody, type SmokeTestPlan } from "./smokeTest.js";
 
@@ -16,12 +16,7 @@ export type SmokeTestRequest = {
   body?: SmokeTestBody;
 };
 
-export type SmokeTestResult = IngestResult & {
-  payload: SmokeTestPlan["payload"];
-  points: SmokeTestPlan["displayPoints"];
-  seededDeviceId: string;
-  seededDeviceIds: string[];
-};
+export type SmokeTestResult = SmokeTestResponse;
 
 export type SmokeTestErrorReason = "FORBIDDEN" | "INVALID_PAYLOAD";
 

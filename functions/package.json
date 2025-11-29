@@ -25,6 +25,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@crowdpm/types": "workspace:*",
     "@types/node": "^24.10.1",
     "firebase-tools": "^14.24.2",
     "typescript": "^5.9.3",

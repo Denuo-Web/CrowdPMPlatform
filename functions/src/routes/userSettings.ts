@@ -1,3 +1,4 @@
+import type { UserSettings } from "@crowdpm/types";
 import type { FastifyPluginAsync } from "fastify";
 import { db } from "../lib/fire.js";
 import type { BatchVisibility } from "../lib/batchVisibility.js";
@@ -16,10 +17,7 @@ function normalizeInterleavedRendering(value: unknown): boolean | null {
   return null;
 }
 
-type UserSettingsResponse = {
-  defaultBatchVisibility: BatchVisibility;
-  interleavedRendering: boolean;
-};
+type UserSettingsResponse = UserSettings;
 
 type UserSettingsBody = {
   defaultBatchVisibility?: unknown;

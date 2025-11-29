@@ -1,0 +1,153 @@
+export type BatchVisibility = "public" | "private";
+
+export type DeviceSummary = {
+  id: string;
+  name?: string | null;
+  status?: string | null;
+  registryStatus?: string | null;
+  ownerUserId?: string | null;
+  ownerUserIds?: string[] | null;
+  publicDeviceId?: string | null;
+  ownerScope?: string | null;
+  createdAt: string | null;
+  fingerprint?: string | null;
+  lastSeenAt: string | null;
+} & Record<string, unknown>;
+
+export type FirestoreTimestampLike = {
+  toDate(): Date;
+  toMillis(): number;
+};
+
+export type MeasurementRecord = {
+  id: string;
+  deviceId: string;
+  pollutant: "pm25";
+  value: number;
+  unit?: string | null;
+  lat: number;
+  lon: number;
+  altitude?: number | null;
+  precision?: number | null;
+  timestamp: string | number | Date | FirestoreTimestampLike;
+  flags?: number;
+};
+
+export type IngestPoint = {
+  device_id: string;
+  pollutant: string;
+  value: number;
+  unit?: string | null;
+  lat?: number;
+  lon?: number;
+  altitude?: number | null;
+  precision?: number | null;
+  timestamp: string;
+  flags?: number;
+};
+
+export type IngestBody = {
+  device_id?: string;
+  points?: IngestPoint[];
+};
+
+export type IngestBatchPayload = {
+  device_id?: string;
+  points: IngestPoint[];
+};
+
+export type IngestResult = {
+  accepted: true;
+  batchId: string;
+  deviceId: string;
+  storagePath: string;
+  visibility: BatchVisibility;
+};
+
+export type BatchSummary = {
+  batchId: string;
+  deviceId: string;
+  deviceName?: string | null;
+  count: number;
+  processedAt: string | null;
+  visibility: BatchVisibility;
+};
+
+export type BatchDetail = BatchSummary & {
+  points: IngestPoint[];
+};
+
+export type UserSettings = {
+  defaultBatchVisibility: BatchVisibility;
+  interleavedRendering: boolean;
+};
+
+export type SmokeTestRequestBody = {
+  deviceId?: string;
+  payload?: IngestBody;
+  pointOverrides?: Partial<IngestPoint>;
+  visibility?: BatchVisibility;
+};
+
+export type SmokeTestResponse = IngestResult & {
+  payload: IngestBatchPayload;
+  points: IngestPoint[];
+  seededDeviceId: string;
+  seededDeviceIds: string[];
+};
+
+export type SmokeTestCleanupResponse = {
+  clearedDeviceId: string | null;
+  clearedDeviceIds?: string[];
+};
+
+export type SessionStatus = "pending" | "authorized" | "redeemed" | "expired";
+
+export type PairingPublicKey = {
+  kty: string;
+  crv?: string;
+  x?: string;
+  [key: string]: unknown;
+};
+
+export type PairingSession = {
+  id: string;
+  deviceCode: string;
+  userCode: string;
+  userCodeCanonical: string;
+  pubKeJwk: PairingPublicKey;
+  pubKeThumbprint: string;
+  model: string;
+  version: string;
+  nonce: string | null;
+  status: SessionStatus;
+  createdAt: Date;
+  expiresAt: Date;
+  pollInterval: number;
+  requesterIp: string | null;
+  requesterAsn: string | null;
+  fingerprint: string;
+  accId: string | null;
+  authorizedAt: Date | null;
+  authorizedBy: string | null;
+  registrationTokenJti: string | null;
+  registrationTokenExpiresAt: Date | null;
+  lastPollAt: Date | null;
+  deviceId: string | null;
+};
+
+export type ActivationSession = {
+  device_code: string;
+  user_code: string;
+  model: string;
+  version: string;
+  fingerprint: string;
+  requested_at: string;
+  expires_at: string;
+  requester_ip?: string | null;
+  requester_asn?: string | null;
+  status: SessionStatus;
+  poll_interval: number;
+  authorized_account?: string | null;
+  viewer_account?: string | null;
+};

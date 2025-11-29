@@ -23,6 +23,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@crowdpm/types": "workspace:*",
     "@tailwindcss/postcss": "^4.1.16",
     "@tailwindcss/vite": "^4.1.16",
     "@tanstack/react-query-devtools": "^5.91.1",

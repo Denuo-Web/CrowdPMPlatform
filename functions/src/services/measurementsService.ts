@@ -1,4 +1,5 @@
 import type { Timestamp, Firestore } from "firebase-admin/firestore";
+import type { MeasurementRecord } from "@crowdpm/types";
 import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
@@ -27,8 +28,6 @@ export type MeasurementDoc = {
   timestamp: Timestamp | Date | string | number;
   flags?: number;
 };
-
-export type MeasurementRecord = MeasurementDoc & { id: string; timestamp: string };
 
 type ResolvedDependencies = {
   db: Firestore;
