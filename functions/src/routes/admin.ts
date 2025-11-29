@@ -1,18 +1,20 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { DecodedIdToken } from "firebase-admin/auth";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
-import { ingestService, IngestServiceError } from "../services/ingestService.js";
-import { prepareSmokeTestPlan, type SmokeTestBody } from "../services/smokeTest.js";
-import {
-  DEFAULT_BATCH_VISIBILITY,
-  getUserDefaultBatchVisibility,
-  normalizeBatchVisibility,
-} from "../lib/batchVisibility.js";
+import { IngestServiceError } from "../services/ingestService.js";
+import { getIngestSmokeTestService, SmokeTestServiceError } from "../services/ingestSmokeTestService.js";
+import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
+  const smokeTestService = getIngestSmokeTestService();
+
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
-    await requireUser(req); // TODO: role check
+    const user = await requireUser(req);
+    if (!userCanSuspendDevices(user)) {
+      return rep.code(403).send({ error: "forbidden", message: "You do not have permission to suspend devices." });
+    }
     const { id } = req.params;
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
     return rep.code(204).send();
@@ -22,51 +24,19 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = await requireUser(req);
 
-    let plan: ReturnType<typeof prepareSmokeTestPlan>;
     try {
-      plan = prepareSmokeTestPlan(user.uid, req.body);
-    }
-    catch (err) {
-      fastify.log.warn({ err }, "invalid smoke test request");
-      const message = err instanceof Error ? err.message : "invalid smoke test payload";
-      return rep.code(400).send({ error: message });
-    }
-
-    const requestedVisibility = normalizeBatchVisibility(req.body?.visibility);
-    const defaultVisibility = await getUserDefaultBatchVisibility(user.uid);
-    const targetVisibility = requestedVisibility ?? defaultVisibility ?? DEFAULT_BATCH_VISIBILITY;
-
-    const ownerIds = [user.uid];
-    await seedSmokeTestDevices({
-      ownerIds,
-      ownerSegment: plan.ownerSegment,
-      seedTargets: plan.seedTargets,
-      scopedToRawIds: plan.scopedToRawIds,
-    });
-    fastify.log.info({ deviceIds: plan.seedTargets }, "ingest smoke test seeded devices");
-
-    const raw = JSON.stringify(plan.payload);
-    try {
-      const result = await ingestService.ingest({
-        rawBody: raw,
-        body: plan.payload,
-        deviceId: plan.primaryDeviceId,
-        visibility: targetVisibility,
-      });
-      fastify.log.info({ batchId: result.batchId, deviceId: result.deviceId }, "ingest smoke test completed");
-      return rep.code(200).send({
-        ...result,
-        payload: plan.payload,
-        points: plan.displayPoints,
-        seededDeviceId: plan.primaryDeviceId,
-        seededDeviceIds: plan.seedTargets,
-      });
+      const result = await smokeTestService.runSmokeTest({ user, body: req.body });
+      fastify.log.info(
+        { batchId: result.batchId, deviceId: result.deviceId, deviceIds: result.seededDeviceIds },
+        "ingest smoke test completed"
+      );
+      return rep.code(200).send(result);
     }
     catch (err) {
       fastify.log.error({ err }, "ingest smoke test failed");
-      const statusCode = extractStatusCode(err);
+      const statusCode = extractStatusCode(err) ?? 500;
       const message = err instanceof Error ? err.message : "unexpected error";
-      return rep.code(statusCode && statusCode >= 100 ? statusCode : 500).send({ error: message });
+      return rep.code(statusCode).send({ error: message });
     }
   });
 
@@ -124,43 +94,19 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
+function userCanSuspendDevices(user: DecodedIdToken): boolean {
+  if ((user as { admin?: unknown }).admin === true) return true;
+  const roles = (user as { roles?: unknown }).roles;
+  if (!Array.isArray(roles)) return false;
+  return roles.some((role) => typeof role === "string" && role.trim().toLowerCase() === "admin");
+}
+
 function extractStatusCode(err: unknown): number | undefined {
   if (err instanceof IngestServiceError) return err.statusCode;
+  if (err instanceof SmokeTestServiceError) return err.statusCode;
   if (typeof err === "object" && err && "statusCode" in err) {
     const raw = Number((err as { statusCode: unknown }).statusCode);
     if (raw >= 100) return raw;
   }
   return undefined;
-}
-
-type SeedSmokeTestOptions = {
-  ownerIds: string[];
-  ownerSegment: string;
-  seedTargets: string[];
-  scopedToRawIds: Map<string, string>;
-};
-
-async function seedSmokeTestDevices({ ownerIds, ownerSegment, seedTargets, scopedToRawIds }: SeedSmokeTestOptions) {
-  if (!seedTargets.length) return;
-  const arrayUnion = getFirebaseApp().firestore.FieldValue.arrayUnion;
-  const primaryOwnerId = ownerIds[0] ?? null;
-  const timestamp = new Date().toISOString();
-
-  await Promise.all(seedTargets.map(async (deviceId) => {
-    const publicDeviceId = scopedToRawIds.get(deviceId) ?? deviceId;
-    const payload: Record<string, unknown> = {
-      status: "ACTIVE",
-      name: "Smoke Test Device",
-      createdAt: timestamp,
-      publicDeviceId,
-      ownerScope: ownerSegment,
-    };
-    if (primaryOwnerId) {
-      payload.ownerUserId = primaryOwnerId;
-    }
-    if (ownerIds.length) {
-      payload.ownerUserIds = arrayUnion(...ownerIds);
-    }
-    await db().collection("devices").doc(deviceId).set(payload, { merge: true });
-  }));
 }
