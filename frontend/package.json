@@ -25,7 +25,7 @@
   "devDependencies": {
     "@crowdpm/types": "workspace:*",
     "@tailwindcss/postcss": "^4.1.16",
-    "@tailwindcss/vite": "^4.1.16",
+    "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query-devtools": "^5.91.1",
     "@types/google.maps": "^3.58.1",
     "@types/react": "^19.2.4",
