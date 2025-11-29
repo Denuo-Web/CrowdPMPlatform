@@ -11,7 +11,8 @@
     "node": "^24.0.0"
   },
   "scripts": {
-    "predev": "pnpm --filter crowdpm-functions build",
+    "prepare:functions-deps": "node scripts/prepare-functions-deps.mjs",
+    "predev": "pnpm run prepare:functions-deps && pnpm --filter crowdpm-functions build",
     "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\"",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
