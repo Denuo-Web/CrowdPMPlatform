@@ -23,6 +23,13 @@ import {
 } from "@radix-ui/themes";
 import { ChevronDownIcon, GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
+const rawSmokeTestEmails = import.meta.env.VITE_SMOKE_TEST_USER_EMAILS
+  ?? import.meta.env.VITE_SMOKE_TEST_USER_EMAIL
+  ?? "smoke-tester@crowdpm.dev";
+const SMOKE_TEST_EMAILS = parseSmokeTestEmails(
+  typeof rawSmokeTestEmails === "string" ? rawSmokeTestEmails : String(rawSmokeTestEmails)
+);
+
 const TEAM_MEMBERS: Array<{
   name: string;
   role: string;
@@ -112,7 +119,13 @@ export default function App() {
   const [resourceLinksHeight, setResourceLinksHeight] = useState(0);
 
   const isSignedIn = Boolean(user);
-  const activeTab = !isSignedIn && tab !== "map" ? "map" : tab;
+  const canUseSmokeTests = (() => {
+    const email = user?.email;
+    return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
+  })();
+  const activeTab = !isSignedIn && tab !== "map"
+    ? "map"
+    : (tab === "smoke" && (!user || !canUseSmokeTests) ? "map" : tab);
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -121,6 +134,7 @@ export default function App() {
 
   const handleProtectedTabClick = (target: "dashboard" | "smoke") => {
     if (user) {
+      if (target === "smoke" && !canUseSmokeTests) return;
       setTab(target);
       return;
     }
@@ -430,13 +444,15 @@ export default function App() {
                       >
                         User Dashboard
                       </Button>
-                      <Button
-                        variant={activeTab === "smoke" ? "solid" : "soft"}
-                        onClick={() => handleProtectedTabClick("smoke")}
-                        disabled={isLoading}
-                      >
-                        Smoke Test
-                      </Button>
+                      {canUseSmokeTests ? (
+                        <Button
+                          variant={activeTab === "smoke" ? "solid" : "soft"}
+                          onClick={() => handleProtectedTabClick("smoke")}
+                          disabled={isLoading}
+                        >
+                          Smoke Test
+                        </Button>
+                      ) : null}
                     </>
                   ) : null}
                 </Flex>
@@ -469,7 +485,7 @@ export default function App() {
                 <Box style={{ padding: "var(--space-4)" }}>
                   {activeTab === "dashboard" && user ? (
                     <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
-                  ) : activeTab === "smoke" && user ? (
+                  ) : activeTab === "smoke" && user && canUseSmokeTests ? (
                     <SmokeTestLab
                       key={`smoke:${userScopedKey}`}
                       onSmokeTestComplete={handleSmokeTestComplete}
@@ -513,6 +529,17 @@ export default function App() {
       />
     </Theme>
   );
+}
+
+function parseSmokeTestEmails(raw: string): string[] {
+  return raw.split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
+function isSmokeTestEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  return normalized.length > 0 && SMOKE_TEST_EMAILS.includes(normalized);
 }
 
 type ActivationModalProps = {
