@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
-import { getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
+import { authorizeSmokeTestUser, getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
 import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
 import { getRequestUser, requireUserGuard } from "../lib/routeGuards.js";
@@ -27,6 +27,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = getRequestUser(req);
+    authorizeSmokeTestUser(user);
 
     try {
       const result = await smokeTestService.runSmokeTest({ user, body: req.body });
@@ -46,6 +47,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: requireUserGuard(),
   }, async (req, rep) => {
     const user = getRequestUser(req);
+    authorizeSmokeTestUser(user);
 
     const uniqueIds = Array.from(new Set(
       (req.body?.deviceIds && req.body.deviceIds.length ? req.body.deviceIds : [req.body?.deviceId || "device-123"])
