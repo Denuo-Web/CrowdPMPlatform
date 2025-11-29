@@ -1,28 +1,32 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
-import { requireUser } from "../auth/firebaseVerify.js";
-import { IngestServiceError } from "../services/ingestService.js";
-import { getIngestSmokeTestService, SmokeTestServiceError } from "../services/ingestSmokeTestService.js";
+import { getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
 import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
+import { getRequestUser, requireUserGuard } from "../lib/routeGuards.js";
+import { httpError, sendHttpError } from "../lib/httpError.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const smokeTestService = getIngestSmokeTestService();
 
-  fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", async (req, rep) => {
-    const user = await requireUser(req);
+  fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", {
+    preHandler: requireUserGuard(),
+  }, async (req, rep) => {
+    const user = getRequestUser(req);
     if (!userCanSuspendDevices(user)) {
-      return rep.code(403).send({ error: "forbidden", message: "You do not have permission to suspend devices." });
+      throw httpError(403, "forbidden", "You do not have permission to suspend devices.");
     }
     const { id } = req.params;
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
     return rep.code(204).send();
   });
 
-  fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", async (req, rep) => {
+  fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", {
+    preHandler: requireUserGuard(),
+  }, async (req, rep) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
-    const user = await requireUser(req);
+    const user = getRequestUser(req);
 
     try {
       const result = await smokeTestService.runSmokeTest({ user, body: req.body });
@@ -34,14 +38,14 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
     catch (err) {
       fastify.log.error({ err }, "ingest smoke test failed");
-      const statusCode = extractStatusCode(err) ?? 500;
-      const message = err instanceof Error ? err.message : "unexpected error";
-      return rep.code(statusCode).send({ error: message });
+      return sendHttpError(rep, err);
     }
   });
 
-  fastify.post<{ Body: { deviceId?: string; deviceIds?: string[] } }>("/v1/admin/ingest-smoke-test/cleanup", async (req, rep) => {
-    const user = await requireUser(req);
+  fastify.post<{ Body: { deviceId?: string; deviceIds?: string[] } }>("/v1/admin/ingest-smoke-test/cleanup", {
+    preHandler: requireUserGuard(),
+  }, async (req, rep) => {
+    const user = getRequestUser(req);
 
     const uniqueIds = Array.from(new Set(
       (req.body?.deviceIds && req.body.deviceIds.length ? req.body.deviceIds : [req.body?.deviceId || "device-123"])
@@ -99,14 +103,4 @@ function userCanSuspendDevices(user: DecodedIdToken): boolean {
   const roles = (user as { roles?: unknown }).roles;
   if (!Array.isArray(roles)) return false;
   return roles.some((role) => typeof role === "string" && role.trim().toLowerCase() === "admin");
-}
-
-function extractStatusCode(err: unknown): number | undefined {
-  if (err instanceof IngestServiceError) return err.statusCode;
-  if (err instanceof SmokeTestServiceError) return err.statusCode;
-  if (typeof err === "object" && err && "statusCode" in err) {
-    const raw = Number((err as { statusCode: unknown }).statusCode);
-    if (raw >= 100) return raw;
-  }
-  return undefined;
 }

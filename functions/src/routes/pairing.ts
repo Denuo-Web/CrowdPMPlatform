@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { calculateJwkThumbprint } from "jose";
 import {
@@ -16,6 +16,7 @@ import { verifyDpopProof } from "../lib/dpop.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
 import { registerDevice, getDevice } from "../services/deviceRegistry.js";
+import { sendHttpError } from "../lib/httpError.js";
 
 const startSchema = z.object({
   pub_ke: z.string().min(10),
@@ -44,14 +45,6 @@ const deviceTokenSchema = z.object({
 
 function fastifyRequestUrl(req: FastifyRequest): string {
   return canonicalRequestUrl(req.raw.url ?? req.url, req.headers);
-}
-
-function respondWithError(rep: FastifyReply, err: unknown, fallbackStatus = 500) {
-  const status = typeof err === "object" && err && "statusCode" in err && typeof (err as { statusCode?: unknown }).statusCode === "number"
-    ? Number((err as { statusCode: unknown }).statusCode)
-    : fallbackStatus;
-  const message = err instanceof Error ? err.message : "unexpected error";
-  return rep.code(status).send({ error: message });
 }
 
 export const pairingRoutes: FastifyPluginAsync = async (app) => {
@@ -83,7 +76,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
     catch (err) {
-      return respondWithError(rep, err);
+      return sendHttpError(rep, err);
     }
 
     const expiresIn = Math.max(0, Math.floor((sessionResult.session.expiresAt.getTime() - Date.now()) / 1000));
@@ -109,7 +102,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       session = await findSessionByDeviceCode(parsed.data.device_code);
     }
     catch (err) {
-      return respondWithError(rep, err, 404);
+      return sendHttpError(rep, err, 404);
     }
     if (sessionExpired(session)) {
       await session.ref.set({ status: "expired" }, { merge: true });
@@ -127,7 +120,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     }
     catch (err) {
       req.log.warn({ err, deviceCode: session.deviceCode }, "invalid DPoP for device token");
-      return respondWithError(rep, err, 401);
+      return sendHttpError(rep, err, 401);
     }
 
     const now = Date.now();
@@ -156,7 +149,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
     catch (err) {
-      return respondWithError(rep, err);
+      return sendHttpError(rep, err);
     }
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
     await recordRegistrationToken(session.deviceCode, issued.jti, expiresAt);
@@ -187,7 +180,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       session = await findSessionByDeviceCode(verifiedToken.device_code);
     }
     catch (err) {
-      return respondWithError(rep, err, 404);
+      return sendHttpError(rep, err, 404);
     }
     if (!session.accId || session.accId !== verifiedToken.acc_id) {
       return rep.code(403).send({ error: "forbidden", error_description: "session not authorized for account" });
@@ -210,7 +203,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
     catch (err) {
-      return respondWithError(rep, err, 401);
+      return sendHttpError(rep, err, 401);
     }
 
     const payload = registerSchema.safeParse(req.body);
@@ -230,7 +223,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       thumbprint = await calculateJwkThumbprint(jwk, "sha256");
     }
     catch (err) {
-      return respondWithError(rep, err, 400);
+      return sendHttpError(rep, err, 400);
     }
     let result;
     try {
@@ -247,7 +240,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       await markSessionRedeemed(session.deviceCode, result.deviceId);
     }
     catch (err) {
-      return respondWithError(rep, err);
+      return sendHttpError(rep, err);
     }
     return rep.code(200).send({
       device_id: result.deviceId,
@@ -268,7 +261,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       device = await getDevice(payload.data.device_id);
     }
     catch (err) {
-      return respondWithError(rep, err);
+      return sendHttpError(rep, err);
     }
     if (!device) {
       return rep.code(403).send({ error: "forbidden", error_description: "device not found" });
@@ -288,7 +281,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
     catch (err) {
-      return respondWithError(rep, err, 401);
+      return sendHttpError(rep, err, 401);
     }
 
     let token;
@@ -301,7 +294,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       });
     }
     catch (err) {
-      return respondWithError(rep, err);
+      return sendHttpError(rep, err);
     }
     return rep.code(200).send({
       token_type: "DPoP",

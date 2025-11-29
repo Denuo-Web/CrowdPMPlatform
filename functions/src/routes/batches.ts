@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { bucket, db } from "../lib/fire.js";
-import { requireUser } from "../auth/firebaseVerify.js";
+import { bucket } from "../lib/fire.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
 import {
@@ -8,9 +7,17 @@ import {
   normalizeBatchVisibility,
   type BatchVisibility,
 } from "../lib/batchVisibility.js";
-import { rateLimitOrThrow } from "../lib/rateLimiter.js";
-import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
+import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
 import { timestampToIsoString, timestampToMillis } from "../lib/time.js";
+import { httpError } from "../lib/httpError.js";
+import {
+  getRequestUser,
+  requestParam,
+  rateLimitGuard,
+  requireDeviceOwnerGuard,
+  requireUserGuard,
+  requestUserId,
+} from "../lib/routeGuards.js";
 
 type BatchSummary = {
   batchId: string;
@@ -26,10 +33,14 @@ type BatchDetail = BatchSummary & {
 };
 
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/v1/batches", async (req) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`batches:list:${user.uid}`, 30, 60_000);
-    rateLimitOrThrow("batches:list:global", 1_000, 60_000);
+  app.get("/v1/batches", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `batches:list:${requestUserId(req)}`, 30, 60_000),
+      rateLimitGuard("batches:list:global", 1_000, 60_000),
+    ],
+  }, async (req) => {
+    const user = getRequestUser(req);
     const { collection: devices, docs: seen } = await loadOwnedDeviceDocs(user.uid);
 
     const summaries = await Promise.all(
@@ -66,32 +77,28 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       });
   });
 
-  app.get<{ Params: { deviceId: string; batchId: string } }>("/v1/batches/:deviceId/:batchId", async (req, rep) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`batches:detail:${user.uid}`, 60, 60_000);
+  app.get<{ Params: { deviceId: string; batchId: string } }>("/v1/batches/:deviceId/:batchId", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `batches:detail:${requestUserId(req)}`, 60, 60_000),
+      rateLimitGuard((req) => `batches:detail:device:${requestParam(req, "deviceId")}`, 120, 60_000),
+      rateLimitGuard("batches:detail:global", 1_000, 60_000),
+      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
+    ],
+  }, async (req) => {
     const { deviceId, batchId } = req.params;
-    rateLimitOrThrow(`batches:detail:device:${deviceId}`, 120, 60_000);
-    rateLimitOrThrow("batches:detail:global", 1_000, 60_000);
+    const devSnap = req.deviceDoc;
+    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
 
-    const devRef = db().collection("devices").doc(deviceId);
-    const devSnap = await devRef.get();
-    if (!devSnap.exists) {
-      return rep.code(404).send({ error: "not_found", message: "Device not found." });
-    }
-
-    if (!userOwnsDevice(devSnap.data(), user.uid)) {
-      return rep.code(403).send({ error: "forbidden", message: "You do not have access to this device." });
-    }
-
-    const batchRef = devRef.collection("batches").doc(batchId);
+    const batchRef = devSnap.ref.collection("batches").doc(batchId);
     const batchSnap = await batchRef.get();
     if (!batchSnap.exists) {
-      return rep.code(404).send({ error: "not_found", message: "Batch not found." });
+      throw httpError(404, "not_found", "Batch not found.");
     }
     const batchData = batchSnap.data() as { path?: unknown; count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
     const path = typeof batchData?.path === "string" ? batchData.path : null;
     if (!path) {
-      return rep.code(404).send({ error: "not_found", message: "Batch payload unavailable." });
+      throw httpError(404, "not_found", "Batch payload unavailable.");
     }
 
     let points: IngestBatch["points"];
@@ -100,13 +107,13 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       const parsed = IngestBatchSchema.safeParse(JSON.parse(buf.toString("utf8")));
       if (!parsed.success) {
         app.log.error({ batchId, deviceId, issues: parsed.error.flatten() }, "invalid batch payload");
-        return rep.code(500).send({ error: "invalid_batch", message: "Stored batch payload is invalid." });
+        throw httpError(500, "invalid_batch", "Stored batch payload is invalid.");
       }
       points = parsed.data.points;
     }
     catch (err) {
       app.log.error({ err, batchId, deviceId }, "failed to read batch payload");
-      return rep.code(500).send({ error: "storage_error", message: "Unable to read batch payload." });
+      throw httpError(500, "storage_error", "Unable to read batch payload.");
     }
 
     const processedAt = timestampToIsoString(batchData?.processedAt);

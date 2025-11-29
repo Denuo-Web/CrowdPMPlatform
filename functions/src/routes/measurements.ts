@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/fire.js";
-import { requireUser } from "../auth/firebaseVerify.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
 import { timestampToIsoString, timestampToMillis } from "../lib/time.js";
+import { httpError } from "../lib/httpError.js";
+import { getRequestUser, rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
 
 type MeasurementsQuery = {
   device_id?: string;
@@ -30,9 +31,13 @@ type MeasurementDoc = {
 type MeasurementRecord = MeasurementDoc & { id: string };
 
 export const measurementsRoutes: FastifyPluginAsync = async (app) => {
-  app.get<{ Querystring: MeasurementsQuery }>("/v1/measurements", async (req) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`measurements:user:${user.uid}`, 30, 60_000);
+  app.get<{ Querystring: MeasurementsQuery }>("/v1/measurements", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `measurements:user:${requestUserId(req)}`, 30, 60_000),
+    ],
+  }, async (req) => {
+    const user = getRequestUser(req);
     const {
       device_id: deviceIdParam,
       pollutant = "pm25",
@@ -52,9 +57,7 @@ export const measurementsRoutes: FastifyPluginAsync = async (app) => {
     const doc = await db().collection("devices").doc(deviceId).get();
     if (!doc.exists) return [];
     if (!userOwnsDevice(doc.data(), user.uid)) {
-      const error = new Error("forbidden");
-      (error as Error & { statusCode?: number }).statusCode = 403;
-      throw error;
+      throw httpError(403, "forbidden", "You do not have access to this device.");
     }
 
     const hours: string[] = [];

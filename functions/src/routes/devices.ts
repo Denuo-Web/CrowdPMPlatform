@@ -1,25 +1,39 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { firestore } from "firebase-admin";
 import { db } from "../lib/fire.js";
-import { requireUser } from "../auth/firebaseVerify.js";
 import { revokeDevice } from "../services/deviceRegistry.js";
-import { rateLimitOrThrow } from "../lib/rateLimiter.js";
-import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
+import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
 import { timestampToIsoString } from "../lib/time.js";
+import {
+  getRequestUser,
+  requestParam,
+  rateLimitGuard,
+  requireDeviceOwnerGuard,
+  requireUserGuard,
+  requestUserId,
+} from "../lib/routeGuards.js";
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/v1/devices", async (req) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`devices:list:${user.uid}`, 60, 60_000);
-    rateLimitOrThrow("devices:list:global", 2_000, 60_000);
+  app.get("/v1/devices", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `devices:list:${requestUserId(req)}`, 60, 60_000),
+      rateLimitGuard("devices:list:global", 2_000, 60_000),
+    ],
+  }, async (req) => {
+    const user = getRequestUser(req);
     const { docs } = await loadOwnedDeviceDocs(user.uid);
     return Array.from(docs.entries()).map(([id, data]) => serializeDeviceDoc(id, data));
   });
 
-  app.post<{ Body: { name?: string } }>("/v1/devices", async (req, rep) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`devices:create:${user.uid}`, 10, 60_000);
-    rateLimitOrThrow("devices:create:global", 500, 60_000);
+  app.post<{ Body: { name?: string } }>("/v1/devices", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `devices:create:${requestUserId(req)}`, 10, 60_000),
+      rateLimitGuard("devices:create:global", 500, 60_000),
+    ],
+  }, async (req, rep) => {
+    const user = getRequestUser(req);
     const { name } = req.body ?? {};
     const ref = db().collection("devices").doc();
     await ref.set({
@@ -32,20 +46,18 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     return rep.code(201).send({ id: ref.id });
   });
 
-  app.post<{ Params: { deviceId: string } }>("/v1/devices/:deviceId/revoke", async (req, rep) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`devices:revoke:${user.uid}`, 30, 60_000);
+  app.post<{ Params: { deviceId: string } }>("/v1/devices/:deviceId/revoke", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `devices:revoke:${requestUserId(req)}`, 30, 60_000),
+      rateLimitGuard((req) => `devices:revoke:device:${requestParam(req, "deviceId")}`, 10, 60_000),
+      rateLimitGuard("devices:revoke:global", 500, 60_000),
+      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
+    ],
+  }, async (req, rep) => {
+    const userId = requestUserId(req);
     const { deviceId } = req.params;
-    rateLimitOrThrow(`devices:revoke:device:${deviceId}`, 10, 60_000);
-    rateLimitOrThrow("devices:revoke:global", 500, 60_000);
-    const doc = await db().collection("devices").doc(deviceId).get();
-    if (!doc.exists) {
-      return rep.code(404).send({ error: "not_found", message: "Device not found" });
-    }
-    if (!userOwnsDevice(doc.data(), user.uid)) {
-      return rep.code(403).send({ error: "forbidden", message: "You do not own this device." });
-    }
-    await revokeDevice(deviceId, user.uid, "user_initiated");
+    await revokeDevice(deviceId, userId, "user_initiated");
     return rep.code(200).send({ status: "revoked" });
   });
 };
