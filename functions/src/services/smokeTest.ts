@@ -35,12 +35,13 @@ export function prepareSmokeTestPlan(userId: string, body?: SmokeTestBody): Smok
     throw new Error("payload must include at least one point");
   }
 
-  const { scopedPoints, scopedDeviceIds, scopedToRawIds } = scopePoints(displayPoints, requestedDeviceId);
-  const primaryDeviceId = scopedDeviceIds[0] ?? scopeDeviceId(requestedDeviceId);
+  const { scopedPoints, scopedDeviceIds, scopedToRawIds } = scopePoints(displayPoints, requestedDeviceId, ownerSegment);
+  const primaryDeviceId = scopedDeviceIds[0] ?? scopeDeviceId(requestedDeviceId, ownerSegment);
   const seedTargets = scopedDeviceIds.length ? scopedDeviceIds : [primaryDeviceId];
 
   const payload: IngestBody & { points: SmokeTestPoint[] } = {
     ...(body?.payload ?? {}),
+    device_id: scopedDeviceIds[0] ?? primaryDeviceId,
     points: scopedPoints,
   };
 
@@ -114,7 +115,7 @@ function buildDefaultPoints(deviceId: string, overrides: Partial<SmokeTestPoint>
   });
 }
 
-function scopePoints(points: SmokeTestPoint[], requestedDeviceId: string) {
+function scopePoints(points: SmokeTestPoint[], requestedDeviceId: string, deviceNamespace: string) {
   const rawDeviceIds = Array.from(new Set(
     points
       .map((point) => point.device_id)
@@ -131,7 +132,7 @@ function scopePoints(points: SmokeTestPoint[], requestedDeviceId: string) {
     const rawId = point.device_id || rawDeviceIds[idx % rawDeviceIds.length] || requestedDeviceId;
     let scopedId = rawToScoped.get(rawId);
     if (!scopedId) {
-      scopedId = scopeDeviceId(rawId);
+      scopedId = scopeDeviceId(rawId, deviceNamespace);
       rawToScoped.set(rawId, scopedId);
       scopedToRaw.set(scopedId, rawId);
     }
@@ -178,11 +179,10 @@ function slugify(value: string | undefined | null, fallback: string) {
   return result.join("") || fallback;
 }
 
-function scopeDeviceId(rawDeviceId: string) {
-  // Legacy namespaced IDs prefixed device IDs with the owner segment.
-  // Now that multiple batches per device are supported, keep the caller-provided
-  // ID (just slugged for safety) without the extra prefix.
-  return slugify(rawDeviceId, "device");
+function scopeDeviceId(rawDeviceId: string, namespace: string) {
+  const scopedNamespace = slugify(namespace, "device");
+  const sluggedDeviceId = slugify(rawDeviceId, "device");
+  return `${scopedNamespace}-${sluggedDeviceId}`;
 }
 
 function ensureDeviceId(candidate: unknown, fallback: string): string {

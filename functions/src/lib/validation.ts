@@ -13,3 +13,8 @@ export const IngestPoint = z.object({
 });
 export const IngestBatch = z.object({ points: z.array(IngestPoint).min(1) });
 export type IngestBatch = import("zod").infer<typeof IngestBatch>;
+
+export const IngestPayload = IngestBatch
+  .extend({ device_id: z.string().optional() })
+  .passthrough();
+export type IngestPayload = import("zod").infer<typeof IngestPayload>;
