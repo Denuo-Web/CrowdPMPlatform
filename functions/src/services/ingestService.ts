@@ -1,6 +1,6 @@
 import { PubSub } from "@google-cloud/pubsub";
 import type { Firestore } from "firebase-admin/firestore";
-import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult } from "@crowdpm/types";
+import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult, IngestPoint } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
   DEFAULT_BATCH_VISIBILITY,
@@ -104,7 +104,7 @@ export class IngestService {
     await this.deps.pubsub.topic(topicName).publishMessage({ json: { deviceId, batchId, path, visibility } });
 
     const matchingPointCount = Array.isArray(request.body.points)
-      ? request.body.points.filter((point) => point.device_id === deviceId).length
+      ? request.body.points.filter((point: IngestPoint) => point.device_id === deviceId).length
       : 0;
     await devRef.collection("batches").doc(batchId).set({
       path,
