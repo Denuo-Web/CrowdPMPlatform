@@ -1,6 +1,6 @@
 import { PubSub } from "@google-cloud/pubsub";
 import type { Firestore } from "firebase-admin/firestore";
-import type { BatchVisibility, IngestBody as SharedIngestBody, IngestPoint, IngestResult } from "@crowdpm/types";
+import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
   DEFAULT_BATCH_VISIBILITY,
