@@ -92,8 +92,8 @@ export async function getDevice(deviceId: string): Promise<DeviceRecord | null> 
   return normalizeDevice(doc.id, doc.data());
 }
 
-export async function updateDeviceLastSeen(deviceId: string): Promise<void> {
-  await db().collection("devices").doc(deviceId).set({ lastSeenAt: new Date() }, { merge: true });
+export async function updateDeviceLastSeen(deviceId: string, targetDb: firestore.Firestore = db()): Promise<void> {
+  await targetDb.collection("devices").doc(deviceId).set({ lastSeenAt: new Date() }, { merge: true });
 }
 
 export async function revokeDevice(deviceId: string, initiatedBy: string, reason?: string): Promise<void> {

@@ -1,5 +1,7 @@
-import { calculateJwkThumbprint, type JWK } from "jose";
+import { calculateJwkThumbprint } from "jose";
+import type { JWK } from "jose";
 import type { firestore } from "firebase-admin";
+import type { PairingPublicKey, PairingSession as SharedPairingSession, SessionStatus } from "@crowdpm/types";
 import { db } from "../lib/fire.js";
 import { decodeBase64Url, encodeBase64Url } from "../lib/encoding.js";
 import { fingerprintForPublicKey, generateDeviceCode, generateUserCode } from "../lib/pairingCodes.js";
@@ -13,33 +15,8 @@ type DocumentSnapshot = firestore.DocumentSnapshot<DocumentData>;
 const COLLECTION = "pairing_sessions";
 const TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-export type SessionStatus = "pending" | "authorized" | "redeemed" | "expired";
-
-export type PairingSession = {
-  id: string;
-  deviceCode: string;
-  userCode: string;
-  userCodeCanonical: string;
-  pubKeJwk: JWK;
-  pubKeThumbprint: string;
-  model: string;
-  version: string;
-  nonce: string | null;
-  status: SessionStatus;
-  createdAt: Date;
-  expiresAt: Date;
-  pollInterval: number;
-  requesterIp: string | null;
-  requesterAsn: string | null;
-  fingerprint: string;
-  accId: string | null;
-  authorizedAt: Date | null;
-  authorizedBy: string | null;
-  registrationTokenJti: string | null;
-  registrationTokenExpiresAt: Date | null;
-  lastPollAt: Date | null;
-  deviceId: string | null;
-};
+export type PairingSession = SharedPairingSession;
+export type { SessionStatus };
 
 function httpError(statusCode: number, message: string) {
   return Object.assign(new Error(message), { statusCode });
@@ -57,7 +34,9 @@ function normalizeSession(id: string, data: DocumentData): PairingSession {
     userCodeCanonical: typeof data.userCodeCanonical === "string"
       ? data.userCodeCanonical
       : canonicalizeUserCode(typeof data.userCode === "string" ? data.userCode : ""),
-    pubKeJwk: (typeof data.pubKeJwk === "object" && data.pubKeJwk) ? data.pubKeJwk as JWK : { kty: "OKP", crv: "Ed25519", x: "" },
+    pubKeJwk: (typeof data.pubKeJwk === "object" && data.pubKeJwk)
+      ? data.pubKeJwk as PairingPublicKey
+      : { kty: "OKP", crv: "Ed25519", x: "" },
     pubKeThumbprint: typeof data.pubKeThumbprint === "string" ? data.pubKeThumbprint : "",
     model: typeof data.model === "string" ? data.model : "unknown",
     version: typeof data.version === "string" ? data.version : "unknown",
@@ -116,8 +95,8 @@ export async function startPairingSession(args: {
   if (pubKey.byteLength !== 32) {
     throw httpError(400, "pub_ke must be a base64url-encoded 32 byte Ed25519 key");
   }
-  const jwk: JWK = { kty: "OKP", crv: "Ed25519", x: encodeBase64Url(pubKey) };
-  const thumbprint = await calculateJwkThumbprint(jwk, "sha256");
+  const jwk: PairingPublicKey = { kty: "OKP", crv: "Ed25519", x: encodeBase64Url(pubKey) };
+  const thumbprint = await calculateJwkThumbprint(jwk as JWK, "sha256");
   if (args.nonce) {
     const existing = await db().collection(COLLECTION).where("nonce", "==", args.nonce).limit(5).get();
     for (const doc of existing.docs) {

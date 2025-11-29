@@ -1,12 +1,9 @@
+import type { UserSettings } from "@crowdpm/types";
 import type { FastifyPluginAsync } from "fastify";
 import { db } from "../lib/fire.js";
-import { requireUser } from "../auth/firebaseVerify.js";
-import { rateLimitOrThrow } from "../lib/rateLimiter.js";
-import {
-  DEFAULT_BATCH_VISIBILITY,
-  normalizeBatchVisibility,
-  type BatchVisibility,
-} from "../lib/batchVisibility.js";
+import type { BatchVisibility } from "../lib/batchVisibility.js";
+import { normalizeVisibility } from "../lib/httpValidation.js";
+import { rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
 
 const DEFAULT_INTERLEAVED_RENDERING = false;
 
@@ -20,10 +17,7 @@ function normalizeInterleavedRendering(value: unknown): boolean | null {
   return null;
 }
 
-type UserSettingsResponse = {
-  defaultBatchVisibility: BatchVisibility;
-  interleavedRendering: boolean;
-};
+type UserSettingsResponse = UserSettings;
 
 type UserSettingsBody = {
   defaultBatchVisibility?: unknown;
@@ -31,24 +25,28 @@ type UserSettingsBody = {
 };
 
 export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/v1/user/settings", async (req) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`user-settings:get:${user.uid}`, 60, 60_000);
-    rateLimitOrThrow("user-settings:get:global", 2_000, 60_000);
-    const snap = await db().collection("userSettings").doc(user.uid).get();
-    const visibility = snap.exists
-      ? normalizeBatchVisibility(snap.get("defaultBatchVisibility")) ?? DEFAULT_BATCH_VISIBILITY
-      : DEFAULT_BATCH_VISIBILITY;
+  app.get("/v1/user/settings", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `user-settings:get:${requestUserId(req)}`, 60, 60_000),
+      rateLimitGuard("user-settings:get:global", 2_000, 60_000),
+    ],
+  }, async (req) => {
+    const snap = await db().collection("userSettings").doc(requestUserId(req)).get();
+    const visibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
     const interleavedRendering = snap.exists
       ? normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING
       : DEFAULT_INTERLEAVED_RENDERING;
     return { defaultBatchVisibility: visibility, interleavedRendering } satisfies UserSettingsResponse;
   });
 
-  app.put<{ Body: UserSettingsBody }>("/v1/user/settings", async (req, rep) => {
-    const user = await requireUser(req);
-    rateLimitOrThrow(`user-settings:update:${user.uid}`, 30, 60_000);
-    rateLimitOrThrow("user-settings:update:global", 1_000, 60_000);
+  app.put<{ Body: UserSettingsBody }>("/v1/user/settings", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `user-settings:update:${requestUserId(req)}`, 30, 60_000),
+      rateLimitGuard("user-settings:update:global", 1_000, 60_000),
+    ],
+  }, async (req, rep) => {
     const hasVisibility = "defaultBatchVisibility" in (req.body ?? {});
     const hasInterleaved = "interleavedRendering" in (req.body ?? {});
 
@@ -61,7 +59,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
 
     let visibility: BatchVisibility | null = null;
     if (hasVisibility) {
-      visibility = normalizeBatchVisibility(req.body?.defaultBatchVisibility);
+      visibility = normalizeVisibility(req.body?.defaultBatchVisibility, null);
       if (!visibility) {
         return rep.code(400).send({
           error: "invalid_visibility",
@@ -81,14 +79,14 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const docRef = db().collection("userSettings").doc(user.uid);
+    const docRef = db().collection("userSettings").doc(requestUserId(req));
     const payload: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (visibility) payload.defaultBatchVisibility = visibility;
     if (interleavedRendering !== null) payload.interleavedRendering = interleavedRendering;
     await docRef.set(payload, { merge: true });
 
     const snap = await docRef.get();
-    const nextVisibility = normalizeBatchVisibility(snap.get("defaultBatchVisibility")) ?? DEFAULT_BATCH_VISIBILITY;
+    const nextVisibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
     const nextInterleaved = normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING;
     return {
       defaultBatchVisibility: nextVisibility,

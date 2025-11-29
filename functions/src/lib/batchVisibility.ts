@@ -1,7 +1,8 @@
 import type { DocumentSnapshot } from "firebase-admin/firestore";
+import type { BatchVisibility } from "@crowdpm/types";
 import { db } from "./fire.js";
 
-export type BatchVisibility = "public" | "private";
+export type { BatchVisibility };
 
 export const DEFAULT_BATCH_VISIBILITY: BatchVisibility = "private";
 

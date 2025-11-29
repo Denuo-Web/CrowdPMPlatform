@@ -13,6 +13,7 @@ import { userSettingsRoutes } from "./routes/userSettings.js";
 import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
 import { ensureDevAuthUser } from "./lib/devAuthUser.js";
+import { toHttpError } from "./lib/httpError.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -44,6 +45,14 @@ api.addHook("preParsing", (request, reply, payload, done) => {
   const buffer = typeof rawBody === "string" ? Buffer.from(rawBody, "utf8") : rawBody;
   const stream = Readable.from(buffer);
   done(null, stream);
+});
+
+api.setErrorHandler((err, req, rep) => {
+  const normalized = toHttpError(err);
+  const log = normalized.statusCode >= 500 ? req.log.error.bind(req.log) : req.log.warn.bind(req.log);
+  log({ err }, "request failed");
+  if (normalized.headers) rep.headers(normalized.headers);
+  rep.code(normalized.statusCode).send(normalized.body);
 });
 
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };

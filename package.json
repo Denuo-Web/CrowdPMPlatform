@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "functions",
-    "frontend"
+    "frontend",
+    "shared-types"
   ],
   "packageManager": "pnpm@10.18.1",
   "engines": {

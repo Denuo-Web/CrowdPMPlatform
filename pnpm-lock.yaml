@@ -75,6 +75,9 @@ importers:
         specifier: ^19.2.0
         version: 19.2.0(react@19.2.0)
     devDependencies:
+      '@crowdpm/types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@tailwindcss/postcss':
         specifier: ^4.1.16
         version: 4.1.16
@@ -136,6 +139,9 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
     devDependencies:
+      '@crowdpm/types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
@@ -148,6 +154,12 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.1)
+
+  shared-types:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

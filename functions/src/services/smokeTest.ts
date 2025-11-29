@@ -1,14 +1,9 @@
-import type { IngestBody } from "./ingestGateway.js";
-import type { BatchVisibility } from "../lib/batchVisibility.js";
+import type { IngestPoint, SmokeTestRequestBody } from "@crowdpm/types";
+import type { IngestBody } from "./ingestService.js";
 
-export type SmokeTestBody = {
-  deviceId?: string;
-  payload?: IngestBody;
-  pointOverrides?: Partial<SmokeTestPoint>;
-  visibility?: BatchVisibility;
-};
+export type SmokeTestBody = SmokeTestRequestBody;
 
-type SmokeTestPoint = NonNullable<IngestBody["points"]>[number];
+type SmokeTestPoint = IngestPoint;
 
 export type SmokeTestPlan = {
   payload: IngestBody & { points: SmokeTestPoint[] };

@@ -12,7 +12,7 @@ function getAuthorizationHeader(headers?: IncomingHttpHeaders) {
   return raw ?? "";
 }
 
-type RequireUserOptions = {
+export type RequireUserOptions = {
   requireSecondFactorIfEnrolled?: boolean;
 };
 
