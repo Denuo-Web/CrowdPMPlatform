@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { calculateJwkThumbprint } from "jose";
 import {
@@ -47,6 +47,16 @@ function fastifyRequestUrl(req: FastifyRequest): string {
   return canonicalRequestUrl(req.raw.url ?? req.url, req.headers);
 }
 
+async function runOrSend<T>(rep: FastifyReply, action: () => Promise<T>, notFoundStatus?: number): Promise<T | null> {
+  try {
+    return await action();
+  }
+  catch (err) {
+    sendHttpError(rep, err, notFoundStatus);
+    return null;
+  }
+}
+
 export const pairingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/device/start", async (req, rep) => {
     const parsed = startSchema.safeParse(req.body);
@@ -64,20 +74,15 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     rateLimitOrThrow(modelBudgetKey, 200, 60_000);
     rateLimitOrThrow("pairing:start:global", 500, 60_000);
 
-    let sessionResult;
-    try {
-      sessionResult = await startPairingSession({
-        pubKe: parsed.data.pub_ke,
-        model: parsed.data.model,
-        version: parsed.data.version,
-        nonce: parsed.data.nonce,
-        requesterIp: coarsenIpForDisplay(clientIp),
-        requesterAsn: networkHint,
-      });
-    }
-    catch (err) {
-      return sendHttpError(rep, err);
-    }
+    const sessionResult = await runOrSend(rep, () => startPairingSession({
+      pubKe: parsed.data.pub_ke,
+      model: parsed.data.model,
+      version: parsed.data.version,
+      nonce: parsed.data.nonce,
+      requesterIp: coarsenIpForDisplay(clientIp),
+      requesterAsn: networkHint,
+    }));
+    if (!sessionResult) return;
 
     const expiresIn = Math.max(0, Math.floor((sessionResult.session.expiresAt.getTime() - Date.now()) / 1000));
     return rep.code(200).send({
@@ -97,13 +102,8 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     }
     rateLimitOrThrow(`pairing:device-token:${parsed.data.device_code}`, 15, 60_000);
     rateLimitOrThrow("pairing:device-token:global", 1_000, 60_000);
-    let session: SessionSnapshot;
-    try {
-      session = await findSessionByDeviceCode(parsed.data.device_code);
-    }
-    catch (err) {
-      return sendHttpError(rep, err, 404);
-    }
+    const session = await runOrSend(rep, () => findSessionByDeviceCode(parsed.data.device_code), 404);
+    if (!session) return;
     if (sessionExpired(session)) {
       await session.ref.set({ status: "expired" }, { merge: true });
       return rep.code(400).send({ error: "expired_token" });
@@ -139,18 +139,13 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       return rep.code(400).send({ error: "expired_token" });
     }
 
-    let issued;
-    try {
-      issued = await issueRegistrationToken({
-        deviceCode: session.deviceCode,
-        accountId: session.accId,
-        sessionId: session.id,
-        confirmationThumbprint: session.pubKeThumbprint,
-      });
-    }
-    catch (err) {
-      return sendHttpError(rep, err);
-    }
+    const issued = await runOrSend(rep, () => issueRegistrationToken({
+      deviceCode: session.deviceCode,
+      accountId: session.accId,
+      sessionId: session.id,
+      confirmationThumbprint: session.pubKeThumbprint,
+    }));
+    if (!issued) return;
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
     await recordRegistrationToken(session.deviceCode, issued.jti, expiresAt);
 
@@ -175,13 +170,8 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     rateLimitOrThrow("pairing:register:global", 1_000, 60_000);
 
     const proof = req.headers["dpop"];
-    let session: SessionSnapshot;
-    try {
-      session = await findSessionByDeviceCode(verifiedToken.device_code);
-    }
-    catch (err) {
-      return sendHttpError(rep, err, 404);
-    }
+    const session = await runOrSend(rep, () => findSessionByDeviceCode(verifiedToken.device_code), 404);
+    if (!session) return;
     if (!session.accId || session.accId !== verifiedToken.acc_id) {
       return rep.code(403).send({ error: "forbidden", error_description: "session not authorized for account" });
     }
@@ -225,9 +215,8 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     catch (err) {
       return sendHttpError(rep, err, 400);
     }
-    let result;
-    try {
-      result = await registerDevice({
+    const result = await runOrSend(rep, async () => {
+      const registered = await registerDevice({
         accountId: verifiedToken.acc_id,
         model: session.model,
         version: session.version,
@@ -237,11 +226,10 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
         pairingDeviceCode: session.deviceCode,
         fingerprint: session.fingerprint,
       });
-      await markSessionRedeemed(session.deviceCode, result.deviceId);
-    }
-    catch (err) {
-      return sendHttpError(rep, err);
-    }
+      await markSessionRedeemed(session.deviceCode, registered.deviceId);
+      return registered;
+    });
+    if (!result) return;
     return rep.code(200).send({
       device_id: result.deviceId,
       jwk_pub_kl: jwk,
@@ -256,13 +244,8 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     }
     rateLimitOrThrow(`device:token:${payload.data.device_id}`, 12, 60_000);
     rateLimitOrThrow("device:token:global", 500, 60_000);
-    let device;
-    try {
-      device = await getDevice(payload.data.device_id);
-    }
-    catch (err) {
-      return sendHttpError(rep, err);
-    }
+    const device = await runOrSend(rep, () => getDevice(payload.data.device_id));
+    if (!device) return;
     if (!device) {
       return rep.code(403).send({ error: "forbidden", error_description: "device not found" });
     }

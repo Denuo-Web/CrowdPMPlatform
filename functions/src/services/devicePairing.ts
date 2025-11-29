@@ -26,37 +26,53 @@ function canonicalizeUserCode(input: string): string {
   return (input || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asStatus(value: unknown): SessionStatus {
+  return (["pending", "authorized", "redeemed", "expired"] as SessionStatus[]).includes(value as SessionStatus)
+    ? value as SessionStatus
+    : "pending";
+}
+
 function normalizeSession(id: string, data: DocumentData): PairingSession {
+  const userCode = asString(data.userCode);
+  const canonicalUserCode = asString(data.userCodeCanonical, canonicalizeUserCode(userCode));
   return {
     id,
-    deviceCode: typeof data.deviceCode === "string" ? data.deviceCode : id,
-    userCode: typeof data.userCode === "string" ? data.userCode : "",
-    userCodeCanonical: typeof data.userCodeCanonical === "string"
-      ? data.userCodeCanonical
-      : canonicalizeUserCode(typeof data.userCode === "string" ? data.userCode : ""),
+    deviceCode: asString(data.deviceCode, id),
+    userCode,
+    userCodeCanonical: canonicalUserCode,
     pubKeJwk: (typeof data.pubKeJwk === "object" && data.pubKeJwk)
       ? data.pubKeJwk as PairingPublicKey
       : { kty: "OKP", crv: "Ed25519", x: "" },
-    pubKeThumbprint: typeof data.pubKeThumbprint === "string" ? data.pubKeThumbprint : "",
-    model: typeof data.model === "string" ? data.model : "unknown",
-    version: typeof data.version === "string" ? data.version : "unknown",
-    nonce: typeof data.nonce === "string" ? data.nonce : null,
-    status: (["pending", "authorized", "redeemed", "expired"] as SessionStatus[]).includes(data.status)
-      ? data.status
-      : "pending",
+    pubKeThumbprint: asString(data.pubKeThumbprint),
+    model: asString(data.model, "unknown"),
+    version: asString(data.version, "unknown"),
+    nonce: asNullableString(data.nonce),
+    status: asStatus(data.status),
     createdAt: toDate(data.createdAt) ?? new Date(0),
     expiresAt: toDate(data.expiresAt) ?? new Date(0),
-    pollInterval: typeof data.pollInterval === "number" ? data.pollInterval : 5,
-    requesterIp: typeof data.requesterIp === "string" ? data.requesterIp : null,
-    requesterAsn: typeof data.requesterAsn === "string" ? data.requesterAsn : null,
-    fingerprint: typeof data.fingerprint === "string" ? data.fingerprint : "",
-    accId: typeof data.accId === "string" ? data.accId : null,
+    pollInterval: asNumber(data.pollInterval, 5),
+    requesterIp: asNullableString(data.requesterIp),
+    requesterAsn: asNullableString(data.requesterAsn),
+    fingerprint: asString(data.fingerprint),
+    accId: asNullableString(data.accId),
     authorizedAt: toDate(data.authorizedAt),
-    authorizedBy: typeof data.authorizedBy === "string" ? data.authorizedBy : null,
-    registrationTokenJti: typeof data.registrationTokenJti === "string" ? data.registrationTokenJti : null,
+    authorizedBy: asNullableString(data.authorizedBy),
+    registrationTokenJti: asNullableString(data.registrationTokenJti),
     registrationTokenExpiresAt: toDate(data.registrationTokenExpiresAt),
     lastPollAt: toDate(data.lastPollAt),
-    deviceId: typeof data.deviceId === "string" ? data.deviceId : null,
+    deviceId: asNullableString(data.deviceId),
   };
 }
 

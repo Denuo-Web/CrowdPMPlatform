@@ -61,6 +61,19 @@ function isAlreadyExistsError(err: unknown): boolean {
   return code === 6 || code === 409;
 }
 
+function normalizeStatus(value: unknown, transform: (value: string) => string): string | null {
+  return typeof value === "string" ? transform(value) : null;
+}
+
+function isForbiddenDevice(status: string | null, registryStatus: string | null): boolean {
+  const normalizedStatus = status ?? "";
+  const normalizedRegistryStatus = registryStatus ?? "";
+  return normalizedRegistryStatus === "revoked"
+    || normalizedRegistryStatus === "suspended"
+    || normalizedStatus === "SUSPENDED"
+    || normalizedStatus === "REVOKED";
+}
+
 export class IngestService {
   private readonly deps: ResolvedIngestDependencies;
   private topicName: string | null = null;
@@ -85,10 +98,12 @@ export class IngestService {
 
     const devRef = this.deps.db.collection("devices").doc(deviceId);
     const devSnap = await devRef.get();
-    const status = typeof devSnap.get("status") === "string" ? String(devSnap.get("status")).toUpperCase() : null;
-    const registryStatus = typeof devSnap.get("registryStatus") === "string" ? String(devSnap.get("registryStatus")).toLowerCase() : null;
-    const forbidden = registryStatus === "revoked" || registryStatus === "suspended" || status === "SUSPENDED" || status === "REVOKED";
-    if (!devSnap.exists || forbidden) {
+    if (!devSnap.exists) {
+      throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
+    }
+    const status = normalizeStatus(devSnap.get("status"), (value) => value.toUpperCase());
+    const registryStatus = normalizeStatus(devSnap.get("registryStatus"), (value) => value.toLowerCase());
+    if (isForbiddenDevice(status, registryStatus)) {
       throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
     }
 
@@ -113,7 +128,9 @@ export class IngestService {
       visibility,
     }, { merge: true });
 
-    await this.deps.updateDeviceLastSeen(deviceId, this.deps.db).catch(() => {});
+    await this.deps.updateDeviceLastSeen(deviceId, this.deps.db).catch((err) => {
+      console.error({ err, deviceId }, "failed to update device last seen");
+    });
 
     return { accepted: true, batchId, deviceId, storagePath: path, visibility };
   }
