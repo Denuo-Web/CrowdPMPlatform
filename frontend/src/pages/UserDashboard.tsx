@@ -4,6 +4,7 @@ import { ReloadIcon } from "@radix-ui/react-icons";
 import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
+import { buildActivationLink } from "../lib/activation";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
@@ -27,6 +28,8 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
+  const [activationUrl, setActivationUrl] = useState<string>(() => buildActivationLink());
+  const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
     if (!user) {
@@ -110,6 +113,18 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
     onRequestActivation();
   }, [onRequestActivation]);
 
+  const handleCopyActivationLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(activationUrl);
+      setActivationLinkMessage("Activation link copied.");
+      setTimeout(() => setActivationLinkMessage(null), 2000);
+    }
+    catch (err) {
+      console.error(err);
+      setActivationLinkMessage("Unable to copy link.");
+    }
+  }, [activationUrl]);
+
 
   if (!user) {
     return (
@@ -145,10 +160,10 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
               <Text size="1" color="gray">{activationLinkMessage}</Text>
             ) : null}
           </Flex>
-        </Card>
-      </>
-    );
-  }
+      </Card>
+    </>
+  );
+}
 
   return (
     <Flex direction="column" gap="5">
@@ -163,7 +178,7 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
           <Text color="gray">
             Plug in your node, wait for the pairing code to appear, and open the activation UI to approve the request.
           </Text>
-          <Button onClick={handleOpenActivation} alignSelf="start">
+          <Button onClick={handleOpenActivation} style={{ alignSelf: "start" }}>
             Open activation UI
           </Button>
         </Flex>
