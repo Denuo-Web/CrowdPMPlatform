@@ -1,4 +1,4 @@
-import type { IngestBody } from "./ingestGateway.js";
+import type { IngestBody } from "./ingestService.js";
 import type { BatchVisibility } from "../lib/batchVisibility.js";
 
 export type SmokeTestBody = {

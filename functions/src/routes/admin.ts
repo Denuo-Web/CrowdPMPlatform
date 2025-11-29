@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { requireUser } from "../auth/firebaseVerify.js";
-import { ingestPayload } from "../services/ingestGateway.js";
+import { ingestService, IngestServiceError } from "../services/ingestService.js";
 import { prepareSmokeTestPlan, type SmokeTestBody } from "../services/smokeTest.js";
 import {
   DEFAULT_BATCH_VISIBILITY,
@@ -47,7 +47,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     const raw = JSON.stringify(plan.payload);
     try {
-      const result = await ingestPayload(raw, plan.payload, {
+      const result = await ingestService.ingest({
+        rawBody: raw,
+        body: plan.payload,
         deviceId: plan.primaryDeviceId,
         visibility: targetVisibility,
       });
@@ -62,7 +64,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
     catch (err) {
       fastify.log.error({ err }, "ingest smoke test failed");
-      const statusCode = typeof err === "object" && err && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : undefined;
+      const statusCode = extractStatusCode(err);
       const message = err instanceof Error ? err.message : "unexpected error";
       return rep.code(statusCode && statusCode >= 100 ? statusCode : 500).send({ error: message });
     }
@@ -121,6 +123,15 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 };
+
+function extractStatusCode(err: unknown): number | undefined {
+  if (err instanceof IngestServiceError) return err.statusCode;
+  if (typeof err === "object" && err && "statusCode" in err) {
+    const raw = Number((err as { statusCode: unknown }).statusCode);
+    if (raw >= 100) return raw;
+  }
+  return undefined;
+}
 
 type SeedSmokeTestOptions = {
   ownerIds: string[];
