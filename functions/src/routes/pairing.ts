@@ -139,9 +139,14 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       return rep.code(400).send({ error: "expired_token" });
     }
 
+    const accountId = session.accId;
+    if (!accountId) {
+      return rep.code(400).send({ error: "authorization_pending" });
+    }
+
     const issued = await runOrSend(rep, () => issueRegistrationToken({
       deviceCode: session.deviceCode,
-      accountId: session.accId,
+      accountId,
       sessionId: session.id,
       confirmationThumbprint: session.pubKeThumbprint,
     }));
