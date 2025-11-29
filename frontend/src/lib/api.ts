@@ -167,6 +167,7 @@ export type BatchDetail = BatchSummary & {
 
 export type UserSettings = {
   defaultBatchVisibility: BatchVisibility;
+  interleavedRendering: boolean;
 };
 
 export type ActivationSession = {

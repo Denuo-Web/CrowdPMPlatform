@@ -951,5 +951,9 @@ components:
         defaultBatchVisibility:
           $ref: '#/components/schemas/BatchVisibility'
           description: Visibility applied to newly created batches when not explicitly specified.
+        interleavedRendering:
+          type: boolean
+          description: Whether the map should render deck.gl interleaved with Google Maps (may be less stable on some GPUs).
       required:
         - defaultBatchVisibility
+        - interleavedRendering

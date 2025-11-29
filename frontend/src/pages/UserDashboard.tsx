@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout } from "@radix-ui/themes";
+import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
@@ -69,6 +69,23 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
       setSettingsLocalError(err instanceof Error ? err.message : "Unable to update user settings.");
     }
   }, [settings.defaultBatchVisibility, updateSettings, user]);
+
+  const handleInterleavedChange = useCallback(async (nextValue: boolean) => {
+    if (nextValue === settings.interleavedRendering || !user) return;
+    setSettingsLocalError(null);
+    setSettingsMessage(null);
+    try {
+      await updateSettings({ interleavedRendering: nextValue });
+      setSettingsMessage(
+        nextValue
+          ? "Interleaved map rendering enabled. Turn off if you see WebGL errors."
+          : "Interleaved map rendering disabled for improved compatibility."
+      );
+    }
+    catch (err) {
+      setSettingsLocalError(err instanceof Error ? err.message : "Unable to update user settings.");
+    }
+  }, [settings.interleavedRendering, updateSettings, user]);
 
   const handleRevoke = useCallback(async (deviceId: string) => {
     if (!deviceId) return;
@@ -189,6 +206,21 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
           </SegmentedControl.Root>
           <Text size="1" color="gray">
             Public batches can be surfaced in shared dashboards, while private batches remain restricted to your account.
+          </Text>
+          <Separator my="3" size="4" />
+          <Text size="2" color="gray">Map rendering</Text>
+          <Flex align="center" gap="3">
+            <Switch
+              checked={settings.interleavedRendering}
+              onCheckedChange={(checked) => { void handleInterleavedChange(checked); }}
+              disabled={isSettingsBusy}
+            />
+            <Text>
+              Interleave deck.gl with Google Maps (better blending, but can trigger WebGL issues on some GPUs).
+            </Text>
+          </Flex>
+          <Text size="1" color="gray">
+            Turn this off if you encounter WebGL/context errors; turn it on if you prefer single-context rendering.
           </Text>
           {settingsLocalError || settingsError ? (
             <Text color="tomato" size="2">{settingsLocalError || settingsError}</Text>

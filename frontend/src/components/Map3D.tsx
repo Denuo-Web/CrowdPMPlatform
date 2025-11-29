@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
+import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SphereGeometry } from "@luma.gl/engine";
 import type { Layer } from "@deck.gl/core";
 import { getMapsLoader } from "../lib/mapsLoader";
-import GoogleMapsOverlay from "../lib/PatchedGoogleMapsOverlay";
 
 type MeasurementPoint = {
   lat: number;
@@ -20,6 +20,7 @@ type Map3DProps = {
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
   autoCenterKey?: string;
+  interleaved?: boolean;
 };
 
 const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
@@ -130,7 +131,7 @@ function createLayers(
   return [pathLayer, sphereLayer];
 }
 
-export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKey }: Map3DProps) {
+export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKey, interleaved = false }: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<GoogleMapsOverlay | null>(null);
@@ -287,7 +288,8 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
           (index) => onSelectRef.current?.(index),
           sphereGeometry
         ),
-        useDevicePixels: devicePixelRatioRef.current
+        useDevicePixels: devicePixelRatioRef.current,
+        interleaved
       });
       overlay.setMap(map);
 
@@ -312,7 +314,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
       overlayRef.current = null;
       mapRef.current = null;
     };
-  }, [syncOverlay]);
+  }, [syncOverlay, interleaved]);
 
   return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
 }

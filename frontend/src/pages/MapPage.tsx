@@ -11,6 +11,7 @@ import {
   type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
+import { useUserSettings } from "../providers/UserSettingsProvider";
 
 // Keys used to scope localStorage entries per user so shared browsers do not mix data.
 const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
@@ -169,6 +170,7 @@ export default function MapPage({
   onCleanupDetailConsumed,
 }: MapPageProps = {}) {
   const { user } = useAuth();
+  const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
   const userScopedSelectionKey = useMemo(() => scopedKey(LAST_SELECTION_KEY, user?.uid ?? undefined), [user?.uid]);
@@ -541,7 +543,13 @@ export default function MapPage({
             : "Select a batch with recent measurements to explore the timeline."}
         </p>
       )}
-      <Map3D data={data} selectedIndex={selectedIndex} onSelectIndex={setIndexOverride} autoCenterKey={autoCenterKey}/>
+      <Map3D
+        data={data}
+        selectedIndex={selectedIndex}
+        onSelectIndex={setIndexOverride}
+        autoCenterKey={autoCenterKey}
+        interleaved={settings.interleavedRendering}
+      />
     </div>
   );
 }
