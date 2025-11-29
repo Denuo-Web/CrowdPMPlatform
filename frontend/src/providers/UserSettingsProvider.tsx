@@ -13,6 +13,7 @@ type UserSettingsContextValue = {
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   defaultBatchVisibility: "private",
+  interleavedRendering: false,
 };
 
 const UserSettingsContext = createContext<UserSettingsContextValue | undefined>(undefined);

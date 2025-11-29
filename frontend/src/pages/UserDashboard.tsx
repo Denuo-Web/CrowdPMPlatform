@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout } from "@radix-ui/themes";
+import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
+import { buildActivationLink } from "../lib/activation";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
@@ -27,6 +28,8 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
+  const activationUrl = useMemo(() => buildActivationLink(), []);
+  const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
     if (!user) {
@@ -70,6 +73,23 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
     }
   }, [settings.defaultBatchVisibility, updateSettings, user]);
 
+  const handleInterleavedChange = useCallback(async (nextValue: boolean) => {
+    if (nextValue === settings.interleavedRendering || !user) return;
+    setSettingsLocalError(null);
+    setSettingsMessage(null);
+    try {
+      await updateSettings({ interleavedRendering: nextValue });
+      setSettingsMessage(
+        nextValue
+          ? "Interleaved map rendering enabled. Turn off if you see WebGL errors."
+          : "Interleaved map rendering disabled for improved compatibility."
+      );
+    }
+    catch (err) {
+      setSettingsLocalError(err instanceof Error ? err.message : "Unable to update user settings.");
+    }
+  }, [settings.interleavedRendering, updateSettings, user]);
+
   const handleRevoke = useCallback(async (deviceId: string) => {
     if (!deviceId) return;
     if (!window.confirm("Revoke this device? It will immediately lose access tokens.")) {
@@ -92,6 +112,18 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const handleOpenActivation = useCallback(() => {
     onRequestActivation();
   }, [onRequestActivation]);
+
+  const handleCopyActivationLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(activationUrl);
+      setActivationLinkMessage("Activation link copied.");
+      setTimeout(() => setActivationLinkMessage(null), 2000);
+    }
+    catch (err) {
+      console.error(err);
+      setActivationLinkMessage("Unable to copy link.");
+    }
+  }, [activationUrl]);
 
 
   if (!user) {
@@ -128,10 +160,10 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
               <Text size="1" color="gray">{activationLinkMessage}</Text>
             ) : null}
           </Flex>
-        </Card>
-      </>
-    );
-  }
+      </Card>
+    </>
+  );
+}
 
   return (
     <Flex direction="column" gap="5">
@@ -146,7 +178,7 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
           <Text color="gray">
             Plug in your node, wait for the pairing code to appear, and open the activation UI to approve the request.
           </Text>
-          <Button onClick={handleOpenActivation} alignSelf="start">
+          <Button onClick={handleOpenActivation} style={{ alignSelf: "start" }}>
             Open activation UI
           </Button>
         </Flex>
@@ -189,6 +221,21 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
           </SegmentedControl.Root>
           <Text size="1" color="gray">
             Public batches can be surfaced in shared dashboards, while private batches remain restricted to your account.
+          </Text>
+          <Separator my="3" size="4" />
+          <Text size="2" color="gray">Map rendering</Text>
+          <Flex align="center" gap="3">
+            <Switch
+              checked={settings.interleavedRendering}
+              onCheckedChange={(checked) => { void handleInterleavedChange(checked); }}
+              disabled={isSettingsBusy}
+            />
+            <Text>
+              Interleave deck.gl with Google Maps (better blending, but can trigger WebGL issues on some GPUs).
+            </Text>
+          </Flex>
+          <Text size="1" color="gray">
+            Turn this off if you encounter WebGL/context errors; turn it on if you prefer single-context rendering.
           </Text>
           {settingsLocalError || settingsError ? (
             <Text color="tomato" size="2">{settingsLocalError || settingsError}</Text>

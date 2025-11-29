@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, useCallback } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -7,6 +7,7 @@ import {
   type User,
   type UserCredential,
 } from "firebase/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { auth } from "../lib/firebase";
 
 type AuthContextValue = {
@@ -22,14 +23,36 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       setIsLoading(false);
+      if (!nextUser) {
+        queryClient.clear();
+        try {
+          window.localStorage.removeItem("crowdpm:lastSmokeSelection");
+          window.localStorage.removeItem("crowdpm:lastSmokeBatchCache");
+        }
+        catch {
+          // ignore storage errors
+        }
+      }
     });
     return unsubscribe;
-  }, []);
+  }, [queryClient]);
+
+  const clearCachesOnSignOut = useCallback(() => {
+    queryClient.clear();
+    try {
+      window.localStorage.removeItem("crowdpm:lastSmokeSelection");
+      window.localStorage.removeItem("crowdpm:lastSmokeBatchCache");
+    }
+    catch {
+      // ignore storage errors
+    }
+  }, [queryClient]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -37,9 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       signIn: (email, password) => signInWithEmailAndPassword(auth, email.trim(), password),
       signUp: (email, password) => createUserWithEmailAndPassword(auth, email.trim(), password),
-      signOut: () => firebaseSignOut(auth),
+      signOut: async () => {
+        clearCachesOnSignOut();
+        await firebaseSignOut(auth);
+      },
     }),
-    [user, isLoading],
+    [user, isLoading, clearCachesOnSignOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -52,4 +78,3 @@ export function useAuth(): AuthContextValue {
   }
   return context;
 }
-
