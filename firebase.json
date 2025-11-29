@@ -1,5 +1,12 @@
 {
-  "functions": { "source": "functions", "runtime": "nodejs22" },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22",
+    "predeploy": [
+      "pnpm run prepare:functions-deps",
+      "pnpm --filter crowdpm-functions build"
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

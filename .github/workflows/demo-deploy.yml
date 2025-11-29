@@ -45,14 +45,13 @@ jobs:
         with:
           node-version: 24.x
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.18.1
-          run_install: false
+      - name: Enable corepack and pin pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.1 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: corepack pnpm install --frozen-lockfile
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -98,13 +97,13 @@ jobs:
           gcloud pubsub topics create "$INGEST_TOPIC"
 
       - name: Lint
-        run: pnpm lint
+        run: corepack pnpm lint
 
       - name: Build frontend
-        run: pnpm --filter crowdpm-frontend build
+        run: corepack pnpm --filter crowdpm-frontend build
 
       - name: Build functions
-        run: pnpm --filter crowdpm-functions build
+        run: corepack pnpm --filter crowdpm-functions build
 
       - name: Determine diff base
         id: diffbase
