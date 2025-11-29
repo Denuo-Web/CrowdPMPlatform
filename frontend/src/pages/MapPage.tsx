@@ -169,7 +169,7 @@ export default function MapPage({
   pendingCleanupDetail = null,
   onCleanupDetailConsumed,
 }: MapPageProps = {}) {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
@@ -214,9 +214,13 @@ export default function MapPage({
       const list = await listBatches();
       return mergeCachedSummary(list, getCachedBatch());
     },
-    enabled: Boolean(user),
+    enabled: Boolean(user) && !isAuthLoading,
     placeholderData: (prev) => prev ?? [],
     staleTime: 30_000,
+    retry: (failureCount, error) => {
+      if (error instanceof Error && error.message.toLowerCase().includes("unauthorized")) return false;
+      return failureCount < 3;
+    },
   });
 
   const visibleBatches = useMemo(
@@ -239,7 +243,7 @@ export default function MapPage({
   // Query #2: measurement detail for the currently selected batch.
   const measurementQuery = useQuery<MeasurementRecord[]>({
     queryKey: batchDetailQueryKey ?? ["batchDetail", "idle", "none"],
-    enabled: Boolean(batchDetailQueryKey),
+    enabled: Boolean(batchDetailQueryKey) && !isAuthLoading,
     retry: 5,
     retryDelay: 1_500,
     queryFn: async () => {
@@ -249,6 +253,9 @@ export default function MapPage({
       const detail = await fetchBatchDetail(parsed.deviceId, parsed.batchId);
       return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId);
     },
+    retryOnMount: false,
+    throwOnError: false,
+    placeholderData: (prev) => prev ?? [],
   });
 
   const rows = useMemo(
@@ -257,6 +264,7 @@ export default function MapPage({
   );
 
   const isLoadingBatch = measurementQuery.isFetching || measurementQuery.isLoading;
+  const queryError = batchesQuery.error || measurementQuery.error;
 
   // Whenever a new batch or fresh data arrives, snap the slider to the latest point.
   // useEffect(() => {
@@ -476,6 +484,11 @@ export default function MapPage({
   return (
     <div style={{ padding: 12 }}>
       <h2>CrowdPM Map</h2>
+      {queryError ? (
+        <p style={{ color: "tomato", marginBottom: 8, fontSize: 14 }}>
+          {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
+        </p>
+      ) : null}
       <select
         value={selectedBatchKey}
         onChange={(e) => handleBatchSelect(e.target.value)}
