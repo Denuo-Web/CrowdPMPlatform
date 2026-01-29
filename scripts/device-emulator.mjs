@@ -50,6 +50,24 @@ function buildUrl(base, pathname) {
   return new URL(pathname.startsWith("/") ? pathname.slice(1) : pathname, normalized);
 }
 
+function deriveHtu(targetUrl, apiBase, proto) {
+  let basePath = "";
+  try {
+    basePath = new URL(apiBase).pathname.replace(/\/$/u, "");
+  }
+  catch {
+    basePath = "";
+  }
+  const trimmedPath = targetUrl.pathname.startsWith(basePath)
+    ? targetUrl.pathname.slice(basePath.length) || "/"
+    : targetUrl.pathname;
+  return `${proto}://${targetUrl.host}${trimmedPath}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function createDpopProof({ htu, method, privateJwk, publicJwk }) {
   const header = { alg: "EdDSA", typ: "dpop+jwt", jwk: { kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x } };
   const payload = {
@@ -75,13 +93,16 @@ Options:
   --version <ver>   Firmware version sent to /device/start (default: 0.0.1)
   --nonce <value>   Optional nonce/serial to reuse pairing attempts
   --key <path>      Path to persist/reuse the Ed25519 JWK keypair
-  --token           Also call /device/token using the same key
-  --device-code <c> device_code to use for /device/token (defaults to freshly created one)
+  --device-code <c> Override device_code when polling (defaults to freshly created one)
+  --interval <sec>  Poll interval in seconds (default: 3, or server hint)
   --help            Show this help message
 `);
 }
 
 async function main() {
+  const argv = process.argv.slice(2);
+  if (argv[0] === "--") argv.shift();
+
   const { values } = parseArgs({
     options: {
       api: { type: "string", default: DEFAULT_API_BASE },
@@ -89,11 +110,12 @@ async function main() {
       version: { type: "string", default: "0.0.1" },
       nonce: { type: "string" },
       key: { type: "string" },
-      token: { type: "boolean" },
       "device-code": { type: "string" },
+      interval: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
     allowPositionals: true,
+    args: argv,
   });
 
   if (values.help) {
@@ -182,41 +204,90 @@ async function main() {
   }
   console.log("  private_jwk.d:", privateJwk.d);
 
-  if (values.token) {
-    const targetDeviceCode = values["device-code"] ?? deviceCode;
-    if (!targetDeviceCode) {
-      console.error("No device_code available for /device/token. Pass --device-code <code> or omit --token.");
-      process.exit(1);
-      return;
-    }
-    const tokenUrl = buildUrl(apiBase, "/device/token");
-    const tokenHtu = tokenUrl.toString().replace(/\/$/u, "");
+  // Begin polling for registration token and auto-register.
+  const targetDeviceCode = values["device-code"] ?? deviceCode;
+  const tokenUrl = buildUrl(apiBase, "/device/token");
+  const tokenProto = tokenUrl.protocol.replace(":", "") || "https";
+  const tokenHtu = deriveHtu(tokenUrl, apiBase, tokenProto);
+  let pollSeconds = Number(values.interval ?? pollInterval ?? 3);
+  if (!Number.isFinite(pollSeconds) || pollSeconds <= 0) pollSeconds = 3;
+
+  console.log(`\nPolling /device/token for ${targetDeviceCode} every ${pollSeconds}s ...`);
+  while (true) {
     const dpop = await createDpopProof({ htu: tokenHtu, method: "POST", privateJwk, publicJwk });
-    console.log(`\nPolling /device/token for ${targetDeviceCode} ...`);
-    const tokenResponse = await fetch(tokenUrl, {
+    const resp = await fetch(tokenUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         dpop,
+        "x-forwarded-proto": tokenProto,
       },
       body: JSON.stringify({ device_code: targetDeviceCode }),
     });
-    const tokenRaw = await tokenResponse.text();
-    let parsedToken = null;
-    try {
-      parsedToken = JSON.parse(tokenRaw);
-    }
-    catch { /* ignore */ }
+    const raw = await resp.text();
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { /* ignore */ }
 
-    if (!tokenResponse.ok) {
-      console.error("Token request failed:", tokenResponse.status, tokenResponse.statusText);
-      console.error("Response body:", parsedToken ?? tokenRaw);
-      process.exitCode = 1;
-      return;
+    if (resp.ok) {
+      const regToken = parsed?.registration_token;
+      if (!regToken) {
+        console.log("Token success:", parsed ?? raw);
+        break;
+      }
+
+      const registerUrl = buildUrl(apiBase, "/device/register");
+      const registerProto = registerUrl.protocol.replace(":", "") || "https";
+      const registerHtu = deriveHtu(registerUrl, apiBase, registerProto);
+      const registerDpop = await createDpopProof({
+        htu: registerHtu,
+        method: "POST",
+        privateJwk,
+        publicJwk,
+      });
+
+      console.log("registration_token received; registering device ...");
+      const regResp = await fetch(registerUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${regToken}`,
+          "content-type": "application/json",
+          dpop: registerDpop,
+          "x-forwarded-proto": registerProto,
+        },
+        body: JSON.stringify({ jwk_pub_kl: publicJwk }),
+      });
+      const regRaw = await regResp.text();
+      let regParsed = null;
+      try { regParsed = JSON.parse(regRaw); } catch { /* ignore */ }
+
+      if (!regResp.ok) {
+        console.error("Registration failed:", regResp.status, regResp.statusText);
+        console.error("Body:", regParsed ?? regRaw);
+        process.exitCode = 1;
+        break;
+      }
+
+      console.log("Registration success:", regParsed ?? regRaw);
+      break;
     }
 
-    console.log("Device token response:");
-    console.log(parsedToken ?? tokenRaw);
+    const error = parsed?.error;
+    if (error === "authorization_pending") {
+      console.log("authorization_pending; waiting...");
+      await sleep(pollSeconds * 1000);
+      continue;
+    }
+    if (error === "slow_down" && typeof parsed?.poll_interval === "number") {
+      pollSeconds = Math.max(parsed.poll_interval, pollSeconds);
+      console.log(`slow_down; server suggests poll_interval=${parsed.poll_interval}s. Waiting ${pollSeconds}s`);
+      await sleep(pollSeconds * 1000);
+      continue;
+    }
+
+    console.error("Token request failed:", resp.status, resp.statusText);
+    console.error("Body:", parsed ?? raw);
+    process.exitCode = 1;
+    break;
   }
 }
 
