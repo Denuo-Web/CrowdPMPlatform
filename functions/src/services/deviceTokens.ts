@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve as resolvePath } from "node:path";
 import { importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload } from "jose";
 import { db } from "../lib/fire.js";
 import {
@@ -58,6 +60,25 @@ function allowEphemeralKeys(): boolean {
     || process.env.ALLOW_EPHEMERAL_DEVICE_TOKEN_KEYS === "true";
 }
 
+function loadEphemeralFromFile(filePath: string): KeyMaterial | null {
+  const resolved = resolvePath(filePath);
+  if (!existsSync(resolved)) return null;
+  const privatePem = readFileSync(resolved, "utf8");
+  const privateKey = crypto.createPrivateKey(privatePem);
+  const publicKey = crypto.createPublicKey(privateKey);
+  return {
+    privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
+    generated: false,
+  };
+}
+
+function persistEphemeralToFile(filePath: string, privatePem: string): void {
+  const resolved = resolvePath(filePath);
+  mkdirSync(dirname(resolved), { recursive: true });
+  writeFileSync(resolved, privatePem, "utf8");
+}
+
 function loadOrCreateKeyMaterial(): KeyMaterial {
   if (cachedKeys) return cachedKeys;
   const configured = getDeviceTokenPrivateKey()?.trim();
@@ -75,13 +96,30 @@ function loadOrCreateKeyMaterial(): KeyMaterial {
   if (!allowEphemeralKeys()) {
     throw new DeviceTokenKeyError("DEVICE_TOKEN_PRIVATE_KEY is not configured; refusing to issue device tokens.");
   }
+  const ephemeralPath = process.env.DEVICE_TOKEN_PRIVATE_KEY_FILE ?? "/tmp/crowdpm-device-token-key.pem";
+  const loadedFromFile = loadEphemeralFromFile(ephemeralPath);
+  if (loadedFromFile) {
+    cachedKeys = loadedFromFile;
+    console.warn(`DEVICE_TOKEN_PRIVATE_KEY not set. Reusing cached ephemeral signing key at ${ephemeralPath}.`);
+    return cachedKeys;
+  }
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+  const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  if (ephemeralPath) {
+    try {
+      persistEphemeralToFile(ephemeralPath, privatePem);
+    }
+    catch (err) {
+      console.warn({ err }, `Failed to persist ephemeral device token key to ${ephemeralPath}; continuing with in-memory key.`);
+    }
+  }
   const fallback: KeyMaterial = {
-    privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-    publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
+    privatePem,
+    publicPem,
     generated: true,
   };
-  console.warn("DEVICE_TOKEN_PRIVATE_KEY is not set. Generated ephemeral signing key for this instance (emulator/test only).");
+  console.warn(`DEVICE_TOKEN_PRIVATE_KEY is not set. Generated ${ephemeralPath ? "cached" : "ephemeral"} signing key for this instance (emulator/test only).`);
   cachedKeys = fallback;
   return fallback;
 }
