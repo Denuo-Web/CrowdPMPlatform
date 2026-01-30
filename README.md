@@ -115,6 +115,14 @@ pnpm dev
 
 Keep this terminal open; rebuilds stream into the emulator automatically.
 
+### Send an ingest batch without re-pairing
+Use the device emulator in ingest-only mode with the key you registered:
+```bash
+pnpm device:pair -- --mode ingest --device-id <device-id> --key ./emu-key.json --api http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi
+```
+- Replace `<device-id>` with the registered ID and `./emu-key.json` with the same Ed25519 key used during registration.
+- Defaults send 60 points (1-minute spacing, +2 per minute); override with `--minutes`, `--start-value`, or `--value-step`.
+
 ## Testing & Quality Gates
 - Unit tests: `pnpm --filter crowdpm-functions test`
 - Linting: `pnpm lint` (workspace-wide ESLint on TS/TSX sources)
