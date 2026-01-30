@@ -6,6 +6,8 @@ import { parseArgs } from "node:util";
 
 const DEFAULT_API_BASE = process.env.CROWDPM_API_BASE
   ?? "http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi";
+const DEFAULT_INGEST_URL = process.env.CROWDPM_INGEST_URL
+  ?? DEFAULT_API_BASE.replace(/crowdpmApi\/?$/u, "ingestGateway");
 
 function base64url(buffer) {
   return Buffer.from(buffer).toString("base64").replace(/=+$/u, "").replace(/\+/gu, "-").replace(/\//gu, "_");
@@ -68,6 +70,41 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parseNumber(value, fallback) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function buildHistoricalPoints({
+  deviceId,
+  startValue,
+  valueStep,
+  minutes,
+  lat,
+  lon,
+  altitude,
+  precision,
+}) {
+  const historyMinutes = Math.max(1, Math.floor(minutes));
+  const now = Date.now();
+  const points = [];
+  for (let i = historyMinutes - 1; i >= 0; i -= 1) {
+    const value = startValue + valueStep * (historyMinutes - 1 - i);
+    points.push({
+      device_id: deviceId,
+      pollutant: "pm25",
+      value,
+      unit: "\u00b5g/m\u00b3",
+      lat,
+      lon,
+      timestamp: new Date(now - i * 60_000).toISOString(),
+      precision,
+      altitude,
+    });
+  }
+  return points;
+}
+
 async function createDpopProof({ htu, method, privateJwk, publicJwk }) {
   const header = { alg: "EdDSA", typ: "dpop+jwt", jwk: { kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x } };
   const payload = {
@@ -88,6 +125,7 @@ async function createDpopProof({ htu, method, privateJwk, publicJwk }) {
 function printHelp() {
   console.log(`Usage: node scripts/device-emulator.mjs [options]
 Options:
+  --mode <pair|ingest> Which workflow to run (default: pair). pair = start/poll/register. ingest = send payload only.
   --api <url>       API base URL (default: ${DEFAULT_API_BASE})
   --model <name>    Model sent to /device/start (default: CLI-EMU)
   --version <ver>   Firmware version sent to /device/start (default: 0.0.1)
@@ -95,8 +133,85 @@ Options:
   --key <path>      Path to persist/reuse the Ed25519 JWK keypair
   --device-code <c> Override device_code when polling (defaults to freshly created one)
   --interval <sec>  Poll interval in seconds (default: 3, or server hint)
+  --ingest          In pair mode: also send a sample ingest payload. In ingest mode: no effect (ingest always runs).
+  --device-id <id>  Required in ingest mode; optional in pair mode for override.
+  --access-token <t>Use an existing access token instead of minting a new one (ingest mode only).
+  --ingest-url <u>  Override ingest gateway URL (default: ${DEFAULT_INGEST_URL})
+  --minutes <n>     Minutes of history to send (default: 60)
+  --start-value <n> Starting value for the first point (default: 15.9)
+  --value-step <n>  Increment per minute (default: 2)
+  --lat <deg>       Latitude for all points (default: 40.7128)
+  --lon <deg>       Longitude for all points (default: -74.00585)
+  --altitude <m>    Altitude to attach to each point (default: 0)
+  --precision <p>   Precision/accuracy to attach to each point (default: 9)
   --help            Show this help message
 `);
+}
+
+async function requestAccessToken({ apiBase, deviceId, privateJwk, publicJwk }) {
+  const accessUrl = buildUrl(apiBase, "/device/access-token");
+  const accessProto = accessUrl.protocol.replace(":", "") || "https";
+  const accessHtu = deriveHtu(accessUrl, apiBase, accessProto);
+  const accessDpop = await createDpopProof({
+    htu: accessHtu,
+    method: "POST",
+    privateJwk,
+    publicJwk,
+  });
+
+  const accessResp = await fetch(accessUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      dpop: accessDpop,
+      "x-forwarded-proto": accessProto,
+    },
+    body: JSON.stringify({ device_id: deviceId, scope: ["ingest.write"] }),
+  });
+  const accessRaw = await accessResp.text();
+  let parsedAccess = null;
+  try { parsedAccess = JSON.parse(accessRaw); } catch { /* ignore */ }
+  if (!accessResp.ok) {
+    throw new Error(`Access token request failed: ${accessResp.status} ${accessResp.statusText} - ${JSON.stringify(parsedAccess ?? accessRaw)}`);
+  }
+  const accessToken = parsedAccess?.access_token ?? parsedAccess?.accessToken;
+  const accessTtl = parsedAccess?.expires_in ?? parsedAccess?.expiresIn;
+  return { token: accessToken, ttl: accessTtl };
+}
+
+async function sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, accessToken, points }) {
+  const ingestUrl = new URL(ingestUrlRaw);
+  const ingestProto = ingestUrl.protocol.replace(":", "") || "https";
+  const ingestHtu = deriveHtu(ingestUrl, ingestUrlRaw, ingestProto);
+  const ingestDpop = await createDpopProof({
+    htu: ingestHtu,
+    method: "POST",
+    privateJwk,
+    publicJwk,
+  });
+
+  const ingestPayload = { device_id: deviceId, points };
+  console.log(`\nSending ingest payload (${points.length} points) to ${ingestUrl.toString()} ...`);
+
+  const ingestResp = await fetch(ingestUrl, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+      dpop: ingestDpop,
+      "x-forwarded-proto": ingestProto,
+    },
+    body: JSON.stringify(ingestPayload),
+  });
+  const ingestRaw = await ingestResp.text();
+  let ingestParsed = null;
+  try { ingestParsed = JSON.parse(ingestRaw); } catch { /* ignore */ }
+
+  if (!ingestResp.ok) {
+    throw new Error(`Ingest request failed: ${ingestResp.status} ${ingestResp.statusText} - ${JSON.stringify(ingestParsed ?? ingestRaw)}`);
+  }
+
+  console.log("Ingest accepted:", ingestParsed ?? ingestRaw);
 }
 
 async function main() {
@@ -105,13 +220,25 @@ async function main() {
 
   const { values } = parseArgs({
     options: {
+      mode: { type: "string" },
       api: { type: "string", default: DEFAULT_API_BASE },
       model: { type: "string", default: "CLI-EMU" },
       version: { type: "string", default: "0.0.1" },
       nonce: { type: "string" },
       key: { type: "string" },
+      "device-id": { type: "string" },
       "device-code": { type: "string" },
+      "access-token": { type: "string" },
       interval: { type: "string" },
+      ingest: { type: "boolean" },
+      "ingest-url": { type: "string" },
+      minutes: { type: "string" },
+      "start-value": { type: "string" },
+      "value-step": { type: "string" },
+      lat: { type: "string" },
+      lon: { type: "string" },
+      altitude: { type: "string" },
+      precision: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
     allowPositionals: true,
@@ -123,8 +250,69 @@ async function main() {
     return;
   }
 
+  const modeFlag = typeof values.mode === "string" ? values.mode.toLowerCase() : undefined;
+  const mode = modeFlag === "ingest" ? "ingest" : "pair";
   const apiBase = values.api ?? DEFAULT_API_BASE;
+  const ingestUrlRaw = values["ingest-url"] ?? DEFAULT_INGEST_URL;
+  const ingestRequested = mode === "ingest" ? true : (values.ingest ?? false);
+  const startValue = parseNumber(values["start-value"], 15.9);
+  const valueStep = parseNumber(values["value-step"], 2);
+  const historyMinutes = parseNumber(values.minutes, 60);
+  const lat = parseNumber(values.lat, 40.7128);
+  const lon = parseNumber(values.lon, -74.00585);
+  const altitude = parseNumber(values.altitude, 0);
+  const precision = parseNumber(values.precision, 9);
   const { publicJwk, privateJwk, path: keyPath, generated } = loadOrGenerateKey(values.key);
+
+  if (mode === "ingest" && !values.key && generated) {
+    console.warn("Warning: running ingest mode without --key will generate a new key that will NOT match your registered device.");
+  }
+  if (mode === "ingest" && !values["device-id"]) {
+    console.error("Ingest mode requires --device-id.");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (mode === "ingest") {
+    const deviceId = values["device-id"];
+    const accessToken = values["access-token"];
+    let token = accessToken;
+    if (!token) {
+      try {
+        const minted = await requestAccessToken({ apiBase, deviceId, privateJwk, publicJwk });
+        token = minted.token;
+        console.log("Access token minted.");
+        if (minted.ttl) console.log(`  expires_in: ${minted.ttl}s`);
+      }
+      catch (err) {
+        console.error(err instanceof Error ? err.message : err);
+        process.exitCode = 1;
+        return;
+      }
+    } else {
+      console.log("Using provided access token.");
+    }
+
+    const points = buildHistoricalPoints({
+      deviceId,
+      startValue,
+      valueStep,
+      minutes: historyMinutes,
+      lat,
+      lon,
+      altitude,
+      precision,
+    });
+
+    try {
+      await sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, accessToken: token, points });
+    }
+    catch (err) {
+      console.error(err instanceof Error ? err.message : err);
+      process.exitCode = 1;
+    }
+    return;
+  }
 
   const startUrl = buildUrl(apiBase, "/device/start");
   const body = {
@@ -212,6 +400,8 @@ async function main() {
   let pollSeconds = Number(values.interval ?? pollInterval ?? 3);
   if (!Number.isFinite(pollSeconds) || pollSeconds <= 0) pollSeconds = 3;
 
+  let registeredDeviceId = null;
+
   console.log(`\nPolling /device/token for ${targetDeviceCode} every ${pollSeconds}s ...`);
   while (true) {
     const dpop = await createDpopProof({ htu: tokenHtu, method: "POST", privateJwk, publicJwk });
@@ -268,6 +458,7 @@ async function main() {
       }
 
       console.log("Registration success:", regParsed ?? regRaw);
+      registeredDeviceId = regParsed?.device_id ?? regParsed?.deviceId ?? null;
       break;
     }
 
@@ -288,6 +479,56 @@ async function main() {
     console.error("Body:", parsed ?? raw);
     process.exitCode = 1;
     break;
+  }
+
+  if (!registeredDeviceId) {
+    console.log("Pairing completed without a device_id; skipping access token + ingest.");
+    return;
+  }
+
+  let mintedAccessToken = null;
+  try {
+    const minted = await requestAccessToken({ apiBase, deviceId: registeredDeviceId, privateJwk, publicJwk });
+    mintedAccessToken = minted.token;
+    console.log("Access token issued for device:", registeredDeviceId);
+    if (minted.ttl) console.log(`  expires_in: ${minted.ttl}s`);
+  }
+  catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!ingestRequested) {
+    console.log("\nIngest payload not requested (--ingest not set).");
+    console.log("Reuse the access token above or rerun with --ingest to push sample data.");
+    return;
+  }
+
+  const points = buildHistoricalPoints({
+    deviceId: registeredDeviceId,
+    startValue,
+    valueStep,
+    minutes: historyMinutes,
+    lat,
+    lon,
+    altitude,
+    precision,
+  });
+
+  try {
+    await sendIngest({
+      ingestUrlRaw,
+      deviceId: registeredDeviceId,
+      privateJwk,
+      publicJwk,
+      accessToken: mintedAccessToken,
+      points,
+    });
+  }
+  catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exitCode = 1;
   }
 }
 
