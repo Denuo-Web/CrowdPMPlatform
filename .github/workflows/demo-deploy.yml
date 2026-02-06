@@ -135,7 +135,7 @@ jobs:
           fi
 
       - name: Deploy hosting and functions
-        run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
+        run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
 
       - name: Deploy Firestore rules
         if: ${{ steps.firestore.outputs.changed == 'true' }}
