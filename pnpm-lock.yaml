@@ -38,6 +38,9 @@ importers:
 
   frontend:
     dependencies:
+      '@crowdpm/types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@deck.gl/core':
         specifier: ^9.2.3
         version: 9.2.3
@@ -78,9 +81,6 @@ importers:
         specifier: ^19.2.1
         version: 19.2.1(react@19.2.1)
     devDependencies:
-      '@crowdpm/types':
-        specifier: workspace:*
-        version: link:../shared-types
       '@tailwindcss/postcss':
         specifier: ^4.1.17
         version: 4.1.17
@@ -133,8 +133,8 @@ importers:
         specifier: ^13.6.0
         version: 13.6.0(encoding@0.1.13)
       firebase-functions:
-        specifier: ^7.0.1
-        version: 7.0.1(firebase-admin@13.6.0(encoding@0.1.13))
+        specifier: ^7.0.5
+        version: 7.0.5(firebase-admin@13.6.0(encoding@0.1.13))
       jose:
         specifier: ^6.1.2
         version: 6.1.2
@@ -3363,12 +3363,22 @@ packages:
     resolution: {integrity: sha512-GdPA/t0+Cq8p1JnjFRBmxRxAGvF/kl2yfdhALl38PrRp325YxyQ5aNaHui0XmaKcKiGRFIJ/EgBNWFoDP0onjw==}
     engines: {node: '>=18'}
 
-  firebase-functions@7.0.1:
-    resolution: {integrity: sha512-9hFqiCO4phVosFLMjXlqQvtKTS+g5xWHHt3qU94bIHhdFX3RvQFiRvBTFgy+e9jBcrauEqCt5pqPe9em0AgPDQ==}
+  firebase-functions@7.0.5:
+    resolution: {integrity: sha512-uG2dR5AObLuUrWWjj/de5XxNHCVi+Ehths0DSRcLjHJdgw1TSejwoZZ5na6gVrl3znNjRdBRy5Br5UlhaIU3Ww==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     peerDependencies:
+      '@apollo/server': ^5.2.0
+      '@as-integrations/express4': ^1.1.2
       firebase-admin: ^11.10.0 || ^12.0.0 || ^13.0.0
+      graphql: ^16.12.0
+    peerDependenciesMeta:
+      '@apollo/server':
+        optional: true
+      '@as-integrations/express4':
+        optional: true
+      graphql:
+        optional: true
 
   firebase-tools@14.26.0:
     resolution: {integrity: sha512-pjVNDvmY4s3HkBe0iI5mum4hGpNzVwrf0J68KP51XRvhU/tYDXzMr6N+FBjdJtkJM6I7wx1KqgHsqvJurCun/A==}
@@ -9622,7 +9632,7 @@ snapshots:
       - encoding
       - supports-color
 
-  firebase-functions@7.0.1(firebase-admin@13.6.0(encoding@0.1.13)):
+  firebase-functions@7.0.5(firebase-admin@13.6.0(encoding@0.1.13)):
     dependencies:
       '@types/cors': 2.8.19
       '@types/express': 4.17.25

@@ -19,6 +19,72 @@ export type FirestoreTimestampLike = {
   toMillis(): number;
 };
 
+export type TimestampInput =
+  | string
+  | number
+  | Date
+  | FirestoreTimestampLike
+  | { toDate?: () => Date | null; toMillis?: () => number }
+  | null
+  | undefined;
+
+function hasToDate(value: unknown): value is { toDate: () => Date | null } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { toDate?: () => Date | null }).toDate === "function";
+}
+
+function hasToMillis(value: unknown): value is { toMillis: () => number } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { toMillis?: () => number }).toMillis === "function";
+}
+
+export function timestampToDate(input: TimestampInput): Date | null {
+  if (input === null || input === undefined) return null;
+  if (input instanceof Date) {
+    return Number.isNaN(input.getTime()) ? null : input;
+  }
+  if (typeof input === "number") {
+    return Number.isFinite(input) ? new Date(input) : null;
+  }
+  if (typeof input === "string") {
+    const parsed = Date.parse(input);
+    return Number.isNaN(parsed) ? null : new Date(parsed);
+  }
+  if (hasToDate(input)) {
+    try {
+      const date = input.toDate();
+      if (date instanceof Date && !Number.isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    catch {
+      // try toMillis fallback below when available
+    }
+  }
+  if (hasToMillis(input)) {
+    try {
+      const millis = input.toMillis();
+      return Number.isFinite(millis) ? new Date(millis) : null;
+    }
+    catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function timestampToMillis(input: TimestampInput): number | null {
+  const date = timestampToDate(input);
+  return date ? date.getTime() : null;
+}
+
+export function timestampToIsoString(input: TimestampInput): string | null {
+  const date = timestampToDate(input);
+  return date ? date.toISOString() : null;
+}
+
 export type MeasurementRecord = {
   id: string;
   deviceId: string;

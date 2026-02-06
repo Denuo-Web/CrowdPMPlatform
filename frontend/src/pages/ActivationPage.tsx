@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Separator, Text, TextField } from "@radix-ui/themes";
+import { timestampToMillis } from "@crowdpm/types";
 import { useAuth } from "../providers/AuthProvider";
 import { AuthDialog, type AuthMode } from "../components/AuthDialog";
 import {
@@ -75,8 +76,8 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
 
   const remaining = useMemo(() => {
     if (!session) return null;
-    const expires = Date.parse(session.expires_at);
-    if (Number.isNaN(expires)) return null;
+    const expires = timestampToMillis(session.expires_at);
+    if (expires === null) return null;
     return Math.max(0, expires - now);
   }, [session, now]);
 
@@ -141,6 +142,11 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
     catch {
       return null;
     }
+  }, [session]);
+
+  const requestedAtLabel = useMemo(() => {
+    const requestedAtMs = session ? timestampToMillis(session.requested_at) : null;
+    return requestedAtMs === null ? "—" : new Date(requestedAtMs).toLocaleString();
   }, [session]);
 
   return (
@@ -226,7 +232,7 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
             <Flex direction={{ initial: "column", sm: "row" }} gap="4">
               <Box>
                 <Text size="2" color="gray">Requested</Text>
-                <Text weight="medium">{new Date(session.requested_at).toLocaleString()}</Text>
+                <Text weight="medium">{requestedAtLabel}</Text>
               </Box>
               <Box>
                 <Text size="2" color="gray">Expires in</Text>

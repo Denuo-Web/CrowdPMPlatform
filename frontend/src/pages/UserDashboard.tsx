@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
+import { timestampToMillis } from "@crowdpm/types";
 import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
@@ -275,12 +276,10 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
               <Table.Body>
                 {devices.map((device) => {
                   const status = describeStatus(device.registryStatus ?? device.status);
-                  const created = device.createdAt
-                    ? new Date(device.createdAt).toLocaleDateString()
-                    : "—";
-                  const lastSeen = device.lastSeenAt
-                    ? new Date(device.lastSeenAt).toLocaleString()
-                    : "—";
+                  const createdMs = timestampToMillis(device.createdAt);
+                  const created = createdMs === null ? "—" : new Date(createdMs).toLocaleDateString();
+                  const lastSeenMs = timestampToMillis(device.lastSeenAt);
+                  const lastSeen = lastSeenMs === null ? "—" : new Date(lastSeenMs).toLocaleString();
                   return (
                     <Table.Row key={device.id}>
                       <Table.Cell>
