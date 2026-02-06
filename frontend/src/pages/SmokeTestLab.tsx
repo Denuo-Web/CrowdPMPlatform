@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { timestampToMillis } from "@crowdpm/types";
 import {
   Badge,
   Box,
@@ -800,42 +801,46 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
           ) : (
             <ScrollArea type="always" style={{ maxHeight: 400 }}>
               <Flex direction="column" gap="3">
-                {smokeHistory.map((entry) => (
-                  <Card key={entry.id} variant="surface">
-                    <Flex direction="column" gap="2">
-                      <Text size="1" color="gray">{new Date(entry.createdAt).toLocaleString()}</Text>
-                      <Flex gap="2" align="center" wrap="wrap">
-                        <Text size="2">Batch <code>{entry.response.batchId}</code></Text>
-                        {renderVisibilityBadge(entry.response.visibility)}
+                {smokeHistory.map((entry) => {
+                  const createdAtMs = timestampToMillis(entry.createdAt);
+                  const createdAtLabel = createdAtMs === null ? "—" : new Date(createdAtMs).toLocaleString();
+                  return (
+                    <Card key={entry.id} variant="surface">
+                      <Flex direction="column" gap="2">
+                        <Text size="1" color="gray">{createdAtLabel}</Text>
+                        <Flex gap="2" align="center" wrap="wrap">
+                          <Text size="2">Batch <code>{entry.response.batchId}</code></Text>
+                          {renderVisibilityBadge(entry.response.visibility)}
+                        </Flex>
+                        <Flex gap="2" wrap="wrap">
+                          {entry.deviceIds.map((id) => (
+                            <Badge key={id} variant="soft">{id}</Badge>
+                          ))}
+                        </Flex>
+                        <Flex gap="2" wrap="wrap" mt="2">
+                          <Button variant="soft" onClick={() => loadHistoryPayload(entry)}>
+                            <ReloadIcon /> Load payload
+                          </Button>
+                          <Button
+                            variant="soft"
+                            color="red"
+                            onClick={() => handleHistoryCleanup(entry)}
+                            disabled={deletingDeviceId === entry.deviceIds[0]}
+                          >
+                            <TrashIcon /> {deletingDeviceId === entry.deviceIds[0] ? "Deleting" : "Delete data"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleBatchCleanup(entry)}
+                            disabled={deletingBatchId === entry.response.batchId}
+                          >
+                            <TrashIcon /> {deletingBatchId === entry.response.batchId ? "Removing" : "Remove from history"}
+                          </Button>
+                        </Flex>
                       </Flex>
-                      <Flex gap="2" wrap="wrap">
-                        {entry.deviceIds.map((id) => (
-                          <Badge key={id} variant="soft">{id}</Badge>
-                        ))}
-                      </Flex>
-                      <Flex gap="2" wrap="wrap" mt="2">
-                        <Button variant="soft" onClick={() => loadHistoryPayload(entry)}>
-                          <ReloadIcon /> Load payload
-                        </Button>
-                        <Button
-                          variant="soft"
-                          color="red"
-                          onClick={() => handleHistoryCleanup(entry)}
-                          disabled={deletingDeviceId === entry.deviceIds[0]}
-                        >
-                          <TrashIcon /> {deletingDeviceId === entry.deviceIds[0] ? "Deleting" : "Delete data"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleBatchCleanup(entry)}
-                          disabled={deletingBatchId === entry.response.batchId}
-                        >
-                          <TrashIcon /> {deletingBatchId === entry.response.batchId ? "Removing" : "Remove from history"}
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </Flex>
             </ScrollArea>
           )}

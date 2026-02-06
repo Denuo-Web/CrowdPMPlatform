@@ -38,6 +38,9 @@ importers:
 
   frontend:
     dependencies:
+      '@crowdpm/types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@deck.gl/core':
         specifier: ^9.2.3
         version: 9.2.3
@@ -78,9 +81,6 @@ importers:
         specifier: ^19.2.1
         version: 19.2.1(react@19.2.1)
     devDependencies:
-      '@crowdpm/types':
-        specifier: workspace:*
-        version: link:../shared-types
       '@tailwindcss/postcss':
         specifier: ^4.1.17
         version: 4.1.17

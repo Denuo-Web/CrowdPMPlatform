@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
 import Map3D from "../components/Map3D";
 import {
   fetchBatchDetail,
@@ -24,16 +25,6 @@ const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to av
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
-
-function normaliseTimestamp(ts: MeasurementRecord["timestamp"]) {
-  if (typeof ts === "number") return ts;
-  if (typeof ts === "string") {
-    const parsed = Date.parse(ts);
-    return Number.isNaN(parsed) ? Date.now() : parsed;
-  }
-  if (ts instanceof Date) return ts.getTime();
-  return ts.toMillis();
-}
 
 type StoredSmokeBatch = {
   summary: BatchSummary;
@@ -62,7 +53,7 @@ function parseStoredSmokeBatch(raw: string | null): StoredSmokeBatch | null {
       deviceId: summary.deviceId,
       deviceName: typeof summary.deviceName === "string" ? summary.deviceName : null,
       count: typeof summary.count === "number" ? summary.count : parsed.points.length,
-      processedAt: typeof summary.processedAt === "string" ? summary.processedAt : new Date().toISOString(),
+      processedAt: timestampToIsoString(summary.processedAt) ?? new Date().toISOString(),
       visibility: summary.visibility === "public" ? "public" : "private",
     };
     return { summary: normalizedSummary, points: parsed.points };
@@ -82,8 +73,8 @@ function mergeCachedSummary(list: BatchSummary[], cached: StoredSmokeBatch | nul
 }
 
 function formatBatchLabel(batch: BatchSummary) {
-  const time = batch.processedAt ? new Date(batch.processedAt) : null;
-  const timeLabel = time ? time.toLocaleString() : "Pending timestamp";
+  const timeMs = timestampToMillis(batch.processedAt);
+  const timeLabel = timeMs === null ? "Pending timestamp" : new Date(timeMs).toLocaleString();
   const name = batch.deviceName?.trim().length ? batch.deviceName : batch.deviceId;
   const countLabel = batch.count ? ` (${batch.count})` : "";
   return `${timeLabel} — ${name}${countLabel}`;
@@ -92,8 +83,8 @@ function formatBatchLabel(batch: BatchSummary) {
 function pointsToMeasurementRecords(points: IngestSmokeTestPoint[], fallbackDeviceId: string, batchId: string): MeasurementRecord[] {
   return [...points]
     .sort((a, b) => {
-      const aTs = normaliseTimestamp(a.timestamp as unknown as MeasurementRecord["timestamp"]);
-      const bTs = normaliseTimestamp(b.timestamp as unknown as MeasurementRecord["timestamp"]);
+      const aTs = timestampToMillis(a.timestamp as unknown as MeasurementRecord["timestamp"]) ?? 0;
+      const bTs = timestampToMillis(b.timestamp as unknown as MeasurementRecord["timestamp"]) ?? 0;
       return aTs - bTs;
     })
     .map((point, idx) => {
@@ -474,14 +465,17 @@ export default function MapPage({
   }, [onCleanupDetailConsumed, pendingCleanupDetail, processCleanupDetail]);
 
   const data = useMemo(
-    () => rows.map((r) => ({
-      lat: r.lat,
-      lon: r.lon,
-      timestamp: normaliseTimestamp(r.timestamp),
-      value: r.value,
-      precision: r.precision ?? null,
-      altitude: r.altitude ?? null,
-    })),
+    () => {
+      const fallbackTimestamp = Date.now();
+      return rows.map((r) => ({
+        lat: r.lat,
+        lon: r.lon,
+        timestamp: timestampToMillis(r.timestamp) ?? fallbackTimestamp,
+        value: r.value,
+        precision: r.precision ?? null,
+        altitude: r.altitude ?? null,
+      }));
+    },
     [rows]
   );
 
@@ -493,7 +487,8 @@ export default function MapPage({
   }, [rows, selectedBatchKey]);
 
   const selectedPoint = rows[selectedIndex];
-  const selectedMoment = selectedPoint ? new Date(normaliseTimestamp(selectedPoint.timestamp)) : null;
+  const selectedMomentMs = selectedPoint ? timestampToMillis(selectedPoint.timestamp) : null;
+  const selectedMoment = selectedMomentMs !== null ? new Date(selectedMomentMs) : null;
 
   return (
     <div style={{ padding: 12 }}>

@@ -8,6 +8,7 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@crowdpm/types": "workspace:*",
     "@deck.gl/core": "^9.2.3",
     "@deck.gl/google-maps": "^9.2.2",
     "@deck.gl/layers": "^9.2.2",
@@ -23,7 +24,6 @@
     "react-dom": "^19.2.1"
   },
   "devDependencies": {
-    "@crowdpm/types": "workspace:*",
     "@tailwindcss/postcss": "^4.1.17",
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query-devtools": "^5.91.1",

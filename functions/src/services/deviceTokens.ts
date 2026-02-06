@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload } from "jose";
 import { db } from "../lib/fire.js";
+import { toDate } from "../lib/time.js";
 import {
   getAccessTokenTtlSeconds,
   getDeviceTokenAudience,
@@ -268,17 +269,9 @@ export async function verifyDeviceAccessToken(raw: string): Promise<VerifiedDevi
   if (!cacheEntry || cacheEntry.expiresAtMs <= now) {
     const doc = await db().collection("device_tokens").doc(payload.jti).get();
     if (!doc.exists) throw unauthorized("Unknown device token");
-    const data = doc.data() as { revoked?: boolean; expiresAt?: { toDate?: () => Date } | Date | string | number } | undefined;
+    const data = doc.data() as { revoked?: boolean; expiresAt?: unknown } | undefined;
     if (data?.revoked) throw unauthorized("Device token revoked");
-    const expiresAt = data?.expiresAt instanceof Date
-      ? data.expiresAt
-      : typeof data?.expiresAt === "object" && data.expiresAt && "toDate" in data.expiresAt
-        ? (data.expiresAt as { toDate: () => Date }).toDate()
-        : typeof data?.expiresAt === "string"
-          ? new Date(data.expiresAt)
-          : typeof data?.expiresAt === "number"
-            ? new Date(data.expiresAt)
-            : new Date(now + 1000);
+    const expiresAt = toDate(data?.expiresAt) ?? new Date(now + 1000);
     tokenCache.set(payload.jti, { expiresAtMs: expiresAt.getTime() });
   }
   return payload as VerifiedDeviceAccessToken;

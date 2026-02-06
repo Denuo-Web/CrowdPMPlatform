@@ -1,6 +1,7 @@
 import { onMessagePublished } from "firebase-functions/v2/pubsub";
 import type { firestore } from "firebase-admin";
 import { bucket, db, hourBucket } from "../lib/fire.js";
+import { toDate } from "../lib/time.js";
 import { IngestBatch } from "../lib/validation.js";
 import { ingestTopicParam } from "../lib/runtimeConfig.js";
 import {
@@ -71,7 +72,10 @@ export const ingestWorker = onMessagePublished(
       const chunk = pts.slice(i, i + 400);
       const batch = db().batch();
       for (const p of chunk) {
-        const ts = new Date(p.timestamp);
+        const ts = toDate(p.timestamp);
+        if (!ts) {
+          continue;
+        }
         const b = hourBucket(ts);
         const ref = devRef.collection("measures").doc(b).collection("rows").doc();
         const value = typeof calib.pm25_scale === "number"
