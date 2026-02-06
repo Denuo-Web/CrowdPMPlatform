@@ -466,7 +466,7 @@ export default function MapPage({
 
   const data = useMemo(
     () => {
-      const fallbackTimestamp = Date.now();
+      const fallbackTimestamp = 0;
       return rows.map((r) => ({
         lat: r.lat,
         lon: r.lon,

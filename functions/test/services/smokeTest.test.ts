@@ -44,7 +44,7 @@ describe("prepareSmokeTestPlan", () => {
     const body: SmokeTestBody = {
       payload: {
         points: [
-          { pollutant: "pm25", value: 5, timestamp: "2024-01-01T00:00:00.000Z" },
+          { device_id: "ignored-by-override", pollutant: "pm25", value: 5, timestamp: "2024-01-01T00:00:00.000Z" },
         ],
       },
       pointOverrides: {
