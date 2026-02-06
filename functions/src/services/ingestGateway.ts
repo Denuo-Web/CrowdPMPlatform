@@ -1,5 +1,4 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { deviceTokenPrivateKeySecret } from "../lib/runtimeConfig.js";
 import type { Request } from "firebase-functions/v2/https";
 import { normalizeBatchVisibility } from "../lib/batchVisibility.js";
 import { verifyDeviceAccessToken } from "./deviceTokens.js";
@@ -20,7 +19,7 @@ function pickFirstQueryParam(value: unknown) {
   return undefined;
 }
 
-export const ingestGateway = onRequest({ cors: true, secrets: [deviceTokenPrivateKeySecret] }, async (req, res) => {
+export const ingestGateway = onRequest({ cors: true }, async (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   const rawBody = requestWithRawBody.rawBody;
   const raw = typeof rawBody === "string"

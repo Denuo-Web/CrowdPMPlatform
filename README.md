@@ -4,22 +4,22 @@
 # CrowdPM Platform
 Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
 ## Highlights
-- DPoP-bound ingest gateway validates short-lived device tokens, persists raw payloads in Cloud Storage, and publishes batch metadata to Google Cloud Pub/Sub for asynchronous processing.
-- Pub/Sub-driven worker normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
+- DPoP-bound ingest gateway validates short-lived device tokens, persists raw payloads in Cloud Storage, and processes batches through a shared ingest pipeline.
+- The shared batch processor normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
 - Fastify-based HTTPS API (`crowdpmApi`) exposes device, measurement, and admin endpoints consumed by the frontend and integration partners.
 - React + Vite client renders Google Maps WebGL overlays via deck.gl to visualise particulate data and provides a basic admin table for device management.
 - pnpm-managed TypeScript monorepo keeps frontend and backend code in sync, with shared tooling for linting, builds, and testing.
 
 ## System Architecture
-- **Ingest** (`functions/src/services/ingestGateway.ts`): Firebase HTTPS Function that validates DPoP proofs plus device access tokens, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage, and publishes `{deviceId, batchId, path}` to the `ingest.raw` Pub/Sub topic.
-- **Processing** (`functions/src/services/ingestWorker.ts`): Firebase Pub/Sub Function downloads batches, applies calibration data from `devices/{deviceId}` (if present), and writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}` with deterministic sorting.
+- **Ingest** (`functions/src/services/ingestGateway.ts` + `functions/src/services/ingestService.ts`): Firebase HTTPS Function path that validates DPoP proofs plus device access tokens, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage, and runs the shared processor.
+- **Processing** (`functions/src/services/ingestBatchProcessor.ts`): Shared processing module that applies calibration data from `devices/{deviceId}` (if present), writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`, and updates batch status.
 - **Pairing API** (`functions/src/routes/pairing.ts` + `functions/src/routes/activation.ts`): Implements the device authorization grant (device start/token/register/access-token) using Ed25519 keys, DPoP, and the `/activate` UI for human approval with MFA enforcement.
 - **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, pairing endpoints, and `/v1/device-activation`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
 - **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
 - [Firebase Cloud Functions](https://firebase.google.com/docs/functions) with [Fastify](https://fastify.dev/)
-- [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/docs) and [Cloud Storage](https://cloud.google.com/storage/docs) backends
+- [Cloud Storage](https://cloud.google.com/storage/docs) backend for raw ingest payload retention
 - [Cloud Firestore](https://firebase.google.com/docs/firestore) for device + measurement persistence
 - [React 19.2](https://react.dev/), [Vite 5](https://vitejs.dev/), [deck.gl](https://deck.gl), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
 - [pnpm 10](https://pnpm.io/), [TypeScript 5](https://www.typescriptlang.org/), [ESLint 9](https://eslint.org/), and [Vitest 2](https://vitest.dev/) for tooling
@@ -27,7 +27,7 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 
 ## Repository Layout
 - `frontend/` – Vite + React client, Google Maps visualisation, admin UI
-- `functions/` – Firebase Functions (REST API, ingest gateway, Pub/Sub worker), shared auth/lib utilities, Vitest suites
+- `functions/` – Firebase Functions (REST API and ingest processing), shared auth/lib utilities, Vitest suites
 - `docs/` – Developer guides (`development.md` and supporting installation notes)
 - `infra/` – CI configuration and automation assets
 - `firestore.rules`, `storage.rules`, `firebase.json` – Emulator and deployment rules + targets
@@ -36,7 +36,7 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 Install these once per workstation:
 - [Node.js 24.x](https://nodejs.org/) and [pnpm 10.x](https://pnpm.io/installation)
 - [Firebase CLI](https://firebase.google.com/docs/cli) (`npm install -g firebase-tools`) with `firebase login`
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) for Pub/Sub emulator tooling (optional but recommended)
+- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) (optional, used for broader Google Cloud tooling)
 - [Python 3.12](https://www.python.org/), [Java 25 JDK](https://adoptium.net/temurin/releases/), and [Git 2.34+](https://git-scm.com/)
 
 Verify installations:
@@ -66,7 +66,7 @@ java --version
    ```
 4. Supply real secrets:
    - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
-   - `functions/.env.local`: device token signing key, activation URL overrides, and optional ingest topic.
+   - `functions/.env.local`: device token signing key and activation URL overrides.
    - `functions/.secret.local` (not committed): secrets declared via `defineSecret`, e.g. `DEVICE_TOKEN_PRIVATE_KEY`. The Firebase Functions emulator refuses to start without local overrides, so copy the private key from `.env.local` into this file as `DEVICE_TOKEN_PRIVATE_KEY=...`.
 
 ### Environment Variables
@@ -90,7 +90,6 @@ java --version
 | `DEVICE_TOKEN_AUDIENCE` | JWT audience for runtime access tokens. | `crowdpm_device_api` |
 | `DEVICE_ACCESS_TOKEN_TTL_SECONDS` | Access token lifetime (default 600). | `600` |
 | `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS` | Registration token lifetime (default 60). | `60` |
-| `INGEST_TOPIC` | Pub/Sub topic name for ingest batches (defaults to `ingest.raw`). | `ingest.raw` |
 
 ### Firebase Secret Overrides
 
@@ -110,7 +109,7 @@ Launch the entire stack from the repo root:
 pnpm dev
 ```
 - `crowdpm-frontend`: Vite dev server at `http://localhost:5173`
-- `crowdpm-functions emulate`: Firebase Emulator Suite (Functions, Firestore, Storage, Auth, Pub/Sub, Emulator UI at `http://localhost:4000`)
+- `crowdpm-functions emulate`: Firebase Emulator Suite (Functions, Firestore, Storage, Auth, Emulator UI at `http://localhost:4000`)
 - `crowdpm-functions build:watch`: TypeScript compiler emitting to `functions/lib/`
 
 Keep this terminal open; rebuilds stream into the emulator automatically.
@@ -141,9 +140,8 @@ Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy
 
 ## Data Model & Storage
 - Firestore: `devices/{deviceId}` documents store device metadata and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
-- Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`).
+- Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`, `visibility`, and error states when applicable).
 - Cloud Storage: raw ingest payloads saved to `ingest/{deviceId}/{batchId}.json` for auditing and replay.
-- Pub/Sub: default `ingest.raw` topic triggers `ingestWorker` for eventual consistency processing.
 
 ## Security Considerations
 - Devices must complete the `/device/start → /activate → /device/token → /device/register` flow and retrieve DPoP-bound access tokens before ingesting.

@@ -21,7 +21,7 @@ Remote demo/production deploys are intentionally excluded.
 - **Node.js 24.x** – install with nvm, Volta, fnm, Homebrew, or download from nodejs.org.
 - **pnpm 10.x** – `npm install -g pnpm@10`.
 - **Firebase CLI** – `npm install -g firebase-tools`; authenticate with `firebase login`.
-- **Google Cloud CLI** – `curl -fsS https://sdk.cloud.google.com | bash`, then `gcloud auth login` if you plan to inspect Pub/Sub emulator logs.
+- **Google Cloud CLI** – `curl -fsS https://sdk.cloud.google.com | bash`, then `gcloud auth login` (optional, useful for broader GCP tooling).
 - **Git** – any modern version (2.34+).
 - **Java JDK 25** – required by Firebase emulators. Visit [Install guide](docs/INSTALL-openjdk25-linux.md)
 
@@ -113,7 +113,7 @@ cp frontend/.env.example frontend/.env.local
 cp functions/.env.example functions/.env.local
 ```
 - Replace the placeholder `DEVICE_TOKEN_PRIVATE_KEY` with a real Ed25519 private key (PKCS8 PEM). The emulator can reuse the sample key from `.env.example`, but production-like flows should generate their own.
-- Adjust `DEVICE_ACTIVATION_URL`, `DEVICE_VERIFICATION_URI`, and `INGEST_TOPIC` only when testing alternative activation sites or Pub/Sub topics.
+- Adjust `DEVICE_ACTIVATION_URL` and `DEVICE_VERIFICATION_URI` only when testing alternative activation sites.
 - (Optional) Override the default Auth emulator test account with `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME`. If you leave them unset, the emulator seeds `smoke-tester@crowdpm.dev / crowdpm-dev` for you each time `pnpm dev` runs.
 
 ---
@@ -125,7 +125,7 @@ pnpm dev
 ```
 What happens:
 - `pnpm --filter frontend dev` starts Vite on `http://localhost:5173`.
-- `pnpm --filter functions emulate` runs `firebase emulators:start` (Functions, Firestore, Storage, Auth, Pub/Sub, Emulator UI).
+- `pnpm --filter functions emulate` runs `firebase emulators:start` (Functions, Firestore, Storage, Auth, Emulator UI).
 - `pnpm --filter functions build:watch` compiles TypeScript sources into `functions/lib/` so the emulator loads fresh code as you save files.
 
 > **Heads-up:** The Storage rules runtime currently prints `sun.misc.Unsafe::arrayBaseOffset` deprecation warnings when running on newer JDKs. Firebase has not shipped a patched runtime yet; you can safely ignore these messages while developing.
@@ -148,7 +148,7 @@ curl http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi/health
 Expected JSON: `{ "ok": true }`.
 
 ### 8.3 Emulator UI
-Visit `http://localhost:4000` to inspect Firestore documents, Pub/Sub messages, Storage files, and emulator logs.
+Visit `http://localhost:4000` to inspect Firestore documents, Storage files, and emulator logs.
 
 ### 8.4 Default Auth Emulator User
 The Functions emulator now auto-creates a test account every time you run `pnpm dev`, so you no longer need to sign up manually after restarts. Log in with `smoke-tester@crowdpm.dev` / `crowdpm-dev` out of the box. Set `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME` in `functions/.env.local` if you prefer different credentials (they apply only to the local emulator).
@@ -162,11 +162,11 @@ Run this whenever you change ingest code or schemas.
 
 1. Launch the local stack with `pnpm dev` (Functions emulator must have `DEVICE_TOKEN_PRIVATE_KEY` in `functions/.env.local`).
 2. Visit `http://localhost:5173`, open the **User Dashboard** tab, and click **Run Smoke Test**.
-3. The UI seeds `device-123`, completes the DPoP-based pairing flow, mints an access token, submits a payload with a 1-minute trail of points (including altitude/accuracy) to `ingestGateway`, and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
+3. The UI seeds `device-123`, completes the DPoP-based pairing flow, mints an access token, submits a payload with a 1-minute trail of points (including altitude/accuracy), and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
 4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:
    - Storage: `ingest/device-123/<batchId>.json`.
    - Firestore: `devices/device-123/measures/<hourBucket>/rows`.
-   - Functions logs: look for `ingestWorker` processing the batch.
+   - Functions logs: look for `ingestService`/`ingestGateway` handling the batch.
 
 > Prefer a raw cURL workflow or custom payload? Call `POST /v1/admin/ingest-smoke-test` from the API directly with your overrides, or adapt the previous manual script (kept in repo history) for advanced debugging.
 
@@ -213,9 +213,6 @@ pnpm --filter functions dev
 
 # Firestore emulator host for scripts (run in new shell)
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
-
-# Pub/Sub emulator host
-export PUBSUB_EMULATOR_HOST=127.0.0.1:8085
 ```
 
 Keep any new discoveries in this guide so the next teammate can onboard even faster.

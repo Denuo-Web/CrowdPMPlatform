@@ -12,7 +12,7 @@ This note targets anyone assembling or flashing third‑party measurement nodes.
 4. **Poll for authorization** – The device calls `POST /device/token` (with DPoP) until the platform returns a short‑lived `registration_token`.
 5. **Register hardware key** – Exchange the registration token at `POST /device/register`, presenting the node’s long‑term Ed25519 key (`jwk_pub_kl`) that will guard ingest traffic. The response returns the canonical `device_id`.
 6. **Mint access tokens** – Use `POST /device/access-token` to obtain ten‑minute JWTs (token_type `DPoP`) bound to the ingest key.
-7. **Stream measurements** – Submit readings to the HTTPS ingest gateway with the access token + DPoP header. The platform writes Cloud Storage batches and publishes them to Pub/Sub for downstream processing.
+7. **Stream measurements** – Submit readings to the HTTPS ingest gateway with the access token + DPoP header. The platform writes Cloud Storage batches and processes them into Firestore measurements through the shared ingest service.
 
 The sections below expand each call so you can wire the firmware without reverse‑engineering the codebase.
 

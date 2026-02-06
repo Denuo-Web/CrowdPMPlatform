@@ -37,7 +37,7 @@ function createFakeDb(writes: { path: string; data: Record<string, unknown>; opt
 }
 
 describe("IngestSmokeTestService", () => {
-  it("prepares the plan, seeds devices, and triggers ingest", async () => {
+  it("prepares the plan, seeds devices, and runs the shared ingest service", async () => {
     const writes: { path: string; data: Record<string, unknown>; options?: unknown }[] = [];
     const db = createFakeDb(writes);
     const arrayUnion = vi.fn((...values: unknown[]) => ({ union: values } as unknown as firestore.FieldValue));

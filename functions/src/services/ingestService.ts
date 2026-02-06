@@ -1,15 +1,14 @@
-import { PubSub } from "@google-cloud/pubsub";
 import type { Firestore } from "firebase-admin/firestore";
-import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult, IngestPoint } from "@crowdpm/types";
+import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
   DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
 } from "../lib/batchVisibility.js";
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
-import { getIngestTopic } from "../lib/runtimeConfig.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { IngestPayload } from "../lib/validation.js";
+import { processIngestBatch } from "./ingestBatchProcessor.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
 
 export type IngestBody = SharedIngestBody;
@@ -38,29 +37,13 @@ export class IngestServiceError extends Error {
 type StorageBucket = ReturnType<typeof getBucket>;
 
 type ResolvedIngestDependencies = {
-  pubsub: PubSub;
   bucket: StorageBucket;
   db: Firestore;
-  resolveTopicName: () => string;
-  isEmulatorPubSub: () => boolean;
+  processIngestBatch: typeof processIngestBatch;
   updateDeviceLastSeen: (deviceId: string, targetDb: Firestore) => Promise<void>;
 };
 
-export type IngestServiceDependencies = Partial<Omit<ResolvedIngestDependencies, "resolveTopicName" | "isEmulatorPubSub" | "updateDeviceLastSeen">> & {
-  resolveTopicName?: () => string;
-  isEmulatorPubSub?: () => boolean;
-  updateDeviceLastSeen?: (deviceId: string, targetDb: Firestore) => Promise<void>;
-};
-
-function defaultIsEmulatorPubSub(): boolean {
-  return process.env.FUNCTIONS_EMULATOR === "true" || Boolean(process.env.PUBSUB_EMULATOR_HOST);
-}
-
-function isAlreadyExistsError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const code = Number((err as { code?: unknown }).code);
-  return code === 6 || code === 409;
-}
+export type IngestServiceDependencies = Partial<ResolvedIngestDependencies>;
 
 function normalizeStatus(value: unknown, transform: (value: string) => string): string | null {
   return typeof value === "string" ? transform(value) : null;
@@ -77,16 +60,12 @@ function isForbiddenDevice(status: string | null, registryStatus: string | null)
 
 export class IngestService {
   private readonly deps: ResolvedIngestDependencies;
-  private topicName: string | null = null;
-  private readonly ensuredTopics = new Map<string, Promise<void>>();
 
   constructor(deps: IngestServiceDependencies) {
     this.deps = {
-      pubsub: deps.pubsub ?? new PubSub(),
       bucket: deps.bucket ?? getBucket(),
       db: deps.db ?? getDb(),
-      resolveTopicName: deps.resolveTopicName ?? getIngestTopic,
-      isEmulatorPubSub: deps.isEmulatorPubSub ?? defaultIsEmulatorPubSub,
+      processIngestBatch: deps.processIngestBatch ?? processIngestBatch,
       updateDeviceLastSeen: deps.updateDeviceLastSeen ?? updateDeviceLastSeen,
     };
   }
@@ -120,53 +99,19 @@ export class IngestService {
     const path = `ingest/${deviceId}/${batchId}.json`;
     await this.deps.bucket.file(path).save(canonicalRawBody, { contentType: "application/json" });
 
-    const topicName = this.resolveIngestTopic();
-    await this.ensureTopicExists(topicName);
-    await this.deps.pubsub.topic(topicName).publishMessage({ json: { deviceId, batchId, path, visibility } });
-
-    const matchingPointCount = parsedBody.points.filter((point: IngestPoint) => point.device_id === deviceId).length;
-    await devRef.collection("batches").doc(batchId).set({
+    const processed = await this.deps.processIngestBatch({
+      deviceId,
+      batchId,
       path,
-      count: matchingPointCount,
-      processedAt: null,
       visibility,
-    }, { merge: true });
+      payload: parsedBody,
+    });
 
     await this.deps.updateDeviceLastSeen(deviceId, this.deps.db).catch((err) => {
       console.error({ err, deviceId }, "failed to update device last seen");
     });
 
-    return { accepted: true, batchId, deviceId, storagePath: path, visibility };
-  }
-
-  private resolveIngestTopic(): string {
-    if (!this.topicName) {
-      this.topicName = this.deps.resolveTopicName();
-    }
-    return this.topicName;
-  }
-
-  private async ensureTopicExists(topicName: string): Promise<void> {
-    if (!this.deps.isEmulatorPubSub()) return;
-    if (!this.ensuredTopics.has(topicName)) {
-      const ensurePromise = (async () => {
-        const topic = this.deps.pubsub.topic(topicName);
-        const [exists] = await topic.exists();
-        if (exists) return;
-        try {
-          await this.deps.pubsub.createTopic(topicName);
-        }
-        catch (err) {
-          if (!isAlreadyExistsError(err)) throw err;
-        }
-      })().catch((err) => {
-        this.ensuredTopics.delete(topicName);
-        throw err;
-      });
-      this.ensuredTopics.set(topicName, ensurePromise);
-    }
-    const pending = this.ensuredTopics.get(topicName);
-    if (pending) await pending;
+    return { accepted: true, batchId, deviceId, storagePath: path, visibility: processed.visibility };
   }
 
   private normalizeIngestPayload(rawBody: string): { parsedBody: IngestPayload; canonicalRawBody: string } {

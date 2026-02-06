@@ -32,28 +32,17 @@ Double-check the project ID. Abort immediately if the wrong project appears.
 Production secrets should already exist, but confirm before deploying.
 ```bash
 firebase functions:secrets:access DEVICE_TOKEN_PRIVATE_KEY --project production --version latest
-firebase functions:config:get ingest --project production
 ```
-Ensure the Ed25519 PEM and the ingest topic match the ops playbook. Update only if officially rotated:
+Ensure the Ed25519 PEM matches the ops playbook. Update only if officially rotated:
 ```bash
 printf '%s\n' "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----" \
   | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project production --data-file -
-firebase functions:config:set ingest.topic="ingest.raw" --project production
 ```
 Document any change in the release notes and access log.
 
 ---
 
-## 4. Confirm Pub/Sub Infrastructure
-Ensure the ingest topic exists (idempotent command):
-```bash
-gcloud pubsub topics create ingest.raw --project $(firebase use --project)
-```
-Create additional topics/queues if the release requires them.
-
----
-
-## 5. Build Fresh Artifacts
+## 4. Build Fresh Artifacts
 Always rebuild from scratch to match production output.
 ```bash
 pnpm install                   # run if dependencies changed
@@ -66,7 +55,7 @@ Review build output for warnings.
 
 ---
 
-## 6. Deploy to Production
+## 5. Deploy to Production
 Deploy hosting and functions together. Add Firestore rules only when the ruleset changed and has been vetted in demo.
 ```bash
 firebase deploy --only hosting,functions --project production
@@ -76,7 +65,7 @@ Monitor the CLI output carefully. If any deploy step fails, stop and resolve bef
 
 ---
 
-## 7. Post-Deploy Validation Checklist
+## 6. Post-Deploy Validation Checklist
 1. **Frontend availability** – Open `https://<prod-host>/` and check for console errors.
 2. **API health** –
    ```bash
@@ -86,14 +75,14 @@ Monitor the CLI output carefully. If any deploy step fails, stop and resolve bef
    - HTTP 202 response with batch ID
    - Cloud Storage entry under `ingest/<deviceId>/<batchId>.json`
    - Firestore documents under the expected device collections
-4. **Cloud Logging** – Inspect the first 15 minutes of logs for `crowdpmApi`, `ingestGateway`, and `ingestWorker` for elevated error rates.
+4. **Cloud Logging** – Inspect the first 15 minutes of logs for `crowdpmApi` and `ingestGateway` for elevated error rates.
 5. **Monitoring dashboards** – Check any external monitors (uptime, error tracking) for alerts.
 
 Record results in the release notes.
 
 ---
 
-## 8. Communicate Release Status
+## 7. Communicate Release Status
 Send an update to stakeholders (Slack/Teams/email) containing:
 - Release version or commit SHA
 - Summary of features/fixes
@@ -104,7 +93,7 @@ Update the changelog and incident tracker accordingly.
 
 ---
 
-## 9. Rollback Procedure
+## 8. Rollback Procedure
 If critical issues appear and rollback is required:
 1. Identify the last known good commit/tag.
 2. Deploy it immediately:
@@ -120,7 +109,7 @@ Optionally use `firebase hosting:rollback` if you only need to revert the static
 
 ---
 
-## 10. Post-Release Tasks
+## 9. Post-Release Tasks
 - Tag the release in Git:
   ```bash
   git tag -a vX.Y.Z -m "Production release"
@@ -131,9 +120,8 @@ Optionally use `firebase hosting:rollback` if you only need to revert the static
 
 ---
 
-## 11. Useful Commands
+## 10. Useful Commands
 ```bash
-firebase functions:log --project production --only ingestWorker
 firebase functions:log --project production --only crowdpmApi
 firebase firestore:indexes:list --project production
 firebase deploy --only firestore:rules --project production   # run only after approval
