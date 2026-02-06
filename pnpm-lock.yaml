@@ -120,9 +120,6 @@ importers:
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.1.0
-      '@google-cloud/pubsub':
-        specifier: ^5.2.0
-        version: 5.2.0
       fastify:
         specifier: ^5.7.3
         version: 5.7.3

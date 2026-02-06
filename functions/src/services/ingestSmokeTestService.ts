@@ -7,8 +7,8 @@ import {
   getUserDefaultBatchVisibility,
 } from "../lib/batchVisibility.js";
 import { app as getFirebaseApp, db as getDb } from "../lib/fire.js";
-import type { IngestService } from "./ingestService.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
+import type { IngestService } from "./ingestService.js";
 import { prepareSmokeTestPlan, type SmokeTestBody, type SmokeTestPlan } from "./smokeTest.js";
 
 export type SmokeTestRequest = {

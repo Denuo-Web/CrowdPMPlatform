@@ -39,18 +39,8 @@ Device pairing + ingest rely on the shared Ed25519 signing key (`DEVICE_TOKEN_PR
 # Reads PEM from stdin; replace with your secure key retrieval flow.
 printf '%s\n' "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----" \
   | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project demo --data-file -
-firebase functions:config:set ingest.topic="ingest.raw" --project demo
 ```
 Record any secret changes in the team changelog.
-
----
-
-## 4. Ensure Pub/Sub Topic Exists
-This command is idempotent and safe to run on every deploy.
-```bash
-gcloud pubsub topics create ingest.raw --project $(firebase use --project)
-```
-If you do not have `gcloud`, verify the topic via the Firebase Console instead.
 
 ### Enable Cloud Firestore (first run only)
 For a new demo project you must enable the Firestore API before any Functions call will succeed. Visit https://console.cloud.google.com/flows/enableapi?apiid=firestore.googleapis.com&project=crowdpmplatform and enable the API (or enable it via **Firebase Console → Build → Firestore Database**). Give the change a minute or two to propagate before continuing.
@@ -63,7 +53,7 @@ The ingest smoke test writes raw payloads to Cloud Storage. Open **Firebase Cons
 
 ---
 
-## 5. Build Fresh Artifacts
+## 4. Build Fresh Artifacts
 Always build from a clean workspace so deploys match CI output.
 ```bash
 pnpm install                   # only if dependencies changed
@@ -74,7 +64,7 @@ pnpm --filter functions build
 
 ---
 
-## 6. Deploy Hosting and Functions
+## 5. Deploy Hosting and Functions
 Deploy hosting and Cloud Functions together. Append Firestore rules only when the ruleset changed in this release.
 ```bash
 firebase deploy --only hosting,functions --project demo
@@ -84,7 +74,7 @@ Watch for warnings or failures and resolve them before proceeding.
 
 ---
 
-## 7. Post-Deploy Validation Checklist
+## 6. Post-Deploy Validation Checklist
 1. **Frontend smoke test** – Open `https://<demo-host>/` (replace with the actual URL). Check for console errors.
 2. **API health** –
    ```bash
@@ -100,7 +90,7 @@ Document the results in release notes.
 
 ---
 
-## 8. Notify Stakeholders
+## 7. Notify Stakeholders
 Post in Slack/Teams with:
 - Commit SHA deployed
 - Summary of features/fixes
@@ -109,7 +99,7 @@ Post in Slack/Teams with:
 
 ---
 
-## 9. Rollback Plan
+## 8. Rollback Plan
 If you need to revert quickly:
 ```bash
 git checkout <previous-good-commit>
@@ -121,13 +111,12 @@ Inform the team immediately and document the reason for rollback.
 
 ---
 
-## 10. Helpful Commands
+## 9. Helpful Commands
 ```bash
 firebase hosting:channel:deploy pr-<id> --project demo      # temporary preview channel for QA
-firebase functions:config:get ingest --project demo         # inspect runtime config (topic, etc.)
 firebase functions:secrets:access DEVICE_TOKEN_PRIVATE_KEY \
   --project demo --version latest                           # confirm PEM rotation status
-firebase functions:log --project demo --only ingestWorker
+firebase functions:log --project demo --only crowdpmApi
 ```
 
 Keep this file updated whenever the demo deployment process changes.

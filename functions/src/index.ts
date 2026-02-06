@@ -8,7 +8,6 @@ import { devicesRoutes } from "./routes/devices.js";
 import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
 import { batchesRoutes } from "./routes/batches.js";
-import { deviceTokenPrivateKeySecret } from "./lib/runtimeConfig.js";
 import { userSettingsRoutes } from "./routes/userSettings.js";
 import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
@@ -77,11 +76,10 @@ const apiSetup = (async () => {
   throw err;
 });
 
-export const crowdpmApi = https.onRequest({ cors: true, secrets: [deviceTokenPrivateKeySecret] }, (req, res) => {
+export const crowdpmApi = https.onRequest({ cors: true }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   requestWithRawBody.rawBody = requestWithRawBody.rawBody ?? undefined;
   apiSetup.then(() => api.server.emit("request", req, res));
 });
 
 export { ingestGateway } from "./services/ingestGateway.js";
-export { ingestWorker } from "./services/ingestWorker.js";
