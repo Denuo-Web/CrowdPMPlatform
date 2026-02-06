@@ -37,13 +37,18 @@ export class IngestServiceError extends Error {
 type StorageBucket = ReturnType<typeof getBucket>;
 
 type ResolvedIngestDependencies = {
-  bucket: StorageBucket;
-  db: Firestore;
+  getBucket: () => StorageBucket;
+  getDb: () => Firestore;
   processIngestBatch: typeof processIngestBatch;
   updateDeviceLastSeen: (deviceId: string, targetDb: Firestore) => Promise<void>;
 };
 
-export type IngestServiceDependencies = Partial<ResolvedIngestDependencies>;
+export type IngestServiceDependencies = {
+  bucket?: StorageBucket;
+  db?: Firestore;
+  processIngestBatch?: typeof processIngestBatch;
+  updateDeviceLastSeen?: (deviceId: string, targetDb: Firestore) => Promise<void>;
+};
 
 function normalizeStatus(value: unknown, transform: (value: string) => string): string | null {
   return typeof value === "string" ? transform(value) : null;
@@ -62,15 +67,21 @@ export class IngestService {
   private readonly deps: ResolvedIngestDependencies;
 
   constructor(deps: IngestServiceDependencies) {
+    const configuredBucket = deps.bucket;
+    const configuredDb = deps.db;
+    const getBucketDep = configuredBucket ? () => configuredBucket : () => getBucket();
+    const getDbDep = configuredDb ? () => configuredDb : () => getDb();
     this.deps = {
-      bucket: deps.bucket ?? getBucket(),
-      db: deps.db ?? getDb(),
+      getBucket: getBucketDep,
+      getDb: getDbDep,
       processIngestBatch: deps.processIngestBatch ?? processIngestBatch,
       updateDeviceLastSeen: deps.updateDeviceLastSeen ?? updateDeviceLastSeen,
     };
   }
 
   async ingest(request: IngestRequest): Promise<IngestResult> {
+    const db = this.deps.getDb();
+    const bucket = this.deps.getBucket();
     const { parsedBody, canonicalRawBody } = this.normalizeIngestPayload(request.rawBody);
     const payloadDeviceId = parsedBody.device_id || parsedBody.points?.[0]?.device_id;
     const deviceId = request.deviceId || payloadDeviceId;
@@ -81,7 +92,7 @@ export class IngestService {
       throw new IngestServiceError("INVALID_PAYLOAD", "device_id mismatch between payload and request", 400);
     }
 
-    const devRef = this.deps.db.collection("devices").doc(deviceId);
+    const devRef = db.collection("devices").doc(deviceId);
     const devSnap = await devRef.get();
     if (!devSnap.exists) {
       throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
@@ -97,7 +108,7 @@ export class IngestService {
 
     const batchId = crypto.randomUUID();
     const path = `ingest/${deviceId}/${batchId}.json`;
-    await this.deps.bucket.file(path).save(canonicalRawBody, { contentType: "application/json" });
+    await bucket.file(path).save(canonicalRawBody, { contentType: "application/json" });
 
     const processed = await this.deps.processIngestBatch({
       deviceId,
@@ -107,7 +118,7 @@ export class IngestService {
       payload: parsedBody,
     });
 
-    await this.deps.updateDeviceLastSeen(deviceId, this.deps.db).catch((err) => {
+    await this.deps.updateDeviceLastSeen(deviceId, db).catch((err) => {
       console.error({ err, deviceId }, "failed to update device last seen");
     });
 
