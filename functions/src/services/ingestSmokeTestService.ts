@@ -18,7 +18,7 @@ export type SmokeTestRequest = {
 
 export type SmokeTestResult = SmokeTestResponse;
 
-export type SmokeTestErrorReason = "FORBIDDEN" | "INVALID_PAYLOAD";
+export type SmokeTestErrorReason = "forbidden" | "invalid_payload";
 
 export class SmokeTestServiceError extends Error {
   readonly statusCode: number;
@@ -49,7 +49,7 @@ export function authorizeSmokeTestUser(user: DecodedIdToken): void {
   const allowedRoles = new Set(["smoke-test", "smoke_test", "smoketester"]);
   const hasAllowedRole = roles.some((role) => allowedRoles.has(role.toLowerCase()));
   if (hasAllowedRole) return;
-  throw new SmokeTestServiceError("FORBIDDEN", "Caller lacks permission to run smoke tests", 403);
+  throw new SmokeTestServiceError("forbidden", "Caller lacks permission to run smoke tests", 403);
 }
 
 function defaultAuthorizeSmokeTest(user: DecodedIdToken): void {
@@ -138,7 +138,7 @@ export class IngestSmokeTestService {
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "invalid smoke test payload";
-      throw new SmokeTestServiceError("INVALID_PAYLOAD", message, 400);
+      throw new SmokeTestServiceError("invalid_payload", message, 400);
     }
   }
 

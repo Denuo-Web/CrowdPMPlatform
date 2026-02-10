@@ -6,6 +6,7 @@ import { db } from "../lib/fire.js";
 import { decodeBase64Url, encodeBase64Url } from "../lib/encoding.js";
 import { fingerprintForPublicKey, generateDeviceCode, generateUserCode } from "../lib/pairingCodes.js";
 import { getVerificationUri } from "../lib/runtimeConfig.js";
+import { httpError } from "../lib/httpError.js";
 import { toDate } from "../lib/time.js";
 
 type DocumentData = firestore.DocumentData;
@@ -17,10 +18,6 @@ const TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 export type PairingSession = SharedPairingSession;
 export type { SessionStatus };
-
-function httpError(statusCode: number, message: string) {
-  return Object.assign(new Error(message), { statusCode });
-}
 
 function canonicalizeUserCode(input: string): string {
   return (input || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
@@ -82,10 +79,10 @@ function now(): Date {
 
 function ensureActive(session: PairingSession) {
   if (session.status === "expired" || session.status === "redeemed") {
-    throw httpError(410, "Pairing flow no longer valid");
+    throw httpError(410, "expired_token", "Pairing flow no longer valid");
   }
   if (session.expiresAt.getTime() <= Date.now()) {
-    throw httpError(410, "Pairing flow expired");
+    throw httpError(410, "expired_token", "Pairing flow expired");
   }
 }
 
@@ -93,7 +90,7 @@ export type SessionSnapshot = PairingSession & { ref: DocumentReference };
 
 async function wrapSession(doc: DocumentSnapshot): Promise<SessionSnapshot> {
   if (!doc.exists) {
-    throw httpError(404, "Pairing session not found");
+    throw httpError(404, "not_found", "Pairing session not found");
   }
   return { ...normalizeSession(doc.id, doc.data() ?? {}), ref: doc.ref };
 }
@@ -109,7 +106,7 @@ export async function startPairingSession(args: {
 }): Promise<{ session: PairingSession; verificationUri: string; verificationUriComplete: string }> {
   const pubKey = decodeBase64Url(args.pubKe);
   if (pubKey.byteLength !== 32) {
-    throw httpError(400, "pub_ke must be a base64url-encoded 32 byte Ed25519 key");
+    throw httpError(400, "invalid_request", "pub_ke must be a base64url-encoded 32 byte Ed25519 key");
   }
   const jwk: PairingPublicKey = { kty: "OKP", crv: "Ed25519", x: encodeBase64Url(pubKey) };
   const thumbprint = await calculateJwkThumbprint(jwk as JWK, "sha256");
@@ -164,7 +161,7 @@ export async function findSessionByUserCode(userCode: string): Promise<SessionSn
   const canonical = canonicalizeUserCode(userCode);
   const snap = await db().collection(COLLECTION).where("userCodeCanonical", "==", canonical).limit(1).get();
   if (snap.empty) {
-    throw httpError(404, "Pairing code not found");
+    throw httpError(404, "not_found", "Pairing code not found");
   }
   return wrapSession(snap.docs[0]);
 }
@@ -178,7 +175,7 @@ export async function authorizeSession(userCode: string, accountId: string): Pro
   const canonical = canonicalizeUserCode(userCode);
   const snap = await db().collection(COLLECTION).where("userCodeCanonical", "==", canonical).limit(1).get();
   if (snap.empty) {
-    throw httpError(404, "Pairing code not found");
+    throw httpError(404, "not_found", "Pairing code not found");
   }
   const ref = snap.docs[0].ref;
   return db().runTransaction(async (tx) => {
@@ -186,16 +183,16 @@ export async function authorizeSession(userCode: string, accountId: string): Pro
     const session = normalizeSession(fresh.id, fresh.data() ?? {});
     if (session.expiresAt.getTime() <= Date.now()) {
       tx.update(ref, { status: "expired" });
-      throw httpError(410, "Pairing code expired");
+      throw httpError(410, "expired_token", "Pairing code expired");
     }
     if (session.status === "redeemed") {
-      throw httpError(409, "Pairing session already redeemed");
+      throw httpError(409, "conflict", "Pairing session already redeemed");
     }
     if (session.status === "authorized" && session.accId === accountId) {
       return session;
     }
     if (session.status !== "pending") {
-      throw httpError(409, "Pairing session no longer pending");
+      throw httpError(409, "conflict", "Pairing session no longer pending");
     }
     tx.update(ref, {
       status: "authorized",

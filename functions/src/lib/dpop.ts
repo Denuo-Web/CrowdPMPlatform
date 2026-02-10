@@ -1,4 +1,5 @@
 import { calculateJwkThumbprint, compactVerify, importJWK, type JWK } from "jose";
+import { httpError } from "./httpError.js";
 
 type VerifyOptions = {
   method: string;
@@ -22,7 +23,7 @@ const DEFAULT_DPOP_MAX_AGE_SECONDS = 120;
 const DEFAULT_DPOP_CLOCK_SKEW_SECONDS = 5;
 
 function unauthorized(message: string) {
-  return Object.assign(new Error(message), { statusCode: 401 });
+  return httpError(401, "invalid_token", message);
 }
 
 export async function verifyDpopProof(proof: string | undefined, options: VerifyOptions): Promise<VerifiedDpop> {

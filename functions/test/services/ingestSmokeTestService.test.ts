@@ -104,12 +104,12 @@ describe("IngestSmokeTestService", () => {
 
     await expect(service.runSmokeTest({
       user: { uid: "user-1" } as unknown as Parameters<IngestSmokeTestService["runSmokeTest"]>[0]["user"],
-    })).rejects.toMatchObject({ statusCode: 400, reason: "INVALID_PAYLOAD" });
+    })).rejects.toMatchObject({ statusCode: 400, reason: "invalid_payload" });
   });
 
   it("enforces RBAC checks via the authorize hook", async () => {
     const service = new IngestSmokeTestService({
-      authorize: () => { throw new SmokeTestServiceError("FORBIDDEN", "denied", 403); },
+      authorize: () => { throw new SmokeTestServiceError("forbidden", "denied", 403); },
       preparePlan: buildPlan as unknown as typeof import("../../src/services/smokeTest.js").prepareSmokeTestPlan,
       arrayUnion: vi.fn(),
       db: createFakeDb([]),

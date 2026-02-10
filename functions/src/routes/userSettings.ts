@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { db } from "../lib/fire.js";
 import type { BatchVisibility } from "../lib/batchVisibility.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
+import { httpError } from "../lib/httpError.js";
 import { rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
 
 const DEFAULT_INTERLEAVED_RENDERING = false;
@@ -46,25 +47,19 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `user-settings:update:${requestUserId(req)}`, 30, 60_000),
       rateLimitGuard("user-settings:update:global", 1_000, 60_000),
     ],
-  }, async (req, rep) => {
+  }, async (req) => {
     const hasVisibility = "defaultBatchVisibility" in (req.body ?? {});
     const hasInterleaved = "interleavedRendering" in (req.body ?? {});
 
     if (!hasVisibility && !hasInterleaved) {
-      return rep.code(400).send({
-        error: "missing_fields",
-        message: "Provide defaultBatchVisibility or interleavedRendering to update.",
-      });
+      throw httpError(400, "missing_fields", "Provide defaultBatchVisibility or interleavedRendering to update.");
     }
 
     let visibility: BatchVisibility | null = null;
     if (hasVisibility) {
       visibility = normalizeVisibility(req.body?.defaultBatchVisibility, null);
       if (!visibility) {
-        return rep.code(400).send({
-          error: "invalid_visibility",
-          message: "defaultBatchVisibility must be 'public' or 'private'.",
-        });
+        throw httpError(400, "invalid_visibility", "defaultBatchVisibility must be 'public' or 'private'.");
       }
     }
 
@@ -72,10 +67,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     if (hasInterleaved) {
       interleavedRendering = normalizeInterleavedRendering(req.body?.interleavedRendering);
       if (interleavedRendering === null) {
-        return rep.code(400).send({
-          error: "invalid_interleaved",
-          message: "interleavedRendering must be boolean.",
-        });
+        throw httpError(400, "invalid_interleaved", "interleavedRendering must be boolean.");
       }
     }
 
