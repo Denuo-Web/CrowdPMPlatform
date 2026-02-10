@@ -238,28 +238,29 @@ export default function App() {
     <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
       {import.meta.env.DEV ? <ThemePanel defaultOpen={false} /> : null}
       <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
-      <Box
-        style={{
-          minHeight: "100vh",
-          padding: "var(--space-6)",
-          backgroundColor: "var(--color-surface)",
-          backgroundImage:
-            "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
-        }}
-      >
-        <Flex
-          direction="column"
-          gap="6"
-          align="center"
-          style={{ maxWidth: "1100px", margin: "0 auto" }}
+      <main id="main-content">
+        <Box
+          style={{
+            minHeight: "100vh",
+            padding: "var(--space-6)",
+            backgroundColor: "var(--color-surface)",
+            backgroundImage:
+              "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
+          }}
         >
           <Flex
-            direction={{ initial: "column", md: "row" }}
+            direction="column"
             gap="6"
-            align="stretch"
-            style={{ width: "100%" }}
+            align="center"
+            style={{ maxWidth: "1100px", margin: "0 auto" }}
           >
-            <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
+            <Flex
+              direction={{ initial: "column", md: "row" }}
+              gap="6"
+              align="stretch"
+              style={{ width: "100%" }}
+            >
+              <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
               <Heading as="h2" size="5" trim="start">
                 <Link
                   href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
@@ -351,18 +352,8 @@ export default function App() {
                           />
                         </Button>
                       </Flex>
-                      <Box
-                        id={COORDINATION_LINKS_CONTENT_ID}
-                        aria-hidden={!areResourceLinksExpanded}
-                        style={{
-                          display: "grid",
-                          gridTemplateRows: areResourceLinksExpanded ? "1fr" : "0fr",
-                          opacity: areResourceLinksExpanded ? 1 : 0,
-                          marginTop: areResourceLinksExpanded ? "var(--space-2)" : "0px",
-                          transition: "grid-template-rows 240ms ease, opacity 200ms ease, margin-top 200ms ease",
-                        }}
-                      >
-                        <Box style={{ overflow: "hidden" }}>
+                      {areResourceLinksExpanded ? (
+                        <Box id={COORDINATION_LINKS_CONTENT_ID} mt="2">
                           <Flex direction="column" gap="2">
                             {RESOURCE_LINKS.map((resource) => (
                               <Link
@@ -378,7 +369,7 @@ export default function App() {
                             ))}
                           </Flex>
                         </Box>
-                      </Box>
+                      ) : null}
                     </Box>
                   ) : (
                     <>
@@ -403,9 +394,9 @@ export default function App() {
                   )}
                 </>
               ) : null}
-            </Card>
+              </Card>
 
-            <Card size="4" style={{ flex: 1, minWidth: 0 }}>
+              <Card size="4" style={{ flex: 1, minWidth: 0 }}>
               <Heading as="h2" size="6" trim="start">
                 CrowdPM Platform
               </Heading>
@@ -506,10 +497,11 @@ export default function App() {
                   </Suspense>
                 </Box>
               </Box>
-            </Card>
+              </Card>
+            </Flex>
           </Flex>
-        </Flex>
-      </Box>
+        </Box>
+      </main>
       <AuthDialog
         open={isAuthDialogOpen}
         mode={authMode}

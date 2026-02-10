@@ -443,7 +443,11 @@ export default function MapPage({
           {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
         </p>
       ) : null}
+      <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6 }}>
+        Measurement batch
+      </label>
       <select
+        id="batch-select"
         value={selectedBatchKey}
         onChange={(e) => handleBatchSelect(e.target.value)}
         disabled={!user}
