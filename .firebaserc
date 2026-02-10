@@ -1,5 +1,7 @@
 {
   "projects": {
+    "default": "crowdpmplatform",
+    "demo": "crowdpmplatform",
     "local": "demo-crowdpm"
   }
 }

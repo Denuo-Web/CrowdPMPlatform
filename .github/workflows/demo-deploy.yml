@@ -110,7 +110,7 @@ jobs:
 
       - name: Deploy Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
-        run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID"
+        run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force
 
       - name: Wait for Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
