@@ -199,9 +199,11 @@ Guidelines:
 | `/device/register` | DPoP key mismatch | `401 invalid_token` |
 | `/device/access-token` | device revoked/suspended | `403 forbidden` |
 | `/ingestGateway` | payload device mismatch | `400 device_id mismatch` |
-| `/ingestGateway` | bad DPoP/access token | `401/403` with plain-text reason |
+| `/ingestGateway` | bad DPoP/access token | `401/403` JSON error payload |
 
-Most errors include a JSON payload with `error` and `error_description`. Back off and restart the pairing flow when you see persistent `expired_token` or `rate_limited` responses.
+All errors now return JSON with a required `error` code and optional `message`.
+The `error_description` field is a deprecated compatibility alias for `message`.
+Back off and restart the pairing flow when you see persistent `expired_token` or `rate_limited` responses.
 
 ---
 

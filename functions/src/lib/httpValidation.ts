@@ -1,9 +1,9 @@
 import { DEFAULT_BATCH_VISIBILITY, normalizeBatchVisibility, type BatchVisibility } from "./batchVisibility.js";
+import { httpError } from "./httpError.js";
 import { timestampToIsoString } from "./time.js";
 
 function validationError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
-  const err = new Error(message);
-  return Object.assign(err, { statusCode, code });
+  return httpError(statusCode, code, message);
 }
 
 export function parseDeviceId(raw: unknown, fieldName = "Device id"): string {

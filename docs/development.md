@@ -215,4 +215,27 @@ pnpm --filter functions dev
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 ```
 
+## 13. Branching Strategy
+1. Pulet the latest change: `git pull --rebase`
+2. Create a new branch:  `git checkout -b $USERNAME/short_description` (example: git checkout -b msparhawk/wiki_update)
+3. Commit changes with meaningful message `git commit -am "Add branch strategy to documentation"`
+4. Push branch to github:  `git push origin msparhawk/wiki_update`
+5. Create a pull request:
+6. Ask for review on pull request via github, and discord
+
+```mermaid
+flowchart TD
+    A[Start on main branch] --> B[git pull --rebase]
+    B --> C["Create feature branch"]
+    C --> D[Make changes to code or docs]
+    D --> E["Commit changes"]
+    E --> F["Push branch to origin"]
+    F --> G[Create Pull Request on GitHub]
+    G --> H["Request review GitHub + Discord"]
+    H --> I{Approved?}
+    I -- No --> D
+    I -- Yes --> J[Merge into main]
+    J --> K[Done]
+```
+
 Keep any new discoveries in this guide so the next teammate can onboard even faster.

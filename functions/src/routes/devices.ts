@@ -29,7 +29,8 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
   }, async (req, rep) => {
     const { name } = req.body ?? {};
     const result = await devicesService.create(requestUserId(req), { name });
-    return rep.code(201).send(result);
+    rep.code(201);
+    return result;
   });
 
   app.post<{ Params: { deviceId: string } }>("/v1/devices/:deviceId/revoke", {
@@ -39,9 +40,9 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `devices:revoke:device:${requestParam(req, "deviceId")}`, 10, 60_000),
       rateLimitGuard("devices:revoke:global", 500, 60_000),
     ],
-  }, async (req, rep) => {
+  }, async (req) => {
     const { deviceId } = req.params;
     await devicesService.revoke(deviceId, requestUserId(req));
-    return rep.code(200).send({ status: "revoked" });
+    return { status: "revoked" };
   });
 };
