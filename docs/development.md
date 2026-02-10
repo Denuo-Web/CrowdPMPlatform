@@ -223,17 +223,19 @@ export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 5. Create a pull request:
 6. Ask for review on pull request via github, and discord
 
+```mermaid
 flowchart TD
     A[Start on main branch] --> B[git pull --rebase]
-    B --> C[Create feature branch<br/>git checkout -b $USERNAME/short_description]
+    B --> C["Create feature branch\n git checkout -b USERNAME/short_description"]
     C --> D[Make changes to code or docs]
-    D --> E[Commit changes<br/>git commit -am "Meaningful message"]
-    E --> F[Push branch<br/>git push origin $USERNAME/short_description]
+    D --> E["Commit changes\n git commit -am \"Meaningful message\""]
+    E --> F["Push branch\n git push origin USERNAME/short_description"]
     F --> G[Create Pull Request on GitHub]
-    G --> H[Request review<br/>GitHub + Discord]
+    G --> H["Request review\n GitHub + Discord"]
     H --> I{Approved?}
     I -- No --> D
     I -- Yes --> J[Merge into main]
     J --> K[Done]
+```
 
 Keep any new discoveries in this guide so the next teammate can onboard even faster.
