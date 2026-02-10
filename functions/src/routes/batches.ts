@@ -4,9 +4,11 @@ import { bucket } from "../lib/fire.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
 import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
+import { normalizeModerationState } from "../lib/moderation.js";
 import { timestampToMillis } from "../lib/time.js";
 import { httpError } from "../lib/httpError.js";
 import { normalizeTimestamp, normalizeVisibility } from "../lib/httpValidation.js";
+import { hasPermission } from "../lib/rbac.js";
 import {
   getRequestUser,
   requestParam,
@@ -25,6 +27,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     ],
   }, async (req) => {
     const user = getRequestUser(req);
+    const canViewQuarantined = hasPermission(user, "submissions.read_all");
     const { collection: devices, docs: seen } = await loadOwnedDeviceDocs(user.uid);
 
     const summaries = await Promise.all(
@@ -35,20 +38,32 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
           .limit(10)
           .get();
 
-        return batchSnap.docs.map((doc) => {
-          const data = doc.data() as { count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
-          const count = typeof data?.count === "number" ? data.count : 0;
-          const processedAt = normalizeTimestamp(data?.processedAt);
-          const visibility = normalizeVisibility(data?.visibility);
-          return {
-            batchId: doc.id,
-            deviceId,
-            deviceName,
-            count,
-            processedAt,
-            visibility,
-          } as BatchSummary;
-        });
+        return batchSnap.docs
+          .map((doc) => {
+            const data = doc.data() as {
+              count?: unknown;
+              processedAt?: unknown;
+              visibility?: unknown;
+              moderationState?: unknown;
+            } | undefined;
+            const moderationState = normalizeModerationState(data?.moderationState);
+            if (!canViewQuarantined && moderationState === "quarantined") {
+              return null;
+            }
+            const count = typeof data?.count === "number" ? data.count : 0;
+            const processedAt = normalizeTimestamp(data?.processedAt);
+            const visibility = normalizeVisibility(data?.visibility);
+            return {
+              batchId: doc.id,
+              deviceId,
+              deviceName,
+              count,
+              processedAt,
+              visibility,
+              moderationState,
+            } as BatchSummary;
+          })
+          .filter((summary): summary is BatchSummary => Boolean(summary));
       })
     );
 
@@ -71,6 +86,8 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     ],
   }, async (req) => {
     const { deviceId, batchId } = req.params;
+    const user = getRequestUser(req);
+    const canViewQuarantined = hasPermission(user, "submissions.read_all");
     const devSnap = req.deviceDoc;
     if (!devSnap) throw httpError(404, "not_found", "Device not found.");
 
@@ -79,7 +96,17 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     if (!batchSnap.exists) {
       throw httpError(404, "not_found", "Batch not found.");
     }
-    const batchData = batchSnap.data() as { path?: unknown; count?: unknown; processedAt?: unknown; visibility?: unknown } | undefined;
+    const batchData = batchSnap.data() as {
+      path?: unknown;
+      count?: unknown;
+      processedAt?: unknown;
+      visibility?: unknown;
+      moderationState?: unknown;
+    } | undefined;
+    const moderationState = normalizeModerationState(batchData?.moderationState);
+    if (!canViewQuarantined && moderationState === "quarantined") {
+      throw httpError(404, "not_found", "Batch not found.");
+    }
     const path = typeof batchData?.path === "string" ? batchData.path : null;
     if (!path) {
       throw httpError(404, "not_found", "Batch payload unavailable.");
@@ -112,6 +139,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       processedAt,
       points,
       visibility,
+      moderationState,
     };
     return response;
   });

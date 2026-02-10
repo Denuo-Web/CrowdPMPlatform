@@ -3,7 +3,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
 import {
   fetchBatchDetail,
+  fetchPublicBatchDetail,
   listBatches,
+  listPublicBatches,
   type BatchSummary,
   type MeasurementRecord,
   type IngestSmokeTestResponse,
@@ -54,6 +56,7 @@ function parseStoredSmokeBatch(raw: string | null): StoredSmokeBatch | null {
       count: typeof summary.count === "number" ? summary.count : parsed.points.length,
       processedAt: timestampToIsoString(summary.processedAt) ?? new Date().toISOString(),
       visibility: summary.visibility === "public" ? "public" : "private",
+      moderationState: summary.moderationState === "quarantined" ? "quarantined" : "approved",
     };
     return { summary: normalizedSummary, points: parsed.points };
   }
@@ -174,11 +177,13 @@ export default function MapPage({
   const batchesQuery = useQuery<BatchSummary[]>({
     queryKey: BATCHES_QUERY_KEY(user?.uid ?? null),
     queryFn: async () => {
-      if (!user) return [];
+      if (!user) {
+        return listPublicBatches();
+      }
       const list = await listBatches();
       return mergeCachedSummary(list, getCachedBatch());
     },
-    enabled: Boolean(user) && !isAuthLoading,
+    enabled: !isAuthLoading,
     placeholderData: (prev) => prev ?? [],
     staleTime: BATCH_LIST_STALE_MS,
     retry: (failureCount, error) => {
@@ -188,8 +193,8 @@ export default function MapPage({
   });
 
   const visibleBatches = useMemo(
-    () => (user ? batchesQuery.data ?? [] : []),
-    [batchesQuery.data, user]
+    () => batchesQuery.data ?? [],
+    [batchesQuery.data]
   );
 
   useMemo(() => {
@@ -200,7 +205,7 @@ export default function MapPage({
   }, [selectedBatchKey, visibleBatches]);
 
   const batchDetailQueryKey = useMemo(
-    () => (user && selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user.uid, selectedBatchKey) : null),
+    () => (selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKey) : null),
     [selectedBatchKey, user]
   );
 
@@ -211,10 +216,12 @@ export default function MapPage({
     retry: 5,
     retryDelay: 1_500,
     queryFn: async () => {
-      if (!batchDetailQueryKey || !user || !selectedBatchKey) return [];
+      if (!batchDetailQueryKey || !selectedBatchKey) return [];
       const parsed = decodeBatchKey(selectedBatchKey);
       if (!parsed) return [];
-      const detail = await fetchBatchDetail(parsed.deviceId, parsed.batchId);
+      const detail = user
+        ? await fetchBatchDetail(parsed.deviceId, parsed.batchId)
+        : await fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
       return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId);
     },
     retryOnMount: false,
@@ -315,6 +322,7 @@ export default function MapPage({
       count: rawPoints.length,
       processedAt: new Date().toISOString(),
       visibility: detail.visibility ?? "private",
+      moderationState: detail.moderationState ?? "approved",
     };
 
     upsertBatchSummary(summary);
@@ -450,16 +458,20 @@ export default function MapPage({
         id="batch-select"
         value={selectedBatchKey}
         onChange={(e) => handleBatchSelect(e.target.value)}
-        disabled={!user}
+        disabled={isAuthLoading}
       >
-        <option value="">{user ? "Select batch" : "Sign in to select a batch"}</option>
+        <option value="">{user ? "Select batch" : "Select a public batch"}</option>
         {visibleBatches.map((batch) => {
           const key = encodeBatchKey(batch.deviceId, batch.batchId);
           return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
         })}
       </select>
-      {user && !visibleBatches.length ? (
-        <p style={{ marginTop: 8, fontSize: 14 }}>No batches available yet. Run a smoke test from the dashboard to generate one.</p>
+      {!visibleBatches.length ? (
+        <p style={{ marginTop: 8, fontSize: 14 }}>
+          {user
+            ? "No batches available yet. Run a smoke test from the dashboard to generate one."
+            : "No public batches are available yet."}
+        </p>
       ) : null}
       {rows.length ? (
         <div style={{ marginTop: 16 }}>

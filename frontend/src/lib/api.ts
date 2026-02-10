@@ -1,6 +1,13 @@
 import { auth } from "./firebase";
 import type {
   ActivationSession,
+  AdminSubmissionListResponse,
+  AdminSubmissionSummary,
+  AdminSubmissionUpdateRequest,
+  AdminUserSummary,
+  AdminUserUpdateRequest,
+  AdminUsersListResponse,
+  AdminRole,
   BatchDetail,
   BatchSummary,
   BatchVisibility,
@@ -9,6 +16,9 @@ import type {
   IngestBatchPayload,
   IngestPoint,
   MeasurementRecord,
+  ModerationState,
+  PublicBatchDetail,
+  PublicBatchSummary,
   SmokeTestCleanupResponse,
   SmokeTestResponse,
   UserSettings,
@@ -102,12 +112,18 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type {
   ActivationSession,
+  AdminSubmissionSummary,
+  AdminUserSummary,
+  AdminRole,
   BatchDetail,
   BatchSummary,
   BatchVisibility,
   DeviceSummary,
   FirestoreTimestampLike,
   MeasurementRecord,
+  ModerationState,
+  PublicBatchDetail,
+  PublicBatchSummary,
   UserSettings,
 };
 export type IngestSmokeTestPoint = IngestPoint;
@@ -133,6 +149,76 @@ export async function fetchBatchDetail(deviceId: string, batchId: string): Promi
   const safeDevice = encodeURIComponent(deviceId);
   const safeBatch = encodeURIComponent(batchId);
   return requestJson<BatchDetail>(`/v1/batches/${safeDevice}/${safeBatch}`);
+}
+
+export async function listPublicBatches(limit?: number): Promise<PublicBatchSummary[]> {
+  const qs = new URLSearchParams();
+  if (typeof limit === "number" && Number.isFinite(limit)) {
+    qs.set("limit", String(Math.max(1, Math.floor(limit))));
+  }
+  const suffix = qs.toString();
+  return requestJson<PublicBatchSummary[]>(suffix ? `/v1/public/batches?${suffix}` : "/v1/public/batches");
+}
+
+export async function fetchPublicBatchDetail(deviceId: string, batchId: string): Promise<PublicBatchDetail> {
+  const safeDevice = encodeURIComponent(deviceId);
+  const safeBatch = encodeURIComponent(batchId);
+  return requestJson<PublicBatchDetail>(`/v1/public/batches/${safeDevice}/${safeBatch}`);
+}
+
+export async function listAdminSubmissions(params?: {
+  limit?: number;
+  moderationState?: ModerationState;
+  visibility?: BatchVisibility;
+}): Promise<AdminSubmissionSummary[]> {
+  const qs = new URLSearchParams();
+  if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+    qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+  }
+  if (params?.moderationState) {
+    qs.set("moderationState", params.moderationState);
+  }
+  if (params?.visibility) {
+    qs.set("visibility", params.visibility);
+  }
+  const suffix = qs.toString();
+  const response = await requestJson<AdminSubmissionListResponse>(suffix ? `/v1/admin/submissions?${suffix}` : "/v1/admin/submissions");
+  return Array.isArray(response.submissions) ? response.submissions : [];
+}
+
+export async function moderateAdminSubmission(
+  deviceId: string,
+  batchId: string,
+  payload: AdminSubmissionUpdateRequest
+): Promise<AdminSubmissionSummary> {
+  const safeDevice = encodeURIComponent(deviceId);
+  const safeBatch = encodeURIComponent(batchId);
+  return requestJson<AdminSubmissionSummary>(`/v1/admin/submissions/${safeDevice}/${safeBatch}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listAdminUsers(params?: { pageToken?: string; limit?: number }): Promise<AdminUsersListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.pageToken) {
+    qs.set("pageToken", params.pageToken);
+  }
+  if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+    qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+  }
+  const suffix = qs.toString();
+  return requestJson<AdminUsersListResponse>(suffix ? `/v1/admin/users?${suffix}` : "/v1/admin/users");
+}
+
+export async function updateAdminUser(uid: string, payload: AdminUserUpdateRequest): Promise<AdminUserSummary> {
+  const safeUid = encodeURIComponent(uid);
+  return requestJson<AdminUserSummary>(`/v1/admin/users/${safeUid}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function runIngestSmokeTest(

@@ -198,6 +198,7 @@ export function useSmokeTestStorage(config: StorageConfig) {
           count: cachePoints.length,
           processedAt: new Date().toISOString(),
           visibility: args.result.visibility ?? args.visibility,
+          moderationState: "approved",
         },
         points: cachePoints,
       };

@@ -172,19 +172,21 @@ describe("GET /v1/batches", () => {
         batchId: "batch-b",
         deviceId: "device-2",
         deviceName: "South",
-        count: 2,
-        processedAt: "2024-01-02T02:00:00.000Z",
-        visibility: "private",
-      },
-      {
-        batchId: "batch-a",
-        deviceId: "device-1",
-        deviceName: "North",
-        count: 1,
-        processedAt: "2024-01-01T02:00:00.000Z",
-        visibility: "public",
-      },
-    ]);
+          count: 2,
+          processedAt: "2024-01-02T02:00:00.000Z",
+          visibility: "private",
+          moderationState: "approved",
+        },
+        {
+          batchId: "batch-a",
+          deviceId: "device-1",
+          deviceName: "North",
+          count: 1,
+          processedAt: "2024-01-01T02:00:00.000Z",
+          visibility: "public",
+          moderationState: "approved",
+        },
+      ]);
 
     expect(device1Query.orderBy).toHaveBeenCalledWith("processedAt", "desc");
     expect(device1Query.limit).toHaveBeenCalledWith(10);
@@ -205,6 +207,67 @@ describe("GET /v1/batches", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([]);
+    await app.close();
+  });
+
+  it("hides quarantined batches for non-moderators", async () => {
+    const app = await buildApp();
+    const deviceDocs = new Map<string, Record<string, unknown>>([
+      ["device-1", { name: "North" }],
+    ]);
+    const device1Query = makeBatchQuery([
+      {
+        id: "batch-approved",
+        data: () => ({ count: 1, processedAt: "2024-01-01T02:00:00.000Z", visibility: "public", moderationState: "approved" }),
+      },
+      {
+        id: "batch-quarantined",
+        data: () => ({ count: 1, processedAt: "2024-01-03T02:00:00.000Z", visibility: "public", moderationState: "quarantined" }),
+      },
+    ]);
+    const devicesCollection = {
+      doc: () => ({ collection: () => device1Query }),
+    };
+    mocks.loadOwnedDeviceDocs.mockResolvedValue({ collection: devicesCollection, docs: deviceDocs });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/batches",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(1);
+    expect(res.json()[0]?.batchId).toBe("batch-approved");
+    await app.close();
+  });
+
+  it("shows quarantined batches for moderators", async () => {
+    const app = await buildApp();
+    mocks.requireUser.mockResolvedValue({ uid: "mod-1", email: "mod@example.com", roles: ["moderator"] });
+
+    const deviceDocs = new Map<string, Record<string, unknown>>([
+      ["device-1", { name: "North" }],
+    ]);
+    const device1Query = makeBatchQuery([
+      {
+        id: "batch-quarantined",
+        data: () => ({ count: 1, processedAt: "2024-01-03T02:00:00.000Z", visibility: "public", moderationState: "quarantined" }),
+      },
+    ]);
+    const devicesCollection = {
+      doc: () => ({ collection: () => device1Query }),
+    };
+    mocks.loadOwnedDeviceDocs.mockResolvedValue({ collection: devicesCollection, docs: deviceDocs });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/batches",
+      headers: { authorization: "Bearer mod" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([expect.objectContaining({ moderationState: "quarantined" })]);
     await app.close();
   });
 
@@ -280,7 +343,85 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     expect(body.deviceId).toBe("device-1");
     expect(body.deviceName).toBe("Alpha");
     expect(body.count).toBe(1);
+    expect(body.moderationState).toBe("approved");
     expect(body.points).toHaveLength(1);
+    await app.close();
+  });
+
+  it("quarantined batch returns 404 for non-moderators", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            path: "ingest/device-1/batch-1.json",
+            count: 1,
+            processedAt: "2024-01-01T00:00:00.000Z",
+            visibility: "public",
+            moderationState: "quarantined",
+          },
+        },
+      },
+    };
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Batch not found.",
+      error_description: "Batch not found.",
+    });
+    await app.close();
+  });
+
+  it("moderators can view quarantined batch detail", async () => {
+    const app = await buildApp();
+    mocks.requireUser.mockResolvedValue({ uid: "mod-1", email: "mod@example.com", roles: ["moderator"] });
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            path: "ingest/device-1/batch-1.json",
+            count: 1,
+            processedAt: "2024-01-01T00:00:00.000Z",
+            visibility: "public",
+            moderationState: "quarantined",
+          },
+        },
+      },
+    };
+    const batchPayload = {
+      points: [{
+        device_id: "device-1",
+        pollutant: "pm25",
+        value: 12,
+        unit: "\u00b5g/m\u00b3",
+        lat: 45,
+        lon: -122,
+        timestamp: "2024-01-01T00:00:00.000Z",
+      }],
+    };
+    mocks.bucketDownload.mockResolvedValue([Buffer.from(JSON.stringify(batchPayload), "utf8")]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer mod" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(expect.objectContaining({ moderationState: "quarantined" }));
     await app.close();
   });
 

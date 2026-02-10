@@ -7,6 +7,7 @@ import { db } from "./fire.js";
 import { httpError } from "./httpError.js";
 import { parseDeviceId } from "./httpValidation.js";
 import { RateLimitError, rateLimitOrThrow } from "./rateLimiter.js";
+import { hasPermission, type Permission } from "./rbac.js";
 
 type GuardedRequest = FastifyRequest & {
   user?: DecodedIdToken;
@@ -28,6 +29,16 @@ export function requireUserGuard(options?: RequireUserOptions): preHandlerHookHa
   return async (req) => {
     const user = await requireUser(req, options);
     (req as GuardedRequest).user = user;
+  };
+}
+
+export function requirePermissionGuard(permission: Permission): preHandlerHookHandler {
+  return async (req) => {
+    const user = await requireUser(req);
+    (req as GuardedRequest).user = user;
+    if (!hasPermission(user, permission)) {
+      throw httpError(403, "forbidden", "You do not have permission to access this resource.");
+    }
   };
 }
 

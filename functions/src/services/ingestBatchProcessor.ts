@@ -5,6 +5,7 @@ import {
   getDeviceDefaultBatchVisibility,
   normalizeBatchVisibility,
 } from "../lib/batchVisibility.js";
+import { DEFAULT_MODERATION_STATE } from "../lib/moderation.js";
 import { bucket, db, hourBucket } from "../lib/fire.js";
 import { toDate } from "../lib/time.js";
 import { IngestBatch } from "../lib/validation.js";
@@ -52,10 +53,15 @@ export async function processIngestBatch(request: ProcessIngestBatchRequest): Pr
     try {
       await devRef.collection("batches").doc(request.batchId).set(
         {
+          deviceId: request.deviceId,
           path: request.path,
           count: 0,
           processedAt: new Date(),
           visibility,
+          moderationState: DEFAULT_MODERATION_STATE,
+          moderationReason: null,
+          moderatedBy: null,
+          moderatedAt: null,
           error: reason,
         },
         { merge: true }
@@ -120,10 +126,15 @@ export async function processIngestBatch(request: ProcessIngestBatchRequest): Pr
   const visibility = providedVisibility ?? fallbackVisibility ?? DEFAULT_BATCH_VISIBILITY;
   await devRef.collection("batches").doc(request.batchId).set(
     {
+      deviceId: request.deviceId,
       path: request.path,
       count: pts.length,
       processedAt: new Date(),
       visibility,
+      moderationState: DEFAULT_MODERATION_STATE,
+      moderationReason: null,
+      moderatedBy: null,
+      moderatedAt: null,
     },
     { merge: true }
   );

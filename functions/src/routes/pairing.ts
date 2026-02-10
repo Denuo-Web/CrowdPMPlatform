@@ -16,6 +16,7 @@ import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
 import { registerDevice, getDevice } from "../services/deviceRegistry.js";
 import { httpError } from "../lib/httpError.js";
+import { app as firebaseApp } from "../lib/fire.js";
 
 const startSchema = z.object({
   pub_ke: z.string().min(10),
@@ -227,6 +228,17 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     }
     if (device.registryStatus !== "active" || device.status === "REVOKED" || device.status === "SUSPENDED") {
       throw httpError(403, "forbidden", "device not active");
+    }
+    let ownerUserRecord;
+    try {
+      ownerUserRecord = await firebaseApp().auth().getUser(device.accId);
+    }
+    catch (err) {
+      req.log.warn({ err, accountId: device.accId, deviceId: device.id }, "failed to load device owner account");
+      throw httpError(403, "forbidden", "device account unavailable");
+    }
+    if (ownerUserRecord.disabled) {
+      throw httpError(403, "forbidden", "device account disabled");
     }
 
     const proof = req.headers["dpop"];

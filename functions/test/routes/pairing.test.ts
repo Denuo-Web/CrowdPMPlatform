@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   updateDeviceLastSeen: vi.fn(),
   rateLimitOrThrow: vi.fn(),
   calculateJwkThumbprint: vi.fn(),
+  authGetUser: vi.fn(),
 }));
 
 vi.mock("../../src/services/devicePairing.js", () => ({
@@ -47,6 +48,14 @@ vi.mock("../../src/services/deviceRegistry.js", () => ({
 
 vi.mock("../../src/lib/dpop.js", () => ({
   verifyDpopProof: mocks.verifyDpopProof,
+}));
+
+vi.mock("../../src/lib/fire.js", () => ({
+  app: () => ({
+    auth: () => ({
+      getUser: mocks.authGetUser,
+    }),
+  }),
 }));
 
 vi.mock("../../src/lib/rateLimiter.js", async (importOriginal) => {
@@ -88,6 +97,7 @@ beforeEach(() => {
   mocks.updateDeviceLastSeen.mockReset();
   mocks.rateLimitOrThrow.mockReset();
   mocks.calculateJwkThumbprint.mockReset();
+  mocks.authGetUser.mockReset();
 
   mocks.rateLimitOrThrow.mockReturnValue({ allowed: true, remaining: 9, retryAfterSeconds: 0 });
   mocks.sessionExpired.mockReturnValue(false);
@@ -97,6 +107,7 @@ beforeEach(() => {
   mocks.recordRegistrationToken.mockResolvedValue(undefined);
   mocks.markSessionRedeemed.mockResolvedValue(undefined);
   mocks.ensureSessionActive.mockReturnValue(undefined);
+  mocks.authGetUser.mockResolvedValue({ disabled: false });
 });
 
 afterEach(() => {
@@ -571,6 +582,33 @@ describe("POST /device/access-token", () => {
       error: "forbidden",
       message: "device not active",
       error_description: "device not active",
+    });
+    await app.close();
+  });
+
+  it("forbidden: disabled owner account returns 403", async () => {
+    const app = await buildApp();
+    mocks.getDevice.mockResolvedValue({
+      id: deviceId,
+      accId: "acc-1",
+      registryStatus: "active",
+      status: "ACTIVE",
+      pubKlThumbprint: "thumb-1",
+    });
+    mocks.authGetUser.mockResolvedValue({ disabled: true });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/device/access-token",
+      headers: { dpop: "proof" },
+      payload: { device_id: deviceId },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "device account disabled",
+      error_description: "device account disabled",
     });
     await app.close();
   });
