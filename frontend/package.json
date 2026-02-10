@@ -11,7 +11,7 @@
     "@crowdpm/types": "workspace:*",
     "@deck.gl/core": "^9.2.3",
     "@deck.gl/google-maps": "^9.2.2",
-    "@deck.gl/layers": "^9.2.2",
+    "@deck.gl/layers": "^9.2.6",
     "@deck.gl/mesh-layers": "^9.2.2",
     "@googlemaps/js-api-loader": "^2.0.2",
     "@luma.gl/engine": "^9.1.9",
