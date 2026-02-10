@@ -46,6 +46,13 @@ describe("error-handling conventions", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps route handlers free of .send(...) response calls", () => {
+    const offenders = listTypeScriptFiles(routeRoot)
+      .filter((filePath) => readText(filePath).includes(".send("));
+
+    expect(offenders).toEqual([]);
+  });
+
   it("avoids manual route error payload sends", () => {
     const manualErrorSendPattern = /rep\.code\([^)]*\)\.send\(\{\s*error\s*:/m;
     const offenders = listTypeScriptFiles(routeRoot)
