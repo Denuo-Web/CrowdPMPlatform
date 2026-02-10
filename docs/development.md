@@ -226,12 +226,12 @@ export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 ```mermaid
 flowchart LR
     A[Start on main branch] --> B[git pull --rebase]
-    B --> C["Create feature branch\n git checkout -b USERNAME/short_description"]
+    B --> C["Create feature branch"]
     C --> D[Make changes to code or docs]
-    D --> E["Commit changes\n git commit -am \"Meaningful message\""]
-    E --> F["Push branch\n git push origin USERNAME/short_description"]
+    D --> E["Commit changes"]
+    E --> F["Push branch to origin"]
     F --> G[Create Pull Request on GitHub]
-    G --> H["Request review\n GitHub + Discord"]
+    G --> H["Request review GitHub + Discord"]
     H --> I{Approved?}
     I -- No --> D
     I -- Yes --> J[Merge into main]
