@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
-import Map3D from "../components/Map3D";
 import {
   fetchBatchDetail,
   listBatches,
@@ -17,7 +16,6 @@ import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 
 // Keys used to scope localStorage entries per user so shared browsers do not mix data.
-const LEGACY_LAST_DEVICE_KEY = "crowdpm:lastSmokeTestDevice";
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
@@ -25,6 +23,7 @@ const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to av
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
+const Map3D = lazy(() => import("../components/Map3D"));
 
 type StoredSmokeBatch = {
   summary: BatchSummary;
@@ -151,44 +150,13 @@ export default function MapPage({
     () => scopedStorageKey(LAST_SELECTION_KEY, user?.uid ?? undefined),
     [user?.uid]
   );
-  const userScopedLegacyKey = useMemo(
-    () => scopedStorageKey(LEGACY_LAST_DEVICE_KEY, user?.uid ?? undefined),
-    [user?.uid]
-  );
   const userScopedCacheKey = useMemo(
     () => scopedStorageKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined),
     [user?.uid]
   );
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
-  const [selectedBatchKey, setSelectedBatchKey] = useState<string>(() => {
-    if (!user) return "";
-    const stored = safeLocalStorageGet(
-      userScopedSelectionKey,
-      "",
-      { context: "map:selected-batch:bootstrap", userId: user.uid }
-    );
-    if (stored) return stored;
-
-    const legacyScoped = safeLocalStorageGet(
-      userScopedLegacyKey,
-      null,
-      { context: "map:selected-batch:bootstrap-legacy", userId: user.uid }
-    );
-    if (legacyScoped) {
-      safeLocalStorageRemove(userScopedLegacyKey, { context: "map:selected-batch:cleanup-legacy", userId: user.uid });
-    }
-
-    const legacy = safeLocalStorageGet(
-      LEGACY_LAST_DEVICE_KEY,
-      null,
-      { context: "map:selected-batch:bootstrap-legacy-global", userId: user.uid }
-    );
-    if (legacy) {
-      safeLocalStorageRemove(LEGACY_LAST_DEVICE_KEY, { context: "map:selected-batch:cleanup-legacy-global", userId: user.uid });
-    }
-    return "";
-  });
+  const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
   // const [selectedIndex, setSelectedIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
 
@@ -286,25 +254,6 @@ export default function MapPage({
   //   setIndexOverride(null);
   // }, [selectedBatchKey, rows.length]);
 
-  // Restore the last selection after sign-in so the map shows familiar data.
-  useEffect(() => {
-    if (!user) {
-      deferStateUpdate(() => {
-        setSelectedBatchKey("");
-        setIndexOverride(0);
-      });
-      return;
-    }
-    const stored = safeLocalStorageGet(
-      userScopedSelectionKey,
-      "",
-      { context: "map:selected-batch:hydrate", userId: user.uid }
-    );
-    if (stored) {
-      deferStateUpdate(() => { setSelectedBatchKey(stored); });
-    }
-  }, [user, userScopedSelectionKey]);
-
   // Hydrate the React Query cache with any batch cached in localStorage to show data instantly on refresh.
   useEffect(() => {
     if (!user) {
@@ -322,12 +271,7 @@ export default function MapPage({
       const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
       return [cached.summary, ...filtered];
     });
-    if (!selectedBatchKey) {
-      deferStateUpdate(() => {
-        setSelectedBatchKey(key);
-      })
-    }
-  }, [getCachedBatch, queryClient, selectedBatchKey, user, userScopedCacheKey]);
+  }, [getCachedBatch, queryClient, user, userScopedCacheKey]);
 
   const handleBatchSelect = useCallback((value: string) => {
     setSelectedBatchKey(value);
@@ -489,6 +433,7 @@ export default function MapPage({
   const selectedPoint = rows[selectedIndex];
   const selectedMomentMs = selectedPoint ? timestampToMillis(selectedPoint.timestamp) : null;
   const selectedMoment = selectedMomentMs !== null ? new Date(selectedMomentMs) : null;
+  const shouldRenderMap = Boolean(selectedBatchKey && rows.length);
 
   return (
     <div style={{ padding: 12 }}>
@@ -565,13 +510,17 @@ export default function MapPage({
             : "Select a batch with recent measurements to explore the timeline."}
         </p>
       )}
-      <Map3D
-        data={data}
-        selectedIndex={selectedIndex}
-        onSelectIndex={setIndexOverride}
-        autoCenterKey={autoCenterKey}
-        interleaved={settings.interleavedRendering}
-      />
+      {shouldRenderMap ? (
+        <Suspense fallback={<p style={{ marginTop: 16 }}>Loading map...</p>}>
+          <Map3D
+            data={data}
+            selectedIndex={selectedIndex}
+            onSelectIndex={setIndexOverride}
+            autoCenterKey={autoCenterKey}
+            interleaved={settings.interleavedRendering}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
