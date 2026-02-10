@@ -20,7 +20,7 @@ export type IngestRequest = {
   visibility?: BatchVisibility | null;
 };
 
-export type IngestErrorReason = "MISSING_DEVICE_ID" | "DEVICE_FORBIDDEN" | "INVALID_PAYLOAD";
+export type IngestErrorReason = "missing_device_id" | "device_forbidden" | "invalid_payload";
 
 export class IngestServiceError extends Error {
   readonly statusCode: number;
@@ -86,21 +86,21 @@ export class IngestService {
     const payloadDeviceId = parsedBody.device_id || parsedBody.points?.[0]?.device_id;
     const deviceId = request.deviceId || payloadDeviceId;
     if (!deviceId) {
-      throw new IngestServiceError("MISSING_DEVICE_ID", "missing device_id", 400);
+      throw new IngestServiceError("missing_device_id", "missing device_id", 400);
     }
     if (payloadDeviceId && payloadDeviceId !== deviceId) {
-      throw new IngestServiceError("INVALID_PAYLOAD", "device_id mismatch between payload and request", 400);
+      throw new IngestServiceError("invalid_payload", "device_id mismatch between payload and request", 400);
     }
 
     const devRef = db.collection("devices").doc(deviceId);
     const devSnap = await devRef.get();
     if (!devSnap.exists) {
-      throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
+      throw new IngestServiceError("device_forbidden", "device not allowed", 403);
     }
     const status = normalizeStatus(devSnap.get("status"), (value) => value.toUpperCase());
     const registryStatus = normalizeStatus(devSnap.get("registryStatus"), (value) => value.toLowerCase());
     if (isForbiddenDevice(status, registryStatus)) {
-      throw new IngestServiceError("DEVICE_FORBIDDEN", "device not allowed", 403);
+      throw new IngestServiceError("device_forbidden", "device not allowed", 403);
     }
 
     const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
@@ -131,12 +131,12 @@ export class IngestService {
       parsedJson = JSON.parse(rawBody);
     }
     catch {
-      throw new IngestServiceError("INVALID_PAYLOAD", "invalid JSON payload", 400);
+      throw new IngestServiceError("invalid_payload", "invalid JSON payload", 400);
     }
 
     const parsed = IngestPayload.safeParse(parsedJson);
     if (!parsed.success) {
-      throw new IngestServiceError("INVALID_PAYLOAD", "invalid ingest payload", 400);
+      throw new IngestServiceError("invalid_payload", "invalid ingest payload", 400);
     }
 
     return {

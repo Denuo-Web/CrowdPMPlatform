@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { calculateJwkThumbprint } from "jose";
 import {
@@ -15,7 +15,7 @@ import { verifyDpopProof } from "../lib/dpop.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
 import { registerDevice, getDevice } from "../services/deviceRegistry.js";
-import { sendHttpError } from "../lib/httpError.js";
+import { httpError } from "../lib/httpError.js";
 
 const startSchema = z.object({
   pub_ke: z.string().min(10),
@@ -46,21 +46,11 @@ function fastifyRequestUrl(req: FastifyRequest): string {
   return canonicalRequestUrl(req.raw.url ?? req.url, req.headers);
 }
 
-async function runOrSend<T>(rep: FastifyReply, action: () => Promise<T>, notFoundStatus?: number): Promise<T | null> {
-  try {
-    return await action();
-  }
-  catch (err) {
-    sendHttpError(rep, err, notFoundStatus);
-    return null;
-  }
-}
-
 export const pairingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/device/start", async (req, rep) => {
     const parsed = startSchema.safeParse(req.body);
     if (!parsed.success) {
-      return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
     }
     const clientIp = extractClientIp(req.headers) ?? null;
     const ipBudgetKey = clientIp ? `pairing:start:ip:${clientIp}` : null;
@@ -73,15 +63,14 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     rateLimitOrThrow(modelBudgetKey, 200, 60_000);
     rateLimitOrThrow("pairing:start:global", 500, 60_000);
 
-    const sessionResult = await runOrSend(rep, () => startPairingSession({
+    const sessionResult = await startPairingSession({
       pubKe: parsed.data.pub_ke,
       model: parsed.data.model,
       version: parsed.data.version,
       nonce: parsed.data.nonce,
       requesterIp: coarsenIpForDisplay(clientIp),
       requesterAsn: networkHint,
-    }));
-    if (!sessionResult) return;
+    });
 
     const expiresIn = Math.max(0, Math.floor((sessionResult.session.expiresAt.getTime() - Date.now()) / 1000));
     return rep.code(200).send({
@@ -97,15 +86,14 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/device/token", async (req, rep) => {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
-      return rep.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
     }
     rateLimitOrThrow(`pairing:device-token:${parsed.data.device_code}`, 15, 60_000);
     rateLimitOrThrow("pairing:device-token:global", 1_000, 60_000);
-    const session = await runOrSend(rep, () => findSessionByDeviceCode(parsed.data.device_code), 404);
-    if (!session) return;
+    const session = await findSessionByDeviceCode(parsed.data.device_code);
     if (sessionExpired(session)) {
       await session.ref.set({ status: "expired" }, { merge: true });
-      return rep.code(400).send({ error: "expired_token" });
+      throw httpError(400, "expired_token");
     }
 
     const proof = req.headers["dpop"];
@@ -119,7 +107,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     }
     catch (err) {
       req.log.warn({ err, deviceCode: session.deviceCode }, "invalid DPoP for device token");
-      return sendHttpError(rep, err, 401);
+      throw err;
     }
 
     const now = Date.now();
@@ -127,29 +115,28 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     if (now - lastPoll < session.pollInterval * 1000) {
       const nextInterval = Math.min(session.pollInterval + 5, 30);
       await updatePollMetadata(session.deviceCode, nextInterval);
-      return rep.code(400).send({ error: "slow_down", poll_interval: nextInterval });
+      throw httpError(400, "slow_down", undefined, { poll_interval: nextInterval });
     }
     await updatePollMetadata(session.deviceCode, session.pollInterval);
 
     if (session.status === "pending" || !session.accId) {
-      return rep.code(400).send({ error: "authorization_pending" });
+      throw httpError(400, "authorization_pending");
     }
     if (session.status === "redeemed") {
-      return rep.code(400).send({ error: "expired_token" });
+      throw httpError(400, "expired_token");
     }
 
     const accountId = session.accId;
     if (!accountId) {
-      return rep.code(400).send({ error: "authorization_pending" });
+      throw httpError(400, "authorization_pending");
     }
 
-    const issued = await runOrSend(rep, () => issueRegistrationToken({
+    const issued = await issueRegistrationToken({
       deviceCode: session.deviceCode,
       accountId,
       sessionId: session.id,
       confirmationThumbprint: session.pubKeThumbprint,
-    }));
-    if (!issued) return;
+    });
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
     await recordRegistrationToken(session.deviceCode, issued.jti, expiresAt);
 
@@ -159,57 +146,46 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/device/register", async (req, rep) => {
     const authHeader = req.headers.authorization;
     if (typeof authHeader !== "string" || !authHeader.toLowerCase().startsWith("bearer ")) {
-      return rep.code(401).send({ error: "invalid_request", error_description: "missing registration token" });
+      throw httpError(401, "invalid_request", "missing registration token");
     }
     const rawToken = authHeader.slice(7).trim();
-    let verifiedToken;
-    try {
-      verifiedToken = await verifyRegistrationToken(rawToken);
-    }
-    catch (err) {
-      return rep.code(401).send({ error: "invalid_token", error_description: err instanceof Error ? err.message : "invalid registration token" });
-    }
+    const verifiedToken = await verifyRegistrationToken(rawToken);
+
     rateLimitOrThrow(`pairing:register:device:${verifiedToken.device_code}`, 10, 60_000);
     rateLimitOrThrow(`pairing:register:account:${verifiedToken.acc_id}`, 50, 60_000);
     rateLimitOrThrow("pairing:register:global", 1_000, 60_000);
 
     const proof = req.headers["dpop"];
-    const session = await runOrSend(rep, () => findSessionByDeviceCode(verifiedToken.device_code), 404);
-    if (!session) return;
+    const session = await findSessionByDeviceCode(verifiedToken.device_code);
     if (!session.accId || session.accId !== verifiedToken.acc_id) {
-      return rep.code(403).send({ error: "forbidden", error_description: "session not authorized for account" });
+      throw httpError(403, "forbidden", "session not authorized for account");
     }
     if (session.registrationTokenJti !== verifiedToken.jti) {
-      return rep.code(403).send({ error: "invalid_token", error_description: "token does not match active session" });
+      throw httpError(403, "invalid_token", "token does not match active session");
     }
     if (session.registrationTokenExpiresAt && session.registrationTokenExpiresAt.getTime() <= Date.now()) {
-      return rep.code(400).send({ error: "expired_token" });
+      throw httpError(400, "expired_token");
     }
     ensureSessionActive(session);
 
     const proofValue = typeof proof === "string" ? proof : Array.isArray(proof) ? proof[0] : undefined;
     const htu = fastifyRequestUrl(req);
-    try {
-      await verifyDpopProof(proofValue, {
-        method: req.method.toUpperCase(),
-        htu,
-        expectedThumbprint: verifiedToken.cnf.jkt,
-      });
-    }
-    catch (err) {
-      return sendHttpError(rep, err, 401);
-    }
+    await verifyDpopProof(proofValue, {
+      method: req.method.toUpperCase(),
+      htu,
+      expectedThumbprint: verifiedToken.cnf.jkt,
+    });
 
     const payload = registerSchema.safeParse(req.body);
     if (!payload.success) {
-      return rep.code(400).send({ error: "invalid_request", details: payload.error.flatten() });
+      throw httpError(400, "invalid_request", "invalid request", { details: payload.error.flatten() });
     }
     if (payload.data.csr) {
-      return rep.code(400).send({ error: "unsupported_grant_type", error_description: "CSR enrollment is not yet supported" });
+      throw httpError(400, "unsupported_grant_type", "CSR enrollment is not yet supported");
     }
     const jwk = payload.data.jwk_pub_kl;
     if (!jwk) {
-      return rep.code(400).send({ error: "invalid_request", error_description: "jwk_pub_kl is required" });
+      throw httpError(400, "invalid_request", "jwk_pub_kl is required");
     }
 
     let thumbprint: string;
@@ -217,23 +193,20 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       thumbprint = await calculateJwkThumbprint(jwk, "sha256");
     }
     catch (err) {
-      return sendHttpError(rep, err, 400);
+      throw httpError(400, "invalid_request", err instanceof Error ? err.message : "invalid jwk_pub_kl");
     }
-    const result = await runOrSend(rep, async () => {
-      const registered = await registerDevice({
-        accountId: verifiedToken.acc_id,
-        model: session.model,
-        version: session.version,
-        pubKlJwk: jwk,
-        pubKlThumbprint: thumbprint,
-        keThumbprint: session.pubKeThumbprint,
-        pairingDeviceCode: session.deviceCode,
-        fingerprint: session.fingerprint,
-      });
-      await markSessionRedeemed(session.deviceCode, registered.deviceId);
-      return registered;
+
+    const result = await registerDevice({
+      accountId: verifiedToken.acc_id,
+      model: session.model,
+      version: session.version,
+      pubKlJwk: jwk,
+      pubKlThumbprint: thumbprint,
+      keThumbprint: session.pubKeThumbprint,
+      pairingDeviceCode: session.deviceCode,
+      fingerprint: session.fingerprint,
     });
-    if (!result) return;
+    await markSessionRedeemed(session.deviceCode, result.deviceId);
     return rep.code(200).send({
       device_id: result.deviceId,
       jwk_pub_kl: jwk,
@@ -244,45 +217,33 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
   app.post("/device/access-token", async (req, rep) => {
     const payload = deviceTokenSchema.safeParse(req.body);
     if (!payload.success) {
-      return rep.code(400).send({ error: "invalid_request", details: payload.error.flatten() });
+      throw httpError(400, "invalid_request", "invalid request", { details: payload.error.flatten() });
     }
     rateLimitOrThrow(`device:token:${payload.data.device_id}`, 12, 60_000);
     rateLimitOrThrow("device:token:global", 500, 60_000);
-    const device = await runOrSend(rep, () => getDevice(payload.data.device_id));
-    if (!device) return;
+    const device = await getDevice(payload.data.device_id);
     if (!device) {
-      return rep.code(403).send({ error: "forbidden", error_description: "device not found" });
+      throw httpError(403, "forbidden", "device not found");
     }
     if (device.registryStatus !== "active" || device.status === "REVOKED" || device.status === "SUSPENDED") {
-      return rep.code(403).send({ error: "forbidden", error_description: "device not active" });
+      throw httpError(403, "forbidden", "device not active");
     }
 
     const proof = req.headers["dpop"];
     const htu = fastifyRequestUrl(req);
-    let verifiedProof;
-    try {
-      verifiedProof = await verifyDpopProof(typeof proof === "string" ? proof : Array.isArray(proof) ? proof[0] : undefined, {
-        method: req.method.toUpperCase(),
-        htu,
-        expectedThumbprint: device.pubKlThumbprint,
-      });
-    }
-    catch (err) {
-      return sendHttpError(rep, err, 401);
-    }
+    const verifiedProof = await verifyDpopProof(typeof proof === "string" ? proof : Array.isArray(proof) ? proof[0] : undefined, {
+      method: req.method.toUpperCase(),
+      htu,
+      expectedThumbprint: device.pubKlThumbprint,
+    });
 
-    let token;
-    try {
-      token = await issueDeviceAccessToken({
-        deviceId: device.id,
-        accountId: device.accId,
-        confirmationThumbprint: verifiedProof.thumbprint,
-        scope: payload.data.scope,
-      });
-    }
-    catch (err) {
-      return sendHttpError(rep, err);
-    }
+    const token = await issueDeviceAccessToken({
+      deviceId: device.id,
+      accountId: device.accId,
+      confirmationThumbprint: verifiedProof.thumbprint,
+      scope: payload.data.scope,
+    });
+
     return rep.code(200).send({
       token_type: "DPoP",
       access_token: token.token,
