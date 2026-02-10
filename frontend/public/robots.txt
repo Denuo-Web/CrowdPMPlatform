@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /activate
+Sitemap: https://crowdpmplatform.web.app/sitemap.xml
