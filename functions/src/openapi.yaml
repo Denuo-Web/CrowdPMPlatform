@@ -4,6 +4,9 @@ info:
   version: 1.0.0
   description: >
     API used by CrowdPM to manage devices and retrieve pollution measurements.
+    Error responses use a normalized JSON format with a required `error` field and
+    optional `message`. The `error_description` alias is still emitted for compatibility
+    and is deprecated.
   license:
     name: Proprietary
     url: https://crowdpmplatform.web.app
@@ -578,6 +581,26 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    ErrorResponse:
+      type: object
+      description: >
+        Standard error payload emitted by API routes and gateway handlers.
+        Endpoint-specific metadata (for example `details`, `poll_interval`,
+        `retry_after`, or `forbiddenDeviceIds`) may be present.
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Machine-readable lower_snake_case error code.
+        message:
+          type: string
+          description: Human-readable error detail.
+        error_description:
+          type: string
+          deprecated: true
+          description: Deprecated alias for `message`.
+      additionalProperties: true
     DeviceStatus:
       type: string
       enum:

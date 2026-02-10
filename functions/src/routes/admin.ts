@@ -5,7 +5,7 @@ import { authorizeSmokeTestUser, getIngestSmokeTestService } from "../services/i
 import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
 import { getRequestUser, requireUserGuard } from "../lib/routeGuards.js";
-import { httpError, sendHttpError } from "../lib/httpError.js";
+import { httpError } from "../lib/httpError.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const smokeTestService = getIngestSmokeTestService();
@@ -19,12 +19,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const { id } = req.params;
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
-    return rep.code(204).send();
+    rep.code(204);
+    return undefined;
   });
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", {
     preHandler: requireUserGuard(),
-  }, async (req, rep) => {
+  }, async (req) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = getRequestUser(req);
     authorizeSmokeTestUser(user);
@@ -35,11 +36,11 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         { batchId: result.batchId, deviceId: result.deviceId, deviceIds: result.seededDeviceIds },
         "ingest smoke test completed"
       );
-      return rep.code(200).send(result);
+      return result;
     }
     catch (err) {
       fastify.log.error({ err }, "ingest smoke test failed");
-      return sendHttpError(rep, err);
+      throw err;
     }
   });
 
@@ -71,9 +72,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }));
 
     if (forbiddenIds.length) {
-      return rep.code(403).send({
-        error: "forbidden",
-        message: "You do not have permission to delete one or more devices.",
+      throw httpError(403, "forbidden", "You do not have permission to delete one or more devices.", {
         forbiddenDeviceIds: forbiddenIds,
       });
     }
@@ -118,11 +117,12 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
     const status = failures.length ? 207 : 200;
-    return rep.code(status).send({
+    rep.code(status);
+    return {
       clearedDeviceId: cleared[0] || null,
       clearedDeviceIds: cleared,
       failedDeletions: failures,
-    });
+    };
   });
 };
 

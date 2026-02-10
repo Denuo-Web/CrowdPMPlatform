@@ -11,6 +11,7 @@ import {
   getDeviceTokenPrivateKey,
   getRegistrationTokenTtlSeconds,
 } from "../lib/runtimeConfig.js";
+import { httpError } from "../lib/httpError.js";
 
 type RegistrationClaims = JWTPayload & {
   kind: "registration";
@@ -146,7 +147,7 @@ function registrationAudience(): string {
 }
 
 function unauthorized(message: string) {
-  return Object.assign(new Error(message), { statusCode: 401 });
+  return httpError(401, "invalid_token", message);
 }
 
 export async function issueRegistrationToken(args: {

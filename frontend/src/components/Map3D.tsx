@@ -181,10 +181,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
 
     (async () => {
       const loader = getMapsLoader();
-      const [mapsLib, maps3dLib] = await Promise.all([
-        loader.importLibrary("maps"),
-        loader.importLibrary("maps3d").catch(() => null)
-      ]);
+      const mapsLib = await loader.importLibrary("maps");
       if (cancelled) return;
 
       const mapId = import.meta.env.VITE_GOOGLE_MAP_ID;
@@ -204,16 +201,12 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
         zoom: 15,
         tilt: 67.5,
         heading: 0,
-        gestureHandling: "greedy"
+        gestureHandling: "greedy",
+        disableDefaultUI: true,
+        keyboardShortcuts: true,
       }) as google.maps.Map;
       if (cancelled) return;
       mapRef.current = map;
-      map.setOptions({
-        streetViewControl: false,
-        rotateControl: true,
-        mapTypeControl: false,
-        keyboardShortcuts: true
-      });
 
       const markUserControl = () => { hasUserControlRef.current = true; };
       listeners = [
@@ -229,8 +222,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
       const deckClass = GoogleMapsOverlay as unknown as { isSupported?: () => boolean | Promise<boolean> };
       const overlaySupported = typeof deckClass.isSupported === "function"
         ? !!(await deckClass.isSupported())
-        : !!(map as MapWithCapabilities).getMapCapabilities?.().isWebGLOverlayViewAvailable
-          || maps3dLib !== null;
+        : !!(map as MapWithCapabilities).getMapCapabilities?.().isWebGLOverlayViewAvailable;
 
       if (!overlaySupported) {
         console.warn("WebGLOverlayView is not supported in this environment; falling back to standard map rendering.");

@@ -138,6 +138,11 @@ The REST contract is documented in `functions/src/openapi.yaml` and implemented 
 
 Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy `requireUser`.
 
+### Error Responses
+- API and gateway failures return normalized JSON with required `error` (lower_snake_case) and optional `message`.
+- `error_description` is emitted as a temporary compatibility alias for `message` and is deprecated.
+- Some endpoints include metadata fields such as `details`, `poll_interval`, `retry_after`, and `forbiddenDeviceIds`.
+
 ## Data Model & Storage
 - Firestore: `devices/{deviceId}` documents store device metadata and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
 - Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`, `visibility`, and error states when applicable).
