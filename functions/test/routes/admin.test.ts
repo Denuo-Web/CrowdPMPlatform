@@ -23,7 +23,7 @@ type DeviceDoc = {
 let deviceDocs = new Map<string, DeviceDoc>();
 
 const mockDb = {
-  collection: vi.fn((name: string) => ({
+  collection: vi.fn(() => ({
     doc: (id: string) => ({
       set: mocks.dbSet,
       delete: mocks.dbDelete,

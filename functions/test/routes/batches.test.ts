@@ -52,7 +52,7 @@ function makeDeviceSnapshot(deviceId: string, config: DeviceSnapConfig) {
 }
 
 const mockDb = {
-  collection: vi.fn((name: string) => ({
+  collection: vi.fn(() => ({
     doc: (id: string) => ({
       get: async () => {
         if (!currentDeviceSnap) return makeDeviceSnapshot(id, { exists: false });
