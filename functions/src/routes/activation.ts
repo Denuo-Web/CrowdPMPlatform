@@ -30,7 +30,7 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `activation:get:${requestUserId(req)}`, 30, 60_000),
       rateLimitGuard("activation:get:global", 1_000, 60_000),
     ],
-  }, async (req, rep) => {
+  }, async (req) => {
     const user = getRequestUser(req);
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -39,11 +39,11 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
     const normalizedCode = normalizeCode(parsed.data.user_code);
     rateLimitOrThrow(`activation:code:${normalizedCode}`, 100, 60_000);
     const session = await findSessionByUserCode(normalizedCode);
-    return rep.code(200).send({
+    return {
       ...sessionForClient(session),
       authorized_account: session.accId,
       viewer_account: user.uid,
-    });
+    };
   });
 
   app.post("/v1/device-activation/authorize", {
@@ -59,7 +59,7 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
       requireUserGuard({ requireSecondFactorIfEnrolled: true }),
       rateLimitGuard((req) => `activation:authorize:${requestUserId(req)}`, 20, 60_000),
     ],
-  }, async (req, rep) => {
+  }, async (req) => {
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
@@ -71,9 +71,9 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
     // Prevent the same account from hammering a single code repeatedly.
     rateLimitOrThrow(`activation:authorize:${user.uid}:code:${normalizedCode}`, 5, 300_000);
     const session = await authorizeSession(normalizedCode, user.uid);
-    return rep.code(200).send({
+    return {
       ...sessionForClient(session),
       authorized_account: session.accId,
-    });
+    };
   });
 };

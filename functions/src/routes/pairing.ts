@@ -47,7 +47,7 @@ function fastifyRequestUrl(req: FastifyRequest): string {
 }
 
 export const pairingRoutes: FastifyPluginAsync = async (app) => {
-  app.post("/device/start", async (req, rep) => {
+  app.post("/device/start", async (req) => {
     const parsed = startSchema.safeParse(req.body);
     if (!parsed.success) {
       throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
@@ -73,17 +73,17 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const expiresIn = Math.max(0, Math.floor((sessionResult.session.expiresAt.getTime() - Date.now()) / 1000));
-    return rep.code(200).send({
+    return {
       device_code: sessionResult.session.deviceCode,
       user_code: sessionResult.session.userCode,
       verification_uri: sessionResult.verificationUri,
       verification_uri_complete: sessionResult.verificationUriComplete,
       poll_interval: sessionResult.session.pollInterval,
       expires_in: expiresIn,
-    });
+    };
   });
 
-  app.post("/device/token", async (req, rep) => {
+  app.post("/device/token", async (req) => {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
       throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
@@ -140,10 +140,10 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
     await recordRegistrationToken(session.deviceCode, issued.jti, expiresAt);
 
-    return rep.code(200).send({ registration_token: issued.token, expires_in: issued.expiresIn });
+    return { registration_token: issued.token, expires_in: issued.expiresIn };
   });
 
-  app.post("/device/register", async (req, rep) => {
+  app.post("/device/register", async (req) => {
     const authHeader = req.headers.authorization;
     if (typeof authHeader !== "string" || !authHeader.toLowerCase().startsWith("bearer ")) {
       throw httpError(401, "invalid_request", "missing registration token");
@@ -207,14 +207,14 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       fingerprint: session.fingerprint,
     });
     await markSessionRedeemed(session.deviceCode, result.deviceId);
-    return rep.code(200).send({
+    return {
       device_id: result.deviceId,
       jwk_pub_kl: jwk,
       issued_at: Math.floor(result.createdAt.getTime() / 1000),
-    });
+    };
   });
 
-  app.post("/device/access-token", async (req, rep) => {
+  app.post("/device/access-token", async (req) => {
     const payload = deviceTokenSchema.safeParse(req.body);
     if (!payload.success) {
       throw httpError(400, "invalid_request", "invalid request", { details: payload.error.flatten() });
@@ -244,11 +244,11 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       scope: payload.data.scope,
     });
 
-    return rep.code(200).send({
+    return {
       token_type: "DPoP",
       access_token: token.token,
       expires_in: token.expiresIn,
       device_id: device.id,
-    });
+    };
   });
 };

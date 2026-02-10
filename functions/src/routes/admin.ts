@@ -19,12 +19,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const { id } = req.params;
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
-    return rep.code(204).send();
+    rep.code(204);
+    return undefined;
   });
 
   fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", {
     preHandler: requireUserGuard(),
-  }, async (req, rep) => {
+  }, async (req) => {
     fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
     const user = getRequestUser(req);
     authorizeSmokeTestUser(user);
@@ -35,7 +36,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         { batchId: result.batchId, deviceId: result.deviceId, deviceIds: result.seededDeviceIds },
         "ingest smoke test completed"
       );
-      return rep.code(200).send(result);
+      return result;
     }
     catch (err) {
       fastify.log.error({ err }, "ingest smoke test failed");
@@ -116,11 +117,12 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
     const status = failures.length ? 207 : 200;
-    return rep.code(status).send({
+    rep.code(status);
+    return {
       clearedDeviceId: cleared[0] || null,
       clearedDeviceIds: cleared,
       failedDeletions: failures,
-    });
+    };
   });
 };
 
