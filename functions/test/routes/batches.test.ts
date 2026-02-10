@@ -214,7 +214,11 @@ describe("GET /v1/batches", () => {
     const res = await app.inject({ method: "GET", url: "/v1/batches" });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "unauthorized" });
+    expect(res.json()).toEqual({
+      error: "unauthorized",
+      message: "unauthorized",
+      error_description: "unauthorized",
+    });
     await app.close();
   });
 
@@ -229,7 +233,11 @@ describe("GET /v1/batches", () => {
     });
 
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ error: "db_down" });
+    expect(res.json()).toEqual({
+      error: "db_down",
+      message: "db_down",
+      error_description: "db_down",
+    });
     await app.close();
   });
 });
@@ -287,7 +295,11 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: "not_found", message: "Device not found" });
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Device not found",
+      error_description: "Device not found",
+    });
     await app.close();
   });
 
@@ -302,7 +314,11 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: "not_found", message: "Batch not found." });
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Batch not found.",
+      error_description: "Batch not found.",
+    });
     await app.close();
   });
 
@@ -317,7 +333,11 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: "not_found", message: "Batch payload unavailable." });
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Batch payload unavailable.",
+      error_description: "Batch payload unavailable.",
+    });
     await app.close();
   });
 
@@ -333,7 +353,11 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: "forbidden", message: "You do not have access to this device." });
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "You do not have access to this device.",
+      error_description: "You do not have access to this device.",
+    });
     await app.close();
   });
 
@@ -353,7 +377,11 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     });
 
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ error: "storage_error", message: "Unable to read batch payload." });
+    expect(res.json()).toEqual({
+      error: "storage_error",
+      message: "Unable to read batch payload.",
+      error_description: "Unable to read batch payload.",
+    });
     await app.close();
   });
 

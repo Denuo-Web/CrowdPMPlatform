@@ -155,7 +155,11 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "unauthorized" });
+    expect(res.json()).toEqual({
+      error: "unauthorized",
+      message: "unauthorized",
+      error_description: "unauthorized",
+    });
     await app.close();
   });
 
@@ -169,7 +173,11 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: "forbidden", message: "You do not have permission to suspend devices." });
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "You do not have permission to suspend devices.",
+      error_description: "You do not have permission to suspend devices.",
+    });
     await app.close();
   });
 });
@@ -203,7 +211,11 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: "FORBIDDEN", message: "Caller lacks permission to run smoke tests" });
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "Caller lacks permission to run smoke tests",
+      error_description: "Caller lacks permission to run smoke tests",
+    });
     await app.close();
   });
 
@@ -219,7 +231,11 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     });
 
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ error: "INVALID_PAYLOAD", message: "invalid payload" });
+    expect(res.json()).toEqual({
+      error: "invalid_payload",
+      message: "invalid payload",
+      error_description: "invalid payload",
+    });
     await app.close();
   });
 });
@@ -264,6 +280,7 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have permission to delete one or more devices.",
+      error_description: "You do not have permission to delete one or more devices.",
       forbiddenDeviceIds: ["device-1"],
     });
     await app.close();

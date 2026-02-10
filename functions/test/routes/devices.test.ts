@@ -136,7 +136,11 @@ describe("devices routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/devices" });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "unauthorized" });
+    expect(res.json()).toEqual({
+      error: "unauthorized",
+      message: "unauthorized",
+      error_description: "unauthorized",
+    });
     await app.close();
   });
 
@@ -151,7 +155,11 @@ describe("devices routes", () => {
     });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: "not_found", message: "device missing" });
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "device missing",
+      error_description: "device missing",
+    });
     await app.close();
   });
 

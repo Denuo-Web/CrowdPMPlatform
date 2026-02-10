@@ -318,7 +318,11 @@ describe("POST /device/token", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "invalid_dpop" });
+    expect(res.json()).toEqual({
+      error: "invalid_dpop",
+      message: "invalid_dpop",
+      error_description: "invalid_dpop",
+    });
     await app.close();
   });
 });
@@ -374,13 +378,19 @@ describe("POST /device/register", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "invalid_request", error_description: "missing registration token" });
+    expect(res.json()).toEqual({
+      error: "invalid_request",
+      message: "missing registration token",
+      error_description: "missing registration token",
+    });
     await app.close();
   });
 
   it("auth: invalid registration token returns 401", async () => {
     const app = await buildApp();
-    mocks.verifyRegistrationToken.mockRejectedValue(new Error("bad token"));
+    mocks.verifyRegistrationToken.mockRejectedValue(
+      Object.assign(new Error("bad token"), { statusCode: 401, code: "invalid_token" })
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -390,7 +400,11 @@ describe("POST /device/register", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "invalid_token", error_description: "bad token" });
+    expect(res.json()).toEqual({
+      error: "invalid_token",
+      message: "bad token",
+      error_description: "bad token",
+    });
     await app.close();
   });
 
@@ -418,7 +432,11 @@ describe("POST /device/register", () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: "forbidden", error_description: "session not authorized for account" });
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "session not authorized for account",
+      error_description: "session not authorized for account",
+    });
     await app.close();
   });
 
@@ -446,7 +464,11 @@ describe("POST /device/register", () => {
     });
 
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ error: "unsupported_grant_type", error_description: "CSR enrollment is not yet supported" });
+    expect(res.json()).toEqual({
+      error: "unsupported_grant_type",
+      message: "CSR enrollment is not yet supported",
+      error_description: "CSR enrollment is not yet supported",
+    });
     await app.close();
   });
 
@@ -474,7 +496,11 @@ describe("POST /device/register", () => {
     });
 
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ error: "invalid_request", error_description: "jwk_pub_kl is required" });
+    expect(res.json()).toEqual({
+      error: "invalid_request",
+      message: "jwk_pub_kl is required",
+      error_description: "jwk_pub_kl is required",
+    });
     await app.close();
   });
 });
@@ -541,7 +567,11 @@ describe("POST /device/access-token", () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: "forbidden", error_description: "device not active" });
+    expect(res.json()).toEqual({
+      error: "forbidden",
+      message: "device not active",
+      error_description: "device not active",
+    });
     await app.close();
   });
 
@@ -564,7 +594,11 @@ describe("POST /device/access-token", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "invalid_dpop" });
+    expect(res.json()).toEqual({
+      error: "invalid_dpop",
+      message: "invalid_dpop",
+      error_description: "invalid_dpop",
+    });
     await app.close();
   });
 
@@ -587,7 +621,11 @@ describe("POST /device/access-token", () => {
     });
 
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ error: "token_error", message: "token error" });
+    expect(res.json()).toEqual({
+      error: "token_error",
+      message: "token error",
+      error_description: "token error",
+    });
     await app.close();
   });
 });

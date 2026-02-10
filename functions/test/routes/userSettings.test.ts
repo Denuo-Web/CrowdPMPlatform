@@ -124,6 +124,7 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "missing_fields",
       message: "Provide defaultBatchVisibility or interleavedRendering to update.",
+      error_description: "Provide defaultBatchVisibility or interleavedRendering to update.",
     });
     await app.close();
   });
@@ -142,6 +143,7 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "invalid_visibility",
       message: "defaultBatchVisibility must be 'public' or 'private'.",
+      error_description: "defaultBatchVisibility must be 'public' or 'private'.",
     });
     await app.close();
   });
@@ -160,6 +162,7 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "invalid_interleaved",
       message: "interleavedRendering must be boolean.",
+      error_description: "interleavedRendering must be boolean.",
     });
     await app.close();
   });
@@ -170,7 +173,11 @@ describe("user settings routes", () => {
     const res = await app.inject({ method: "GET", url: "/v1/user/settings" });
 
     expect(res.statusCode).toBe(401);
-    expect(res.json()).toEqual({ error: "unauthorized" });
+    expect(res.json()).toEqual({
+      error: "unauthorized",
+      message: "unauthorized",
+      error_description: "unauthorized",
+    });
     await app.close();
   });
 
@@ -185,7 +192,11 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ error: "db_down" });
+    expect(res.json()).toEqual({
+      error: "db_down",
+      message: "db_down",
+      error_description: "db_down",
+    });
     await app.close();
   });
 

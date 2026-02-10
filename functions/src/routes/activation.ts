@@ -47,14 +47,8 @@ export const activationRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/v1/device-activation/authorize", {
-    config: {
-      rateLimit: {
-        max: 30,
-        timeWindow: "1 minute",
-      },
-    },
     preHandler: [
-      rateLimitGuard((req) => `activation:authorize:ip:${requestIp(req)}`, 60, 60_000),
+      rateLimitGuard((req) => `activation:authorize:ip:${requestIp(req)}`, 30, 60_000),
       rateLimitGuard("activation:authorize:global", 500, 60_000),
       requireUserGuard({ requireSecondFactorIfEnrolled: true }),
       rateLimitGuard((req) => `activation:authorize:${requestUserId(req)}`, 20, 60_000),

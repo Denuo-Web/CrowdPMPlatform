@@ -6,12 +6,23 @@ import { userOwnsDevice } from "./deviceOwnership.js";
 import { db } from "./fire.js";
 import { httpError } from "./httpError.js";
 import { parseDeviceId } from "./httpValidation.js";
-import { rateLimitOrThrow } from "./rateLimiter.js";
+import { RateLimitError, rateLimitOrThrow } from "./rateLimiter.js";
 
 type GuardedRequest = FastifyRequest & {
   user?: DecodedIdToken;
   deviceDoc?: firestore.DocumentSnapshot<firestore.DocumentData>;
 };
+
+type RateLimitPluginResult = {
+  isAllowed: boolean;
+  ttlInSeconds?: number;
+};
+
+type CreateRateLimit = (options: {
+  max: number;
+  timeWindow: number;
+  keyGenerator: (req: FastifyRequest) => string;
+}) => (req: FastifyRequest) => Promise<RateLimitPluginResult>;
 
 export function requireUserGuard(options?: RequireUserOptions): preHandlerHookHandler {
   return async (req) => {
@@ -43,7 +54,27 @@ export function rateLimitGuard(
   limit: number,
   windowMs: number
 ): preHandlerHookHandler {
+  let pluginLimiter: ((req: FastifyRequest) => Promise<RateLimitPluginResult>) | null = null;
+
   return async (req) => {
+    const createRateLimit = (req.server as { createRateLimit?: CreateRateLimit }).createRateLimit;
+    if (typeof createRateLimit === "function") {
+      pluginLimiter ??= createRateLimit({
+        max: limit,
+        timeWindow: windowMs,
+        keyGenerator: (currentReq) => typeof key === "function" ? key(currentReq) : key,
+      });
+      const result = await pluginLimiter(req);
+      if (!result.isAllowed) {
+        const retryAfter = Math.max(
+          1,
+          Number.isFinite(result.ttlInSeconds) ? Number(result.ttlInSeconds) : Math.ceil(windowMs / 1000)
+        );
+        throw new RateLimitError(retryAfter);
+      }
+      return;
+    }
+
     const resolvedKey = typeof key === "function" ? key(req) : key;
     rateLimitOrThrow(resolvedKey, limit, windowMs);
   };
