@@ -1,10 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import MapPage from "./pages/MapPage";
-import UserDashboard from "./pages/UserDashboard";
-import SmokeTestLab from "./pages/SmokeTestLab";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
 import { useAuth } from "./providers/AuthProvider";
-import { ActivationPage } from "./pages/ActivationPage";
 import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
 import {
   Theme,
@@ -102,6 +98,13 @@ const COORDINATION_LINKS_COLLAPSE_WIDTH = 1024;
 const COORDINATION_LINKS_CONTENT_ID = "coordination-links-content";
 const getShouldCollapseCoordinationLinks = () =>
   typeof window !== "undefined" ? window.innerWidth < COORDINATION_LINKS_COLLAPSE_WIDTH : false;
+const MapPage = lazy(() => import("./pages/MapPage"));
+const UserDashboard = lazy(() => import("./pages/UserDashboard"));
+const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
+const ActivationPage = lazy(async () => {
+  const module = await import("./pages/ActivationPage");
+  return { default: module.ActivationPage };
+});
 
 export default function App() {
   const { user, isLoading, signOut } = useAuth();
@@ -115,8 +118,6 @@ export default function App() {
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
   const [shouldCollapseResourceLinks, setShouldCollapseResourceLinks] = useState(() => getShouldCollapseCoordinationLinks());
   const [resourceLinksExpandedOverride, setResourceLinksExpandedOverride] = useState(false);
-  const resourceLinksInnerRef = useRef<HTMLDivElement | null>(null);
-  const [resourceLinksHeight, setResourceLinksHeight] = useState(0);
 
   const isSignedIn = Boolean(user);
   const canUseSmokeTests = (() => {
@@ -197,27 +198,6 @@ export default function App() {
     return () => window.removeEventListener("resize", updateShouldCollapse);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const measureHeight = () => {
-      if (!resourceLinksInnerRef.current) return;
-      setResourceLinksHeight(resourceLinksInnerRef.current.offsetHeight);
-    };
-    measureHeight();
-    let observer: ResizeObserver | null = null;
-    if ("ResizeObserver" in window && resourceLinksInnerRef.current) {
-      observer = new ResizeObserver(() => {
-        measureHeight();
-      });
-      observer.observe(resourceLinksInnerRef.current);
-    }
-    window.addEventListener("resize", measureHeight);
-    return () => {
-      window.removeEventListener("resize", measureHeight);
-      observer?.disconnect();
-    };
-  }, [isSignedIn, shouldCollapseResourceLinks]);
-
   const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
     setPendingSmokeResult(result);
     setPendingSmokeCleanup(null);
@@ -242,38 +222,45 @@ export default function App() {
   };
 
   const areResourceLinksExpanded = shouldCollapseResourceLinks ? resourceLinksExpandedOverride : true;
-  const expandedLinksMaxHeight = areResourceLinksExpanded
-    ? resourceLinksHeight > 0
-      ? `${resourceLinksHeight}px`
-      : "none"
-    : "0px";
+  const tabPanelFallback = (
+    <Flex
+      direction="column"
+      align="center"
+      justify="center"
+      gap="3"
+      style={{ padding: "var(--space-8)", textAlign: "center" }}
+    >
+      <Text size="2" color="gray">Loading...</Text>
+    </Flex>
+  );
 
   return (
     <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
-      <ThemePanel defaultOpen={false} />
+      {import.meta.env.DEV ? <ThemePanel defaultOpen={false} /> : null}
       <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
-      <Box
-        style={{
-          minHeight: "100vh",
-          padding: "var(--space-6)",
-          backgroundColor: "var(--color-surface)",
-          backgroundImage:
-            "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
-        }}
-      >
-        <Flex
-          direction="column"
-          gap="6"
-          align="center"
-          style={{ maxWidth: "1100px", margin: "0 auto" }}
+      <main id="main-content">
+        <Box
+          style={{
+            minHeight: "100vh",
+            padding: "var(--space-6)",
+            backgroundColor: "var(--color-surface)",
+            backgroundImage:
+              "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
+          }}
         >
           <Flex
-            direction={{ initial: "column", md: "row" }}
+            direction="column"
             gap="6"
-            align="stretch"
-            style={{ width: "100%" }}
+            align="center"
+            style={{ maxWidth: "1100px", margin: "0 auto" }}
           >
-            <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
+            <Flex
+              direction={{ initial: "column", md: "row" }}
+              gap="6"
+              align="stretch"
+              style={{ width: "100%" }}
+            >
+              <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
               <Heading as="h2" size="5" trim="start">
                 <Link
                   href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
@@ -365,32 +352,24 @@ export default function App() {
                           />
                         </Button>
                       </Flex>
-                      <Box
-                        id={COORDINATION_LINKS_CONTENT_ID}
-                        aria-hidden={!areResourceLinksExpanded}
-                        style={{
-                          overflow: areResourceLinksExpanded ? "visible" : "hidden",
-                          maxHeight: expandedLinksMaxHeight,
-                          opacity: areResourceLinksExpanded ? 1 : 0,
-                          marginTop: areResourceLinksExpanded ? "var(--space-2)" : "0px",
-                          transition: "max-height 240ms ease, opacity 200ms ease, margin-top 200ms ease",
-                        }}
-                      >
-                        <Flex ref={resourceLinksInnerRef} direction="column" gap="2">
-                          {RESOURCE_LINKS.map((resource) => (
-                            <Link
-                              key={resource.href}
-                              href={resource.href}
-                              target="_blank"
-                              rel="noreferrer"
-                              color="iris"
-                              size="2"
-                            >
-                              {resource.label}
-                            </Link>
-                          ))}
-                        </Flex>
-                      </Box>
+                      {areResourceLinksExpanded ? (
+                        <Box id={COORDINATION_LINKS_CONTENT_ID} mt="2">
+                          <Flex direction="column" gap="2">
+                            {RESOURCE_LINKS.map((resource) => (
+                              <Link
+                                key={resource.href}
+                                href={resource.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                color="iris"
+                                size="2"
+                              >
+                                {resource.label}
+                              </Link>
+                            ))}
+                          </Flex>
+                        </Box>
+                      ) : null}
                     </Box>
                   ) : (
                     <>
@@ -415,9 +394,9 @@ export default function App() {
                   )}
                 </>
               ) : null}
-            </Card>
+              </Card>
 
-            <Card size="4" style={{ flex: 1, minWidth: 0 }}>
+              <Card size="4" style={{ flex: 1, minWidth: 0 }}>
               <Heading as="h2" size="6" trim="start">
                 CrowdPM Platform
               </Heading>
@@ -483,43 +462,46 @@ export default function App() {
                 }}
               >
                 <Box style={{ padding: "var(--space-4)" }}>
-                  {activeTab === "dashboard" && user ? (
-                    <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
-                  ) : activeTab === "smoke" && user && canUseSmokeTests ? (
-                    <SmokeTestLab
-                      key={`smoke:${userScopedKey}`}
-                      onSmokeTestComplete={handleSmokeTestComplete}
-                      onSmokeTestCleared={handleSmokeTestCleanup}
-                    />
-                  ) : activeTab === "map" && user ? (
-                    <MapPage
-                      key={`map:${userScopedKey}`}
-                      pendingSmokeResult={pendingSmokeResult}
-                      onSmokeResultConsumed={() => setPendingSmokeResult(null)}
-                      pendingCleanupDetail={pendingSmokeCleanup}
-                      onCleanupDetailConsumed={() => setPendingSmokeCleanup(null)}
-                    />
-                  ) : (
-                    <Flex
-                      direction="column"
-                      align="center"
-                      justify="center"
-                      gap="3"
-                      style={{ padding: "var(--space-8)", textAlign: "center" }}
-                    >
-                      <Heading size="5">Sign in to access CrowdPM</Heading>
-                      <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                        Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
-                        resources.
-                      </Text>
-                    </Flex>
-                  )}
+                  <Suspense fallback={tabPanelFallback}>
+                    {activeTab === "dashboard" && user ? (
+                      <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
+                    ) : activeTab === "smoke" && user && canUseSmokeTests ? (
+                      <SmokeTestLab
+                        key={`smoke:${userScopedKey}`}
+                        onSmokeTestComplete={handleSmokeTestComplete}
+                        onSmokeTestCleared={handleSmokeTestCleanup}
+                      />
+                    ) : activeTab === "map" && user ? (
+                      <MapPage
+                        key={`map:${userScopedKey}`}
+                        pendingSmokeResult={pendingSmokeResult}
+                        onSmokeResultConsumed={() => setPendingSmokeResult(null)}
+                        pendingCleanupDetail={pendingSmokeCleanup}
+                        onCleanupDetailConsumed={() => setPendingSmokeCleanup(null)}
+                      />
+                    ) : (
+                      <Flex
+                        direction="column"
+                        align="center"
+                        justify="center"
+                        gap="3"
+                        style={{ padding: "var(--space-8)", textAlign: "center" }}
+                      >
+                        <Heading size="5">Sign in to access CrowdPM</Heading>
+                        <Text size="2" color="gray" style={{ maxWidth: 360 }}>
+                          Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
+                          resources.
+                        </Text>
+                      </Flex>
+                    )}
+                  </Suspense>
                 </Box>
               </Box>
-            </Card>
+              </Card>
+            </Flex>
           </Flex>
-        </Flex>
-      </Box>
+        </Box>
+      </main>
       <AuthDialog
         open={isAuthDialogOpen}
         mode={authMode}
@@ -559,7 +541,9 @@ function ActivationModal({ open, onOpenChange }: ActivationModalProps) {
           overflowY: "auto",
         }}
       >
-        <ActivationPage layout="dialog" />
+        <Suspense fallback={<Text size="2" color="gray">Loading activation...</Text>}>
+          <ActivationPage layout="dialog" />
+        </Suspense>
       </Dialog.Content>
     </Dialog.Root>
   );
