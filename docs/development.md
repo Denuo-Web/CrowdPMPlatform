@@ -224,7 +224,7 @@ export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 6. Ask for review on pull request via github, and discord
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[Start on main branch] --> B[git pull --rebase]
     B --> C["Create feature branch"]
     C --> D[Make changes to code or docs]
