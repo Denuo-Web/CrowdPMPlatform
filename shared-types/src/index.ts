@@ -1,4 +1,6 @@
 export type BatchVisibility = "public" | "private";
+export type ModerationState = "approved" | "quarantined";
+export type AdminRole = "super_admin" | "moderator";
 
 export type DeviceSummary = {
   id: string;
@@ -137,10 +139,29 @@ export type BatchSummary = {
   count: number;
   processedAt: string | null;
   visibility: BatchVisibility;
+  moderationState: ModerationState;
 };
 
 export type BatchDetail = BatchSummary & {
   points: IngestPoint[];
+};
+
+export type PublicBatchSummary = BatchSummary;
+export type PublicBatchDetail = BatchDetail;
+
+export type AdminSubmissionSummary = BatchSummary & {
+  moderationReason?: string | null;
+  moderatedBy?: string | null;
+  moderatedAt?: string | null;
+};
+
+export type AdminSubmissionListResponse = {
+  submissions: AdminSubmissionSummary[];
+};
+
+export type AdminSubmissionUpdateRequest = {
+  moderationState: ModerationState;
+  reason?: string | null;
 };
 
 export type UserSettings = {
@@ -165,6 +186,26 @@ export type SmokeTestResponse = IngestResult & {
 export type SmokeTestCleanupResponse = {
   clearedDeviceId: string | null;
   clearedDeviceIds?: string[];
+};
+
+export type AdminUserSummary = {
+  uid: string;
+  email: string | null;
+  disabled: boolean;
+  roles: AdminRole[];
+  createdAt: string | null;
+  lastSignInAt: string | null;
+};
+
+export type AdminUsersListResponse = {
+  users: AdminUserSummary[];
+  nextPageToken: string | null;
+};
+
+export type AdminUserUpdateRequest = {
+  roles?: AdminRole[];
+  disabled?: boolean;
+  reason?: string;
 };
 
 export type SessionStatus = "pending" | "authorized" | "redeemed" | "expired";

@@ -482,6 +482,195 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to clean up smoke tests.
+  /v1/admin/submissions:
+    get:
+      operationId: listAdminSubmissions
+      summary: List submissions for moderation
+      description: >
+        Returns recent ingest batches across devices for moderator workflows.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: moderationState
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ModerationState'
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BatchVisibility'
+      responses:
+        '200':
+          description: Submission list returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSubmissionListResponse'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to view submissions.
+  /v1/admin/submissions/{deviceId}/{batchId}:
+    patch:
+      operationId: moderateSubmission
+      summary: Moderate a submission
+      description: >
+        Updates moderation state for a single ingest batch.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSubmissionUpdateRequest'
+      responses:
+        '200':
+          description: Updated submission returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSubmissionSummary'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to moderate submissions.
+        '404':
+          description: Submission not found.
+  /v1/admin/users:
+    get:
+      operationId: listAdminUsers
+      summary: List users for moderation
+      description: >
+        Returns users from Firebase Auth for administration workflows.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pageToken
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        '200':
+          description: Users returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUsersListResponse'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to manage users.
+  /v1/admin/users/{uid}:
+    patch:
+      operationId: updateAdminUser
+      summary: Update user moderation settings
+      description: >
+        Updates user roles and/or disabled status.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserUpdateRequest'
+      responses:
+        '200':
+          description: User updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSummary'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to manage users.
+  /v1/public/batches:
+    get:
+      operationId: listPublicBatches
+      summary: List public approved batches
+      description: >
+        Returns recent public batches that are approved by moderation.
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Public batches returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicBatchSummary'
+  /v1/public/batches/{deviceId}/{batchId}:
+    get:
+      operationId: getPublicBatchDetail
+      summary: Retrieve public approved batch detail
+      description: >
+        Returns batch detail payload for a public, approved batch.
+      security: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public batch detail returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicBatchDetail'
+        '404':
+          description: Batch not found or not publicly visible.
   /v1/batches:
     get:
       operationId: listBatches
@@ -907,6 +1096,12 @@ components:
       enum:
         - public
         - private
+    ModerationState:
+      type: string
+      description: Moderation status applied to submissions.
+      enum:
+        - approved
+        - quarantined
     BatchSummary:
       type: object
       description: Summary metadata for an ingest batch.
@@ -932,11 +1127,15 @@ components:
         visibility:
           $ref: '#/components/schemas/BatchVisibility'
           description: Visibility designation attached to the batch.
+        moderationState:
+          $ref: '#/components/schemas/ModerationState'
+          description: Moderation state attached to the batch.
       required:
         - batchId
         - deviceId
         - count
         - visibility
+        - moderationState
     BatchDetail:
       allOf:
         - $ref: '#/components/schemas/BatchSummary'
@@ -949,6 +1148,101 @@ components:
               description: Ingest payload persisted for the batch.
               items:
                 $ref: '#/components/schemas/IngestPoint'
+    PublicBatchSummary:
+      allOf:
+        - $ref: '#/components/schemas/BatchSummary'
+    PublicBatchDetail:
+      allOf:
+        - $ref: '#/components/schemas/BatchDetail'
+    AdminSubmissionSummary:
+      allOf:
+        - $ref: '#/components/schemas/BatchSummary'
+        - type: object
+          properties:
+            moderationReason:
+              type: string
+              nullable: true
+            moderatedBy:
+              type: string
+              nullable: true
+            moderatedAt:
+              type: string
+              format: date-time
+              nullable: true
+    AdminSubmissionListResponse:
+      type: object
+      properties:
+        submissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSubmissionSummary'
+      required:
+        - submissions
+    AdminSubmissionUpdateRequest:
+      type: object
+      required:
+        - moderationState
+      properties:
+        moderationState:
+          $ref: '#/components/schemas/ModerationState'
+        reason:
+          type: string
+          nullable: true
+    AdminRole:
+      type: string
+      enum:
+        - super_admin
+        - moderator
+    AdminUserSummary:
+      type: object
+      properties:
+        uid:
+          type: string
+        email:
+          type: string
+          nullable: true
+        disabled:
+          type: boolean
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRole'
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSignInAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - uid
+        - disabled
+        - roles
+    AdminUsersListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserSummary'
+        nextPageToken:
+          type: string
+          nullable: true
+      required:
+        - users
+        - nextPageToken
+    AdminUserUpdateRequest:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRole'
+        disabled:
+          type: boolean
+        reason:
+          type: string
     IngestCleanupRequest:
       type: object
       properties:

@@ -101,15 +101,16 @@ const getShouldCollapseCoordinationLinks = () =>
 const MapPage = lazy(() => import("./pages/MapPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
+const AdminModerationPage = lazy(() => import("./pages/AdminModerationPage"));
 const ActivationPage = lazy(async () => {
   const module = await import("./pages/ActivationPage");
   return { default: module.ActivationPage };
 });
 
 export default function App() {
-  const { user, isLoading, signOut } = useAuth();
+  const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
-  const [tab, setTab] = useState<"map" | "dashboard" | "smoke">("map");
+  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin">("map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
@@ -124,18 +125,22 @@ export default function App() {
     const email = user?.email;
     return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
   })();
+  const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
   const activeTab = !isSignedIn && tab !== "map"
     ? "map"
-    : (tab === "smoke" && (!user || !canUseSmokeTests) ? "map" : tab);
+    : (tab === "smoke" && (!user || !canUseSmokeTests)
+      ? "map"
+      : (tab === "admin" && !canUseAdmin ? "map" : tab));
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
     setAuthDialogOpen(true);
   };
 
-  const handleProtectedTabClick = (target: "dashboard" | "smoke") => {
+  const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
       if (target === "smoke" && !canUseSmokeTests) return;
+      if (target === "admin" && !canUseAdmin) return;
       setTab(target);
       return;
     }
@@ -432,6 +437,15 @@ export default function App() {
                           Smoke Test
                         </Button>
                       ) : null}
+                      {canUseAdmin ? (
+                        <Button
+                          variant={activeTab === "admin" ? "solid" : "soft"}
+                          onClick={() => handleProtectedTabClick("admin")}
+                          disabled={isLoading}
+                        >
+                          Admin
+                        </Button>
+                      ) : null}
                     </>
                   ) : null}
                 </Flex>
@@ -471,13 +485,15 @@ export default function App() {
                         onSmokeTestComplete={handleSmokeTestComplete}
                         onSmokeTestCleared={handleSmokeTestCleanup}
                       />
-                    ) : activeTab === "map" && user ? (
+                    ) : activeTab === "admin" && user && canUseAdmin ? (
+                      <AdminModerationPage key={`admin:${userScopedKey}`} />
+                    ) : activeTab === "map" ? (
                       <MapPage
                         key={`map:${userScopedKey}`}
-                        pendingSmokeResult={pendingSmokeResult}
-                        onSmokeResultConsumed={() => setPendingSmokeResult(null)}
-                        pendingCleanupDetail={pendingSmokeCleanup}
-                        onCleanupDetailConsumed={() => setPendingSmokeCleanup(null)}
+                        pendingSmokeResult={user ? pendingSmokeResult : null}
+                        onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
+                        pendingCleanupDetail={user ? pendingSmokeCleanup : null}
+                        onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
                       />
                     ) : (
                       <Flex

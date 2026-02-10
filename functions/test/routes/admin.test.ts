@@ -175,8 +175,8 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({
       error: "forbidden",
-      message: "You do not have permission to suspend devices.",
-      error_description: "You do not have permission to suspend devices.",
+      message: "You do not have permission to access this resource.",
+      error_description: "You do not have permission to access this resource.",
     });
     await app.close();
   });

@@ -131,12 +131,22 @@ pnpm device:pair -- --mode ingest --device-id <device-id> --key ./emu-key.json -
 ## API Surface
 The REST contract is documented in `functions/src/openapi.yaml` and implemented in `functions/src/index.ts`:
 - `GET /health` – environment probe
-- `GET /v1/devices` – list devices (auth optional in emulator)
+- `GET /v1/devices` – list devices for the signed-in user
 - `POST /v1/devices` – create device (requires Firebase ID token)
 - `GET /v1/measurements` – query PM2.5 readings by device, time window, and limit
-- `POST /v1/admin/devices/:id/suspend` – mark device as suspended (requires authenticated user)
+- `GET /v1/batches` + `GET /v1/batches/:deviceId/:batchId` – owner batch views (quarantined batches hidden from non-moderators)
+- `GET /v1/public/batches` + `GET /v1/public/batches/:deviceId/:batchId` – anonymous public feed (only `public + approved`)
+- `GET /v1/admin/submissions` + `PATCH /v1/admin/submissions/:deviceId/:batchId` – submission moderation
+- `GET /v1/admin/users` + `PATCH /v1/admin/users/:uid` – user moderation and role updates
+- `POST /v1/admin/devices/:id/suspend` – suspend device ingest
 
-Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy `requireUser`.
+Set a Firebase ID token in the `Authorization: Bearer <token>` header for authenticated routes.
+
+### Admin bootstrap and migrations
+- Grant initial admin/moderator claims:
+  - `pnpm --filter crowdpm-functions admin:grant-role -- --email you@example.com --roles super_admin`
+- Backfill legacy batch documents with moderation metadata:
+  - `pnpm --filter crowdpm-functions backfill:batch-moderation`
 
 ### Error Responses
 - API and gateway failures return normalized JSON with required `error` (lower_snake_case) and optional `message`.
@@ -145,13 +155,14 @@ Set a Firebase ID token in the `Authorization: Bearer <token>` header to satisfy
 
 ## Data Model & Storage
 - Firestore: `devices/{deviceId}` documents store device metadata and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
-- Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`, `visibility`, and error states when applicable).
+- Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`, `visibility`, `moderationState`, and moderation/audit fields).
 - Cloud Storage: raw ingest payloads saved to `ingest/{deviceId}/{batchId}.json` for auditing and replay.
 
 ## Security Considerations
 - Devices must complete the `/device/start → /activate → /device/token → /device/register` flow and retrieve DPoP-bound access tokens before ingesting.
 - All pairing, registration, and ingest calls require DPoP proofs whose thumbprints match the Ed25519 keys declared during onboarding; mismatches are rejected immediately.
-- Firebase Auth tokens gate device creation and admin routes via `requireUser`.
+- Firebase Auth custom claims (`roles`: `super_admin` / `moderator`) gate admin moderation routes.
+- Disabled Firebase users cannot mint fresh device access tokens; disabling a user also revokes refresh tokens and device tokens.
 - Firestore and Storage rules ship locked-down defaults: device and measurement data are read-only to external clients, ingest blobs are entirely private.
 
 ## Deployment

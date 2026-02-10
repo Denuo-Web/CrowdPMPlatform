@@ -21,7 +21,7 @@ export async function requireUser(req: HeaderCarrier, options?: RequireUserOptio
   const hdr = getAuthorizationHeader(req.headers);
   const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : "";
   if (!token) throw httpError(401, "unauthorized", "Authentication required");
-  const decoded = await admin.auth().verifyIdToken(token);
+  const decoded = await admin.auth().verifyIdToken(token, true);
   if (options?.requireSecondFactorIfEnrolled) {
     const userRecord = await admin.auth().getUser(decoded.uid);
     const hasMfa = Boolean(userRecord.multiFactor?.enrolledFactors?.length);

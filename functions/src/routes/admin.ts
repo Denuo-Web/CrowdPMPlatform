@@ -1,22 +1,17 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { DecodedIdToken } from "firebase-admin/auth";
 import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
 import { authorizeSmokeTestUser, getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
 import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
-import { getRequestUser, requireUserGuard } from "../lib/routeGuards.js";
+import { getRequestUser, requirePermissionGuard, requireUserGuard } from "../lib/routeGuards.js";
 import { httpError } from "../lib/httpError.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const smokeTestService = getIngestSmokeTestService();
 
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", {
-    preHandler: requireUserGuard(),
+    preHandler: requirePermissionGuard("devices.moderate"),
   }, async (req, rep) => {
-    const user = getRequestUser(req);
-    if (!userCanSuspendDevices(user)) {
-      throw httpError(403, "forbidden", "You do not have permission to suspend devices.");
-    }
     const { id } = req.params;
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
     rep.code(204);
@@ -125,10 +120,3 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 };
-
-function userCanSuspendDevices(user: DecodedIdToken): boolean {
-  if ((user as { admin?: unknown }).admin === true) return true;
-  const roles = (user as { roles?: unknown }).roles;
-  if (!Array.isArray(roles)) return false;
-  return roles.some((role) => typeof role === "string" && role.trim().toLowerCase() === "admin");
-}

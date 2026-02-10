@@ -10,7 +10,9 @@
     "dev": "firebase emulators:start",
     "preemulate": "pnpm run build",
     "emulate": "firebase emulators:start",
-    "test": "vitest"
+    "test": "vitest",
+    "admin:grant-role": "node ./scripts/grant-role.mjs",
+    "backfill:batch-moderation": "node ./scripts/backfill-batch-moderation.mjs"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0"
