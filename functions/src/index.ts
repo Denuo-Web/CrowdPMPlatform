@@ -13,6 +13,7 @@ import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
 import { ensureDevAuthUser } from "./lib/devAuthUser.js";
 import { toHttpError } from "./lib/httpError.js";
+import { RateLimitError } from "./lib/rateLimiter.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -58,7 +59,11 @@ type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
 const apiSetup = (async () => {
   await ensureDevAuthUser();
   await api.register(cors, { origin: true });
-  await api.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  await api.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+    errorResponseBuilder: (_request, context) => new RateLimitError(Math.max(1, Math.ceil(context.ttl / 1000))),
+  });
 
   api.get("/health", async () => ({ ok: true }));
   await api.register(devicesRoutes);
