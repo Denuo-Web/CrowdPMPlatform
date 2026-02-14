@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.2.2",
-    "firebase-tools": "^15.5.1",
+    "firebase-tools": "^15.6.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
