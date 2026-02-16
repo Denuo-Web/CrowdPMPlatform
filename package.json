@@ -13,7 +13,7 @@
   "scripts": {
     "prepare:functions-deps": "node scripts/prepare-functions-deps.mjs",
     "predev": "pnpm run prepare:functions-deps && pnpm --filter crowdpm-functions build",
-    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\"",
+    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions exec firebase emulators:start --project demo-crowdpm\" \"pnpm --filter crowdpm-functions build:watch\"",
     "device:pair": "node scripts/device-emulator.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
