@@ -2,7 +2,11 @@ import type { firestore } from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
 import { describe, expect, it, vi } from "vitest";
 import type { BatchVisibility } from "../../src/lib/batchVisibility.js";
-import { IngestSmokeTestService, SmokeTestServiceError } from "../../src/services/ingestSmokeTestService.js";
+import {
+  authorizeSmokeTestUser,
+  IngestSmokeTestService,
+  SmokeTestServiceError,
+} from "../../src/services/ingestSmokeTestService.js";
 import type { IngestService } from "../../src/services/ingestService.js";
 import type { SmokeTestPlan } from "../../src/services/smokeTest.js";
 
@@ -120,5 +124,28 @@ describe("IngestSmokeTestService", () => {
     await expect(service.runSmokeTest({
       user: { uid: "user-1" } as unknown as Parameters<IngestSmokeTestService["runSmokeTest"]>[0]["user"],
     })).rejects.toBeInstanceOf(SmokeTestServiceError);
+  });
+});
+
+describe("authorizeSmokeTestUser", () => {
+  it("allows super admins via roles claim", () => {
+    expect(() => authorizeSmokeTestUser({
+      uid: "user-1",
+      roles: ["super_admin"],
+    } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).not.toThrow();
+  });
+
+  it("allows super admins via legacy admin claim", () => {
+    expect(() => authorizeSmokeTestUser({
+      uid: "user-1",
+      admin: true,
+    } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).not.toThrow();
+  });
+
+  it("rejects users without smoke-test or super-admin privileges", () => {
+    expect(() => authorizeSmokeTestUser({
+      uid: "user-1",
+      roles: ["moderator"],
+    } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
   });
 });
