@@ -8,6 +8,26 @@ Utilities that mimic a hardware device pairing against the local/emulated API.
 - Ensure `functions/.env.local` and `functions/.secret.local` are populated per the root README.
 - Node 24+ installed.
 
+### Local emulator configuration (required)
+
+Create the secret file with a real Ed25519 PKCS8 private key (note the real newlines, not `\n` escapes):
+
+```bash
+tmp_key="$(mktemp -t crowdpm-device-key.XXXXXX)"
+openssl genpkey -algorithm ED25519 -out "$tmp_key"
+printf 'DEVICE_TOKEN_PRIVATE_KEY="%s"\n' "$(cat "$tmp_key")" > functions/.secret.local
+rm -f "$tmp_key"
+```
+
+Copy the same `DEVICE_TOKEN_PRIVATE_KEY="..."` line into `functions/.env.local`.
+
+Set activation URLs in `functions/.env.local` so pairing links stay local:
+
+```bash
+DEVICE_VERIFICATION_URI=http://localhost:5173/activate
+DEVICE_ACTIVATION_URL=http://localhost:5173/activate
+```
+
 ## Start a Pairing Session (auto-poll + register)
 
 ```bash
