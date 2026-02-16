@@ -145,6 +145,28 @@ export async function listBatches(): Promise<BatchSummary[]> {
   return requestJson<BatchSummary[]>("/v1/batches");
 }
 
+export async function updateBatchVisibility(
+  deviceId: string,
+  batchId: string,
+  visibility: BatchVisibility
+): Promise<BatchSummary> {
+  const safeDevice = encodeURIComponent(deviceId);
+  const safeBatch = encodeURIComponent(batchId);
+  return requestJson<BatchSummary>(`/v1/batches/${safeDevice}/${safeBatch}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function deleteBatch(deviceId: string, batchId: string): Promise<{ status: string; deviceId: string; batchId: string }> {
+  const safeDevice = encodeURIComponent(deviceId);
+  const safeBatch = encodeURIComponent(batchId);
+  return requestJson<{ status: string; deviceId: string; batchId: string }>(`/v1/batches/${safeDevice}/${safeBatch}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchBatchDetail(deviceId: string, batchId: string): Promise<BatchDetail> {
   const safeDevice = encodeURIComponent(deviceId);
   const safeBatch = encodeURIComponent(batchId);

@@ -27,7 +27,7 @@ describe("rateLimitGuard", () => {
       server: {},
     });
 
-    const limiter = vi.fn(async () => ({ isAllowed: true, ttlInSeconds: 0 }));
+    const limiter = vi.fn(async () => ({ isAllowed: false, isExceeded: false, ttlInSeconds: 0 }));
     const createRateLimit = vi.fn((options: { keyGenerator: (req: FastifyRequest) => string }) => {
       expect(options.keyGenerator(req)).toBe("fixed:key");
       return limiter;
@@ -48,7 +48,7 @@ describe("rateLimitGuard", () => {
       server: {},
     });
 
-    const limiter = vi.fn(async () => ({ isAllowed: true, ttlInSeconds: 0 }));
+    const limiter = vi.fn(async () => ({ isAllowed: false, isExceeded: false, ttlInSeconds: 0 }));
     const createRateLimit = vi.fn((options: { keyGenerator: (req: FastifyRequest) => string }) => {
       expect(options.keyGenerator(req)).toBe("dynamic:acct-1");
       return limiter;
@@ -67,7 +67,7 @@ describe("rateLimitGuard", () => {
       server: {},
     });
 
-    const createRateLimit = vi.fn(() => vi.fn(async () => ({ isAllowed: false, ttlInSeconds: 9 })));
+    const createRateLimit = vi.fn(() => vi.fn(async () => ({ isAllowed: false, isExceeded: true, ttlInSeconds: 9 })));
     (req.server as unknown as { createRateLimit: typeof createRateLimit }).createRateLimit = createRateLimit;
 
     const guard = rateLimitGuard("limited:key", 1, 60_000);

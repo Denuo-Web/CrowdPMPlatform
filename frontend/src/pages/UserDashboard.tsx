@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch } from "@radix-ui/themes";
+import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch, Select } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
-import { listDevices, revokeDevice, type BatchVisibility, type DeviceSummary } from "../lib/api";
+import {
+  deleteBatch,
+  listBatches,
+  listDevices,
+  revokeDevice,
+  updateBatchVisibility,
+  type BatchSummary,
+  type BatchVisibility,
+  type DeviceSummary,
+} from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
@@ -23,10 +32,18 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoadingDevices, setIsLoadingDevices] = useState(false);
+  const [devicesError, setDevicesError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
+  const [batchesError, setBatchesError] = useState<string | null>(null);
+  const [selectedBatchDeviceId, setSelectedBatchDeviceId] = useState<string>("all");
+  const [batchActionError, setBatchActionError] = useState<string | null>(null);
+  const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
+  const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
+  const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const activationUrl = useMemo(() => buildActivationLink(), []);
@@ -35,30 +52,91 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
   const refreshDevices = useCallback(async () => {
     if (!user) {
       setDevices([]);
+      setDevicesError(null);
       return;
     }
-    setIsLoading(true);
-    setError(null);
+    setIsLoadingDevices(true);
+    setDevicesError(null);
     try {
       const next = await listDevices();
       setDevices(next);
     }
     catch (err) {
       setDevices([]);
-      setError(err instanceof Error ? err.message : "Unable to load devices");
+      setDevicesError(err instanceof Error ? err.message : "Unable to load devices");
     }
     finally {
-      setIsLoading(false);
+      setIsLoadingDevices(false);
+    }
+  }, [user]);
+
+  const refreshBatches = useCallback(async () => {
+    if (!user) {
+      setBatches([]);
+      setBatchesError(null);
+      return;
+    }
+    setIsLoadingBatches(true);
+    setBatchesError(null);
+    try {
+      const next = await listBatches();
+      setBatches(next);
+    }
+    catch (err) {
+      setBatches([]);
+      setBatchesError(err instanceof Error ? err.message : "Unable to load batches");
+    }
+    finally {
+      setIsLoadingBatches(false);
     }
   }, [user]);
 
   useEffect(() => { refreshDevices(); }, [refreshDevices]);
+  useEffect(() => { refreshBatches(); }, [refreshBatches]);
+
   const ownedCount = useMemo(() => devices.length, [devices]);
   const activeCount = useMemo(
     () => devices.filter((device) => describeStatus(device.registryStatus ?? device.status).tone === "green").length,
     [devices],
   );
   const isSettingsBusy = isSettingsLoading || isSettingsSaving;
+  const deviceNameLookup = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const device of devices) {
+      lookup.set(device.id, device.name?.trim().length ? device.name : device.id);
+    }
+    return lookup;
+  }, [devices]);
+  const batchDeviceOptions = useMemo(() => {
+    const uniqueDeviceIds = new Set<string>([
+      ...devices.map((device) => device.id),
+      ...batches.map((batch) => batch.deviceId),
+    ]);
+    return Array.from(uniqueDeviceIds)
+      .sort((a, b) => a.localeCompare(b))
+      .map((id) => ({
+        id,
+        label: deviceNameLookup.get(id) ?? batches.find((batch) => batch.deviceId === id)?.deviceName ?? id,
+      }));
+  }, [batches, deviceNameLookup, devices]);
+  const filteredBatches = useMemo(() => {
+    const byDevice = selectedBatchDeviceId === "all"
+      ? batches
+      : batches.filter((batch) => batch.deviceId === selectedBatchDeviceId);
+    return [...byDevice].sort((a, b) => {
+      const timeA = timestampToMillis(a.processedAt) ?? 0;
+      const timeB = timestampToMillis(b.processedAt) ?? 0;
+      return timeB - timeA;
+    });
+  }, [batches, selectedBatchDeviceId]);
+
+  useEffect(() => {
+    if (selectedBatchDeviceId === "all") return;
+    const stillExists = batchDeviceOptions.some((option) => option.id === selectedBatchDeviceId);
+    if (!stillExists) {
+      setSelectedBatchDeviceId("all");
+    }
+  }, [batchDeviceOptions, selectedBatchDeviceId]);
 
   const handleDefaultVisibilityChange = useCallback(async (nextValue: string) => {
     const next = nextValue as BatchVisibility;
@@ -100,7 +178,7 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
     setRevokingId(deviceId);
     try {
       await revokeDevice(deviceId);
-      await refreshDevices();
+      await Promise.all([refreshDevices(), refreshBatches()]);
     }
     catch (err) {
       setRevokeError(err instanceof Error ? err.message : "Unable to revoke device.");
@@ -108,7 +186,53 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
     finally {
       setRevokingId(null);
     }
-  }, [refreshDevices]);
+  }, [refreshBatches, refreshDevices]);
+
+  const handleToggleBatchVisibility = useCallback(async (batch: BatchSummary) => {
+    const actionKey = `${batch.deviceId}:${batch.batchId}`;
+    const nextVisibility: BatchVisibility = batch.visibility === "public" ? "private" : "public";
+    setBatchActionError(null);
+    setBatchActionMessage(null);
+    setUpdatingBatchKey(actionKey);
+    try {
+      const updated = await updateBatchVisibility(batch.deviceId, batch.batchId, nextVisibility);
+      setBatches((prev) => prev.map((row) => (
+        row.deviceId === updated.deviceId && row.batchId === updated.batchId ? updated : row
+      )));
+      setBatchActionMessage(
+        nextVisibility === "public"
+          ? `Batch ${batch.batchId} is now public.`
+          : `Batch ${batch.batchId} is now private.`
+      );
+    }
+    catch (err) {
+      setBatchActionError(err instanceof Error ? err.message : "Unable to update batch visibility.");
+    }
+    finally {
+      setUpdatingBatchKey(null);
+    }
+  }, []);
+
+  const handleDeleteBatch = useCallback(async (batch: BatchSummary) => {
+    if (!window.confirm(`Delete batch ${batch.batchId}? This removes the saved payload and batch metadata.`)) {
+      return;
+    }
+    const actionKey = `${batch.deviceId}:${batch.batchId}`;
+    setBatchActionError(null);
+    setBatchActionMessage(null);
+    setDeletingBatchKey(actionKey);
+    try {
+      await deleteBatch(batch.deviceId, batch.batchId);
+      setBatches((prev) => prev.filter((row) => !(row.deviceId === batch.deviceId && row.batchId === batch.batchId)));
+      setBatchActionMessage(`Deleted batch ${batch.batchId}.`);
+    }
+    catch (err) {
+      setBatchActionError(err instanceof Error ? err.message : "Unable to delete batch.");
+    }
+    finally {
+      setDeletingBatchKey(null);
+    }
+  }, []);
 
   const handleOpenActivation = useCallback(() => {
     onRequestActivation();
@@ -197,12 +321,12 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
               <Heading size="6">{activeCount}</Heading>
             </Flex>
           </Flex>
-          <Button variant="soft" onClick={refreshDevices} disabled={isLoading}>
-            <ReloadIcon /> {isLoading ? "Refreshing" : "Refresh"}
+          <Button variant="soft" onClick={refreshDevices} disabled={isLoadingDevices}>
+            <ReloadIcon /> {isLoadingDevices ? "Refreshing" : "Refresh"}
           </Button>
         </Flex>
-        {error ? (
-          <Text mt="3" color="tomato">{error}</Text>
+        {devicesError ? (
+          <Text mt="3" color="tomato">{devicesError}</Text>
         ) : null}
       </Card>
 
@@ -259,7 +383,7 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
           ) : null}
           {devices.length === 0 ? (
             <Text color="gray" style={{ fontStyle: "italic" }}>
-              {isLoading ? "Loading devices…" : "No devices are currently linked to this account."}
+              {isLoadingDevices ? "Loading devices…" : "No devices are currently linked to this account."}
             </Text>
           ) : (
             <Table.Root>
@@ -309,6 +433,138 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
                         >
                           {revokingId === device.id ? "Revoking…" : "Revoke"}
                         </Button>
+                      </Table.Cell>
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table.Root>
+          )}
+        </Flex>
+      </Card>
+
+      <Card>
+        <Flex direction="column" gap="3">
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Box>
+              <Heading as="h3" size="4">Batch uploads</Heading>
+              <Text color="gray">Manage uploaded batches for each registered device.</Text>
+            </Box>
+            <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
+              <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
+            </Button>
+          </Flex>
+
+          <Separator my="2" size="4" />
+
+          <Flex direction={{ initial: "column", sm: "row" }} align={{ initial: "start", sm: "center" }} gap="2">
+            <Text size="2" color="gray">Device filter</Text>
+            <Box style={{ width: "min(360px, 100%)" }}>
+              <Select.Root value={selectedBatchDeviceId} onValueChange={setSelectedBatchDeviceId}>
+                <Select.Trigger />
+                <Select.Content>
+                  <Select.Item value="all">All devices</Select.Item>
+                  {batchDeviceOptions.map((option) => (
+                    <Select.Item key={option.id} value={option.id}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </Box>
+          </Flex>
+
+          {batchesError ? (
+            <Callout.Root color="tomato">
+              <Callout.Text>{batchesError}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+          {batchActionError ? (
+            <Callout.Root color="tomato">
+              <Callout.Text>{batchActionError}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+          {batchActionMessage ? (
+            <Callout.Root color="green">
+              <Callout.Text>{batchActionMessage}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+
+          {filteredBatches.length === 0 ? (
+            <Text color="gray" style={{ fontStyle: "italic" }}>
+              {isLoadingBatches ? "Loading batches…" : "No batches available for this filter."}
+            </Text>
+          ) : (
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Device</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Batch</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Uploaded</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Points</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Visibility</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Moderation</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Actions</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {filteredBatches.map((batch) => {
+                  const actionKey = `${batch.deviceId}:${batch.batchId}`;
+                  const isUpdating = updatingBatchKey === actionKey;
+                  const isDeleting = deletingBatchKey === actionKey;
+                  const isBusy = isUpdating || isDeleting;
+                  const processedMs = timestampToMillis(batch.processedAt);
+                  const processedAtLabel = processedMs === null ? "—" : new Date(processedMs).toLocaleString();
+                  const deviceLabel = batch.deviceName?.trim().length
+                    ? batch.deviceName
+                    : (deviceNameLookup.get(batch.deviceId) ?? batch.deviceId);
+                  return (
+                    <Table.Row key={actionKey}>
+                      <Table.Cell>
+                        <Flex direction="column" gap="1">
+                          <Text weight="medium">{deviceLabel}</Text>
+                          <Text size="1" color="gray" style={{ fontFamily: "monospace" }}>{batch.deviceId}</Text>
+                        </Flex>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" style={{ fontFamily: "monospace" }}>{batch.batchId}</Text>
+                      </Table.Cell>
+                      <Table.Cell>{processedAtLabel}</Table.Cell>
+                      <Table.Cell>{batch.count}</Table.Cell>
+                      <Table.Cell>
+                        <Badge color={batch.visibility === "public" ? "green" : "gray"} variant="soft">
+                          {batch.visibility}
+                        </Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color={batch.moderationState === "approved" ? "green" : "red"} variant="soft">
+                          {batch.moderationState}
+                        </Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Flex gap="2" wrap="wrap">
+                          <Button
+                            variant="soft"
+                            size="1"
+                            disabled={isBusy}
+                            onClick={() => handleToggleBatchVisibility(batch)}
+                          >
+                            {isUpdating
+                              ? "Updating…"
+                              : batch.visibility === "public"
+                                ? "Make private"
+                                : "Make public"}
+                          </Button>
+                          <Button
+                            variant="soft"
+                            color="tomato"
+                            size="1"
+                            disabled={isBusy}
+                            onClick={() => handleDeleteBatch(batch)}
+                          >
+                            {isDeleting ? "Deleting…" : "Delete"}
+                          </Button>
+                        </Flex>
                       </Table.Cell>
                     </Table.Row>
                   );

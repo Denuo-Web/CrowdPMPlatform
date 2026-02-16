@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   rateLimitOrThrow: vi.fn(),
   bucketDownload: vi.fn(),
+  bucketDelete: vi.fn(),
 }));
 
 type DeviceSnapConfig = {
@@ -19,6 +20,8 @@ type DeviceSnapConfig = {
 };
 
 let currentDeviceSnap: DeviceSnapConfig | null = null;
+let batchSetCalls: Array<{ deviceId: string; batchId: string; payload: Record<string, unknown>; merge: boolean }> = [];
+let batchDeleteCalls: Array<{ deviceId: string; batchId: string }> = [];
 
 function makeBatchDocSnapshot(config?: { exists: boolean; data?: Record<string, unknown> }) {
   const exists = config?.exists ?? false;
@@ -37,9 +40,30 @@ function makeDeviceSnapshot(deviceId: string, config: DeviceSnapConfig) {
         throw new Error(`unexpected collection ${name}`);
       }
       return {
-        doc: (batchId: string) => ({
-          get: async () => makeBatchDocSnapshot(config.batches?.[batchId]),
-        }),
+        doc: (batchId: string) => {
+          const resolveExisting = () => (currentDeviceSnap?.batches?.[batchId] ?? config.batches?.[batchId]);
+          return {
+            get: async () => makeBatchDocSnapshot(resolveExisting()),
+            set: async (payload: Record<string, unknown>, options?: { merge?: boolean }) => {
+              const merge = Boolean(options?.merge);
+              batchSetCalls.push({ deviceId, batchId, payload, merge });
+              const next = resolveExisting();
+              const previousData = next?.data ?? {};
+              const updatedData = merge ? { ...previousData, ...payload } : { ...payload };
+              if (!currentDeviceSnap) {
+                currentDeviceSnap = { exists: true, data: {}, batches: {} };
+              }
+              currentDeviceSnap.batches = currentDeviceSnap.batches ?? {};
+              currentDeviceSnap.batches[batchId] = { exists: true, data: updatedData };
+            },
+            delete: async () => {
+              batchDeleteCalls.push({ deviceId, batchId });
+              if (currentDeviceSnap?.batches) {
+                delete currentDeviceSnap.batches[batchId];
+              }
+            },
+          };
+        },
       };
     },
   };
@@ -65,6 +89,7 @@ const mockDb = {
 const mockBucket = {
   file: vi.fn(() => ({
     download: mocks.bucketDownload,
+    delete: mocks.bucketDelete,
   })),
 };
 
@@ -114,10 +139,14 @@ beforeEach(() => {
   mocks.requireUser.mockReset();
   mocks.rateLimitOrThrow.mockReset();
   mocks.bucketDownload.mockReset();
+  mocks.bucketDelete.mockReset();
   currentDeviceSnap = null;
+  batchSetCalls = [];
+  batchDeleteCalls = [];
 
   mocks.rateLimitOrThrow.mockReturnValue({ allowed: true, remaining: 59, retryAfterSeconds: 0 });
   mocks.userOwnsDevice.mockReturnValue(true);
+  mocks.bucketDelete.mockResolvedValue(undefined);
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
@@ -541,6 +570,244 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
     expect(res.statusCode).toBe(429);
     expect(res.headers["retry-after"]).toBe("8");
     expect(res.json()).toEqual({ error: "rate_limited", retry_after: 8 });
+    await app.close();
+  });
+});
+
+describe("PATCH /v1/batches/:deviceId/:batchId", () => {
+  it("happy path updates visibility and returns updated summary", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            path: "ingest/device-1/batch-1.json",
+            count: 3,
+            processedAt: "2024-01-01T00:00:00.000Z",
+            visibility: "private",
+            moderationState: "approved",
+          },
+        },
+      },
+    };
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+      payload: { visibility: "public" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      batchId: "batch-1",
+      deviceId: "device-1",
+      deviceName: "Alpha",
+      count: 3,
+      processedAt: "2024-01-01T00:00:00.000Z",
+      visibility: "public",
+      moderationState: "approved",
+    });
+    expect(batchSetCalls).toEqual([
+      {
+        deviceId: "device-1",
+        batchId: "batch-1",
+        payload: expect.objectContaining({ visibility: "public" }),
+        merge: true,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("validation: invalid visibility returns 400", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: { "batch-1": { exists: true, data: { visibility: "private" } } },
+    };
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+      payload: { visibility: "hidden" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({
+      error: "invalid_visibility",
+      message: "visibility must be 'public' or 'private'.",
+      error_description: "visibility must be 'public' or 'private'.",
+    });
+    await app.close();
+  });
+
+  it("resource existence: batch not found returns 404", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: { "batch-1": { exists: false } },
+    };
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+      payload: { visibility: "public" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Batch not found.",
+      error_description: "Batch not found.",
+    });
+    await app.close();
+  });
+
+  it("rate limit: guard returns 429 with retry-after", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: { "batch-1": { exists: true, data: { visibility: "private" } } },
+    };
+    mocks.rateLimitOrThrow.mockImplementation(() => {
+      throw new RateLimitError(7);
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+      payload: { visibility: "public" },
+    });
+
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["retry-after"]).toBe("7");
+    expect(res.json()).toEqual({ error: "rate_limited", retry_after: 7 });
+    await app.close();
+  });
+});
+
+describe("DELETE /v1/batches/:deviceId/:batchId", () => {
+  it("happy path deletes storage payload and batch metadata", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            path: "ingest/device-1/batch-1.json",
+            visibility: "public",
+          },
+        },
+      },
+    };
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      status: "deleted",
+      deviceId: "device-1",
+      batchId: "batch-1",
+    });
+    expect(mocks.bucketDelete).toHaveBeenCalledWith({ ignoreNotFound: true });
+    expect(batchDeleteCalls).toEqual([{ deviceId: "device-1", batchId: "batch-1" }]);
+    await app.close();
+  });
+
+  it("deletes batch metadata even when storage path is missing", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            visibility: "public",
+          },
+        },
+      },
+    };
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.bucketDelete).not.toHaveBeenCalled();
+    expect(batchDeleteCalls).toEqual([{ deviceId: "device-1", batchId: "batch-1" }]);
+    await app.close();
+  });
+
+  it("resource existence: batch not found returns 404", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: { "batch-1": { exists: false } },
+    };
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({
+      error: "not_found",
+      message: "Batch not found.",
+      error_description: "Batch not found.",
+    });
+    await app.close();
+  });
+
+  it("error mapping: storage delete failure returns 500", async () => {
+    const app = await buildApp();
+    currentDeviceSnap = {
+      exists: true,
+      data: { name: "Alpha" },
+      batches: {
+        "batch-1": {
+          exists: true,
+          data: {
+            path: "ingest/device-1/batch-1.json",
+            visibility: "public",
+          },
+        },
+      },
+    };
+    mocks.bucketDelete.mockRejectedValue(new Error("storage down"));
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/batches/device-1/batch-1",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: "storage_error",
+      message: "Unable to delete batch payload.",
+      error_description: "Unable to delete batch payload.",
+    });
     await app.close();
   });
 });
