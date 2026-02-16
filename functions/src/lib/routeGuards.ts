@@ -25,6 +25,11 @@ type CreateRateLimit = (options: {
   keyGenerator: (req: FastifyRequest) => string;
 }) => (req: FastifyRequest) => Promise<RateLimitPluginResult>;
 
+const isEmulatorRuntime = process.env.FUNCTIONS_EMULATOR === "true"
+  || Boolean(process.env.FIREBASE_EMULATOR_HUB);
+const rateLimitsEnabled = process.env.ENABLE_RATE_LIMITS === "true"
+  || (!isEmulatorRuntime && process.env.NODE_ENV !== "test");
+
 export function requireUserGuard(options?: RequireUserOptions): preHandlerHookHandler {
   return async (req) => {
     const user = await requireUser(req, options);
@@ -68,6 +73,7 @@ export function rateLimitGuard(
   let pluginLimiter: ((req: FastifyRequest) => Promise<RateLimitPluginResult>) | null = null;
 
   return async (req) => {
+    if (!rateLimitsEnabled) return;
     const createRateLimit = (req.server as { createRateLimit?: CreateRateLimit }).createRateLimit;
     if (typeof createRateLimit === "function") {
       pluginLimiter ??= createRateLimit({
