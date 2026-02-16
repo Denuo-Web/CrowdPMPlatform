@@ -8,6 +8,7 @@ import {
 } from "../lib/batchVisibility.js";
 import { app as getFirebaseApp, db as getDb } from "../lib/fire.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
+import { hasRole } from "../lib/rbac.js";
 import type { IngestService } from "./ingestService.js";
 import { prepareSmokeTestPlan, type SmokeTestBody, type SmokeTestPlan } from "./smokeTest.js";
 
@@ -45,6 +46,7 @@ export type SmokeTestServiceDependencies = Partial<ResolvedDependencies>;
 
 export function authorizeSmokeTestUser(user: DecodedIdToken): void {
   if (isSmokeTestEmail(user)) return;
+  if (hasRole(user, "super_admin")) return;
   const roles = extractRoles(user);
   const allowedRoles = new Set(["smoke-test", "smoke_test", "smoketester"]);
   const hasAllowedRole = roles.some((role) => allowedRoles.has(role.toLowerCase()));
