@@ -7,9 +7,9 @@
     "build": "tsc",
     "build:watch": "tsc --watch --preserveWatchOutput",
     "predev": "pnpm run build",
-    "dev": "firebase emulators:start",
+    "dev": "firebase emulators:start --project local",
     "preemulate": "pnpm run build",
-    "emulate": "firebase emulators:start",
+    "emulate": "firebase emulators:start --project local",
     "test": "vitest",
     "admin:grant-role": "node ./scripts/grant-role.mjs",
     "backfill:batch-moderation": "node ./scripts/backfill-batch-moderation.mjs"

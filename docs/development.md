@@ -54,10 +54,7 @@ git config user.email "you@email.com"
 ## 4. Configure Firebase CLI for Local Emulators Only
 The emulator needs a project ID to namespace data. Use a fake local project so you never point at real Firebase projects by accident.
 
-1. Copy the provided example and tweak it if you already have other projects configured:
-   ```bash
-   cp .firebaserc.example .firebaserc
-   ```
+1. Verify `.firebaserc` includes a `local` alias mapped to `demo-crowdpm`.
 2. Login to firebase (one time):
    ```bash
    firebase login
@@ -65,7 +62,7 @@ The emulator needs a project ID to namespace data. Use a fake local project so y
 
 The example `.firebaserc` maps `local` to `demo-crowdpm`, satisfying Firebase's guidance to use IDs prefixed with `demo-` so the CLI treats it as a safe fake project.
 
-All subsequent commands in this guide assume the `local` alias is active.
+All local stack scripts pin Firebase CLI to `--project local`, so emulator runs always use the fake `demo-crowdpm` namespace.
 
 > **Important:** Never deploy using this alias. It is solely for emulator usage and will not map to a real Firebase project.
 
@@ -125,7 +122,7 @@ pnpm dev
 ```
 What happens:
 - `pnpm --filter frontend dev` starts Vite on `http://localhost:5173`.
-- `pnpm --filter functions emulate` runs `firebase emulators:start` (Functions, Firestore, Storage, Auth, Emulator UI).
+- `pnpm --filter functions emulate` runs `firebase emulators:start --project local` (Functions, Firestore, Storage, Auth, Emulator UI).
 - `pnpm --filter functions build:watch` compiles TypeScript sources into `functions/lib/` so the emulator loads fresh code as you save files.
 
 > **Heads-up:** The Storage rules runtime currently prints `sun.misc.Unsafe::arrayBaseOffset` deprecation warnings when running on newer JDKs. Firebase has not shipped a patched runtime yet; you can safely ignore these messages while developing.

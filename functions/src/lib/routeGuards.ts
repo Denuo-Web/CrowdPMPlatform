@@ -16,6 +16,7 @@ type GuardedRequest = FastifyRequest & {
 
 type RateLimitPluginResult = {
   isAllowed: boolean;
+  isExceeded?: boolean;
   ttlInSeconds?: number;
 };
 
@@ -76,7 +77,12 @@ export function rateLimitGuard(
         keyGenerator: (currentReq) => typeof key === "function" ? key(currentReq) : key,
       });
       const result = await pluginLimiter(req);
-      if (!result.isAllowed) {
+      const isExceeded = result.isAllowed
+        ? false
+        : typeof result.isExceeded === "boolean"
+          ? result.isExceeded
+          : true;
+      if (isExceeded) {
         const retryAfter = Math.max(
           1,
           Number.isFinite(result.ttlInSeconds) ? Number(result.ttlInSeconds) : Math.ceil(windowMs / 1000)
