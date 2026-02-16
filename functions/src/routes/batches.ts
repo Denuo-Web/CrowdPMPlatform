@@ -143,4 +143,90 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     };
     return response;
   });
+
+  app.patch<{ Params: { deviceId: string; batchId: string }; Body: { visibility?: unknown } }>("/v1/batches/:deviceId/:batchId", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `batches:update:${requestUserId(req)}`, 30, 60_000),
+      rateLimitGuard((req) => `batches:update:device:${requestParam(req, "deviceId")}`, 60, 60_000),
+      rateLimitGuard("batches:update:global", 1_000, 60_000),
+      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
+    ],
+  }, async (req) => {
+    const { deviceId, batchId } = req.params;
+    const devSnap = req.deviceDoc;
+    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
+
+    const visibility = normalizeVisibility(req.body?.visibility, null);
+    if (!visibility) {
+      throw httpError(400, "invalid_visibility", "visibility must be 'public' or 'private'.");
+    }
+
+    const batchRef = devSnap.ref.collection("batches").doc(batchId);
+    const batchSnap = await batchRef.get();
+    if (!batchSnap.exists) {
+      throw httpError(404, "not_found", "Batch not found.");
+    }
+
+    const batchData = batchSnap.data() as {
+      count?: unknown;
+      processedAt?: unknown;
+      moderationState?: unknown;
+    } | undefined;
+
+    await batchRef.set({
+      visibility,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    const processedAt = normalizeTimestamp(batchData?.processedAt);
+    const count = typeof batchData?.count === "number" ? batchData.count : 0;
+    const moderationState = normalizeModerationState(batchData?.moderationState);
+
+    const response: BatchSummary = {
+      batchId,
+      deviceId,
+      deviceName: typeof devSnap.get("name") === "string" ? devSnap.get("name") : null,
+      count,
+      processedAt,
+      visibility,
+      moderationState,
+    };
+    return response;
+  });
+
+  app.delete<{ Params: { deviceId: string; batchId: string } }>("/v1/batches/:deviceId/:batchId", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `batches:delete:${requestUserId(req)}`, 20, 60_000),
+      rateLimitGuard((req) => `batches:delete:device:${requestParam(req, "deviceId")}`, 40, 60_000),
+      rateLimitGuard("batches:delete:global", 500, 60_000),
+      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
+    ],
+  }, async (req) => {
+    const { deviceId, batchId } = req.params;
+    const devSnap = req.deviceDoc;
+    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
+
+    const batchRef = devSnap.ref.collection("batches").doc(batchId);
+    const batchSnap = await batchRef.get();
+    if (!batchSnap.exists) {
+      throw httpError(404, "not_found", "Batch not found.");
+    }
+
+    const batchData = batchSnap.data() as { path?: unknown } | undefined;
+    const path = typeof batchData?.path === "string" ? batchData.path : null;
+    if (path) {
+      try {
+        await bucket().file(path).delete({ ignoreNotFound: true });
+      }
+      catch (err) {
+        app.log.error({ err, batchId, deviceId, path }, "failed to delete batch payload");
+        throw httpError(500, "storage_error", "Unable to delete batch payload.");
+      }
+    }
+
+    await batchRef.delete();
+    return { status: "deleted", deviceId, batchId };
+  });
 };
