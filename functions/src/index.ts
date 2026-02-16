@@ -59,14 +59,21 @@ api.setErrorHandler((err, req, rep) => {
 });
 
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
+const isEmulatorRuntime = process.env.FUNCTIONS_EMULATOR === "true"
+  || Boolean(process.env.FIREBASE_EMULATOR_HUB);
+const rateLimitsEnabled = process.env.ENABLE_RATE_LIMITS === "true"
+  || (!isEmulatorRuntime && process.env.NODE_ENV !== "test");
+
 const apiSetup = (async () => {
   await ensureDevAuthUser();
   await api.register(cors, { origin: true });
-  await api.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
-    errorResponseBuilder: (_request, context) => new RateLimitError(Math.max(1, Math.ceil(context.ttl / 1000))),
-  });
+  if (rateLimitsEnabled) {
+    await api.register(rateLimit, {
+      max: 100,
+      timeWindow: "1 minute",
+      errorResponseBuilder: (_request, context) => new RateLimitError(Math.max(1, Math.ceil(context.ttl / 1000))),
+    });
+  }
 
   api.get("/health", async () => ({ ok: true }));
   await api.register(devicesRoutes);
