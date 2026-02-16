@@ -13,14 +13,18 @@ type MeasurementPoint = {
   value: number;
   precision: number | null;
   altitude: number | null;
+  batchKey?: string;
+  batchPointIndex?: number;
 };
 
 type Map3DProps = {
   data: MeasurementPoint[];
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
+  onSelectPoint?: (point: MeasurementPoint) => void;
   autoCenterKey?: string;
   interleaved?: boolean;
+  showAllMode?: boolean;
 };
 
 const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
@@ -58,7 +62,9 @@ function createLayers(
   series: MeasurementPoint[],
   selectedIndex: number,
   onSelectIndex: ((index: number) => void) | undefined,
-  sphereGeometry: SphereGeometry
+  onSelectPoint: ((point: MeasurementPoint) => void) | undefined,
+  sphereGeometry: SphereGeometry,
+  showAllMode: boolean
 ): Layer[] {
   if (!series.length) return [];
 
@@ -69,6 +75,31 @@ function createLayers(
     if (point.value > max) max = point.value;
   }
   const [scaledMin, scaledMax] = ensureRange(min, max);
+
+  if (showAllMode) {
+    const allSpheres = new SimpleMeshLayer<MeasurementPoint & { index: number }>({
+      id: "measurement-spheres-all",
+      data: series.map((point, index) => ({ ...point, index })),
+      mesh: sphereGeometry,
+      getPosition: (d) => [d.lon, d.lat, (d.altitude ?? 0)],
+      getColor: (d) => {
+        const base = interpolateColor(d.value, scaledMin, scaledMax);
+        return [...base, 200] as [number, number, number, number];
+      },
+      getScale: (d) => {
+        const radiusMeters = Math.max(0.5, (d.precision ?? 20) / 2);
+        return [radiusMeters, radiusMeters, radiusMeters];
+      },
+      pickable: true,
+      onClick: (info) => {
+        const point = info.object;
+        if (!point) return;
+        onSelectPoint?.(point);
+      }
+    });
+    return [allSpheres];
+  }
+
   const pathPoints = series.map((point) => [point.lon, point.lat, 0]);
   const selected = series[selectedIndex] ?? series[series.length - 1];
 
@@ -109,13 +140,22 @@ function createLayers(
   return [pathLayer, sphereLayer];
 }
 
-export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKey, interleaved = false }: Map3DProps) {
+export default function Map3D({
+  data,
+  selectedIndex,
+  onSelectIndex,
+  onSelectPoint,
+  autoCenterKey,
+  interleaved = false,
+  showAllMode = false,
+}: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<GoogleMapsOverlay | null>(null);
   const latestDataRef = useRef<MeasurementPoint[]>(data);
   const selectedIndexRef = useRef<number>(selectedIndex);
   const onSelectRef = useRef<typeof onSelectIndex>(onSelectIndex);
+  const onSelectPointRef = useRef<typeof onSelectPoint>(onSelectPoint);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const hasUserControlRef = useRef(false);
   const dataSignatureRef = useRef(signature(data));
@@ -123,6 +163,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => { onSelectRef.current = onSelectIndex; }, [onSelectIndex]);
+  useEffect(() => { onSelectPointRef.current = onSelectPoint; }, [onSelectPoint]);
   useEffect(() => {
     const sig = signature(data);
     if (dataSignatureRef.current !== sig) {
@@ -143,7 +184,9 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
         latestDataRef.current,
         selectedIndexRef.current,
         (index) => onSelectRef.current?.(index),
-        sphereGeometryRef.current
+        (point) => onSelectPointRef.current?.(point),
+        sphereGeometryRef.current,
+        showAllMode
       )
     });
 
@@ -160,7 +203,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
         }
       }
     }
-  }, []);
+  }, [showAllMode]);
 
   useEffect(() => {
     syncOverlay();
@@ -236,7 +279,9 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
           currentSeries,
           selectedIndexRef.current,
           (index) => onSelectRef.current?.(index),
-          sphereGeometry
+          (point) => onSelectPointRef.current?.(point),
+          sphereGeometry,
+          showAllMode
         ),
         interleaved
       });
@@ -263,7 +308,7 @@ export default function Map3D({ data, selectedIndex, onSelectIndex, autoCenterKe
       overlayRef.current = null;
       mapRef.current = null;
     };
-  }, [syncOverlay, interleaved]);
+  }, [syncOverlay, interleaved, showAllMode]);
 
   return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
 }

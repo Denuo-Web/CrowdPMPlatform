@@ -21,6 +21,8 @@ import { useUserSettings } from "../providers/UserSettingsProvider";
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
+const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
+const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -30,6 +32,11 @@ const Map3D = lazy(() => import("../components/Map3D"));
 type StoredSmokeBatch = {
   summary: BatchSummary;
   points: IngestSmokeTestPoint[];
+};
+
+type MapMeasurementRecord = MeasurementRecord & {
+  batchKey?: string;
+  batchPointIndex?: number;
 };
 
 // Safely parse a cached smoke batch so stale/invalid JSON never breaks the UI.
@@ -82,7 +89,12 @@ function formatBatchLabel(batch: BatchSummary) {
   return `${timeLabel} — ${name}${countLabel}`;
 }
 
-function pointsToMeasurementRecords(points: IngestSmokeTestPoint[], fallbackDeviceId: string, batchId: string): MeasurementRecord[] {
+function pointsToMeasurementRecords(
+  points: IngestSmokeTestPoint[],
+  fallbackDeviceId: string,
+  batchId: string,
+  options?: { batchKey?: string }
+): MapMeasurementRecord[] {
   return [...points]
     .sort((a, b) => {
       const aTs = timestampToMillis(a.timestamp as unknown as MeasurementRecord["timestamp"]) ?? 0;
@@ -105,7 +117,9 @@ function pointsToMeasurementRecords(points: IngestSmokeTestPoint[], fallbackDevi
         precision: point.precision ?? null,
         timestamp: point.timestamp,
         flags: point.flags ?? 0,
-      } satisfies MeasurementRecord;
+        batchKey: options?.batchKey,
+        batchPointIndex: idx,
+      } satisfies MapMeasurementRecord;
     });
 }
 
@@ -162,6 +176,7 @@ export default function MapPage({
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
   // const [selectedIndex, setSelectedIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
+  const skipIndexResetRef = useRef(false);
 
 
   const getCachedBatch = useCallback(() => {
@@ -208,21 +223,56 @@ export default function MapPage({
     () => (selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKey) : null),
     [selectedBatchKey, user]
   );
+  const isShowingAllPublic24h = selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY;
 
   // Query #2: measurement detail for the currently selected batch.
-  const measurementQuery = useQuery<MeasurementRecord[]>({
+  const measurementQuery = useQuery<MapMeasurementRecord[]>({
     queryKey: batchDetailQueryKey ?? ["batchDetail", "idle", "none"],
     enabled: Boolean(batchDetailQueryKey) && !isAuthLoading,
     retry: 5,
     retryDelay: 1_500,
     queryFn: async () => {
       if (!batchDetailQueryKey || !selectedBatchKey) return [];
+      if (selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
+        const cutoff = Date.now() - SHOW_ALL_PUBLIC_LOOKBACK_MS;
+        const publicSummaries = await listPublicBatches(100);
+        const recentSummaries = publicSummaries.filter((batch) => {
+          const processedAtMs = timestampToMillis(batch.processedAt);
+          return processedAtMs !== null && processedAtMs >= cutoff;
+        });
+        if (!recentSummaries.length) return [];
+
+        const details = await Promise.all(
+          recentSummaries.map(async (batch) => {
+            try {
+              return await fetchPublicBatchDetail(batch.deviceId, batch.batchId);
+            }
+            catch (err) {
+              console.warn("Unable to load public batch detail", batch.deviceId, batch.batchId, err);
+              return null;
+            }
+          })
+        );
+
+        return details
+          .flatMap((detail) => {
+            if (!detail) return [];
+            const batchKey = encodeBatchKey(detail.deviceId, detail.batchId);
+            return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey });
+          })
+          .filter((point) => {
+            const timestamp = timestampToMillis(point.timestamp);
+            return timestamp !== null && timestamp >= cutoff;
+          })
+          .sort((a, b) => (timestampToMillis(a.timestamp) ?? 0) - (timestampToMillis(b.timestamp) ?? 0));
+      }
+
       const parsed = decodeBatchKey(selectedBatchKey);
       if (!parsed) return [];
       const detail = user
         ? await fetchBatchDetail(parsed.deviceId, parsed.batchId)
         : await fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
-      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId);
+      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
     },
     retryOnMount: false,
     throwOnError: false,
@@ -252,6 +302,10 @@ export default function MapPage({
   // Only reset override when the BATCH changes, not when data changes
   useEffect(() => {
     deferStateUpdate(() => {
+      if (skipIndexResetRef.current) {
+        skipIndexResetRef.current = false;
+        return;
+      }
       setIndexOverride(null);
     });
   }, [selectedBatchKey]); // Remove rows.length from dependencies
@@ -314,7 +368,9 @@ export default function MapPage({
     if (!deviceForBatch) return;
     const key = encodeBatchKey(deviceForBatch, detail.batchId);
     const rawPoints = detail.points?.length ? detail.points : detail.payload?.points ?? [];
-    const records = rawPoints.length ? pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId) : [];
+    const records = rawPoints.length
+      ? pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId, { batchKey: key })
+      : [];
     const summary: BatchSummary = {
       batchId: detail.batchId,
       deviceId: deviceForBatch,
@@ -416,6 +472,22 @@ export default function MapPage({
     });
   }, [onCleanupDetailConsumed, pendingCleanupDetail, processCleanupDetail]);
 
+  const handleMapPointSelect = useCallback((point: { batchKey?: string; batchPointIndex?: number }) => {
+    if (!isShowingAllPublic24h) return;
+    if (!point.batchKey) return;
+    skipIndexResetRef.current = true;
+    setSelectedBatchKey(point.batchKey);
+    const pointIndex = typeof point.batchPointIndex === "number" ? point.batchPointIndex : null;
+    setIndexOverride(pointIndex);
+    if (user) {
+      safeLocalStorageSet(
+        userScopedSelectionKey,
+        point.batchKey,
+        { context: "map:selected-batch:from-all", userId: user.uid }
+      );
+    }
+  }, [isShowingAllPublic24h, user, userScopedSelectionKey]);
+
   const data = useMemo(
     () => {
       const fallbackTimestamp = 0;
@@ -426,6 +498,8 @@ export default function MapPage({
         value: r.value,
         precision: r.precision ?? null,
         altitude: r.altitude ?? null,
+        batchKey: r.batchKey,
+        batchPointIndex: r.batchPointIndex,
       }));
     },
     [rows]
@@ -442,6 +516,13 @@ export default function MapPage({
   const selectedMomentMs = selectedPoint ? timestampToMillis(selectedPoint.timestamp) : null;
   const selectedMoment = selectedMomentMs !== null ? new Date(selectedMomentMs) : null;
   const shouldRenderMap = Boolean(selectedBatchKey && rows.length);
+  const allModeBatchCount = useMemo(() => (
+    new Set(
+      rows
+        .map((row) => row.batchKey)
+        .filter((key): key is string => typeof key === "string" && key.length > 0)
+    ).size
+  ), [rows]);
 
   return (
     <div style={{ padding: 12 }}>
@@ -461,6 +542,7 @@ export default function MapPage({
         disabled={isAuthLoading}
       >
         <option value="">{user ? "Select batch" : "Select a public batch"}</option>
+        <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public balls (last 24h)</option>
         {visibleBatches.map((batch) => {
           const key = encodeBatchKey(batch.deviceId, batch.batchId);
           return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
@@ -475,21 +557,10 @@ export default function MapPage({
       ) : null}
       {rows.length ? (
         <div style={{ marginTop: 16 }}>
-          <label htmlFor="measurement-slider">Measurement timeline</label>
-          <input
-            id="measurement-slider"
-            type="range"
-            min={0}
-            max={rows.length - 1}
-            step={1}
-            value={selectedIndex}
-            onChange={(e) => setIndexOverride(Number(e.target.value))}
-            style={{ width: "100%", marginTop: 8 }}
-          />
-          {selectedPoint ? (
+          {isShowingAllPublic24h ? (
             <div
               style={{
-                marginTop: 12,
+                marginTop: 8,
                 padding: 12,
                 borderRadius: 8,
                 background: "var(--color-panel)",
@@ -498,30 +569,68 @@ export default function MapPage({
               }}
             >
               <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
-                {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                Showing all public balls from the last 24 hours
               </p>
               <p style={{ margin: "4px 0 0" }}>
-                Value: <strong>{selectedPoint.value} {selectedPoint.unit || "ug/m3"}</strong>
+                Loaded <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> public batches.
               </p>
               <p style={{ margin: "4px 0 0" }}>
-                Location: {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                GPS accuracy: {selectedPoint.precision !== undefined && selectedPoint.precision !== null
-                  ? `+/-${selectedPoint.precision} m`
-                  : "not provided"}
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                Altitude: {selectedPoint.altitude !== undefined && selectedPoint.altitude !== null
-                  ? `${selectedPoint.altitude.toFixed(1)} m`
-                  : "not provided"}
+                Click any ball on the map to switch to that batch&apos;s individual timeline view.
               </p>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <label htmlFor="measurement-slider">Measurement timeline</label>
+              <input
+                id="measurement-slider"
+                type="range"
+                min={0}
+                max={rows.length - 1}
+                step={1}
+                value={selectedIndex}
+                onChange={(e) => setIndexOverride(Number(e.target.value))}
+                style={{ width: "100%", marginTop: 8 }}
+              />
+              {selectedPoint ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 8,
+                    background: "var(--color-panel)",
+                    color: "var(--gray-12)",
+                    border: "1px solid var(--gray-a6)",
+                  }}
+                >
+                  <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
+                    {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                  </p>
+                  <p style={{ margin: "4px 0 0" }}>
+                    Value: <strong>{selectedPoint.value} {selectedPoint.unit || "ug/m3"}</strong>
+                  </p>
+                  <p style={{ margin: "4px 0 0" }}>
+                    Location: {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
+                  </p>
+                  <p style={{ margin: "4px 0 0" }}>
+                    GPS accuracy: {selectedPoint.precision !== undefined && selectedPoint.precision !== null
+                      ? `+/-${selectedPoint.precision} m`
+                      : "not provided"}
+                  </p>
+                  <p style={{ margin: "4px 0 0" }}>
+                    Altitude: {selectedPoint.altitude !== undefined && selectedPoint.altitude !== null
+                      ? `${selectedPoint.altitude.toFixed(1)} m`
+                      : "not provided"}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : (
         <p style={{ marginTop: 16 }}>
-          {selectedBatchKey
+          {isShowingAllPublic24h
+            ? (isLoadingBatch ? "Loading public measurements from the last 24 hours..." : "No public measurements were found in the last 24 hours.")
+            : selectedBatchKey
             ? (isLoadingBatch ? "Loading measurements for the selected batch..." : "No measurements available for this batch.")
             : "Select a batch with recent measurements to explore the timeline."}
         </p>
@@ -531,9 +640,11 @@ export default function MapPage({
           <Map3D
             data={data}
             selectedIndex={selectedIndex}
-            onSelectIndex={setIndexOverride}
+            onSelectIndex={isShowingAllPublic24h ? undefined : setIndexOverride}
+            onSelectPoint={handleMapPointSelect}
             autoCenterKey={autoCenterKey}
             interleaved={settings.interleavedRendering}
+            showAllMode={isShowingAllPublic24h}
           />
         </Suspense>
       ) : null}
