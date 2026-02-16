@@ -8,6 +8,7 @@ const DEFAULT_API_BASE = process.env.CROWDPM_API_BASE
   ?? "http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi";
 const DEFAULT_INGEST_URL = process.env.CROWDPM_INGEST_URL
   ?? DEFAULT_API_BASE.replace(/crowdpmApi\/?$/u, "ingestGateway");
+const DEFAULT_DEVICE_ID_FILE = process.env.CROWDPM_DEVICE_ID_FILE ?? ".device-id";
 
 function base64url(buffer) {
   return Buffer.from(buffer).toString("base64").replace(/=+$/u, "").replace(/\+/gu, "-").replace(/\//gu, "_");
@@ -45,6 +46,21 @@ function loadOrGenerateKey(keyPath) {
     path: null,
     generated: true,
   };
+}
+
+function loadDeviceIdFromFile(filePath) {
+  if (!filePath) return null;
+  const resolved = resolve(process.cwd(), filePath);
+  if (!existsSync(resolved)) return null;
+  const raw = readFileSync(resolved, "utf8").trim();
+  return raw || null;
+}
+
+function saveDeviceIdToFile(filePath, deviceId) {
+  if (!filePath || !deviceId) return null;
+  const resolved = resolve(process.cwd(), filePath);
+  writeFileSync(resolved, `${deviceId}\n`);
+  return resolved;
 }
 
 function buildUrl(base, pathname) {
@@ -132,6 +148,7 @@ Options:
   --nonce <value>   Optional nonce/serial to reuse pairing attempts
   --key <path>      Path to persist/reuse the Ed25519 JWK keypair
   --device-code <c> Override device_code when polling (defaults to freshly created one)
+  --device-id-file <p> File to load/save the last registered device id (default: ${DEFAULT_DEVICE_ID_FILE})
   --interval <sec>  Poll interval in seconds (default: 3, or server hint)
   --ingest          In pair mode: also send a sample ingest payload. In ingest mode: no effect (ingest always runs).
   --device-id <id>  Required in ingest mode; optional in pair mode for override.
@@ -227,6 +244,7 @@ async function main() {
       nonce: { type: "string" },
       key: { type: "string" },
       "device-id": { type: "string" },
+      "device-id-file": { type: "string" },
       "device-code": { type: "string" },
       "access-token": { type: "string" },
       interval: { type: "string" },
@@ -254,6 +272,7 @@ async function main() {
   const mode = modeFlag === "ingest" ? "ingest" : "pair";
   const apiBase = values.api ?? DEFAULT_API_BASE;
   const ingestUrlRaw = values["ingest-url"] ?? DEFAULT_INGEST_URL;
+  const deviceIdFile = values["device-id-file"] ?? DEFAULT_DEVICE_ID_FILE;
   const ingestRequested = mode === "ingest" ? true : (values.ingest ?? false);
   const startValue = parseNumber(values["start-value"], 15.9);
   const valueStep = parseNumber(values["value-step"], 2);
@@ -267,14 +286,17 @@ async function main() {
   if (mode === "ingest" && !values.key && generated) {
     console.warn("Warning: running ingest mode without --key will generate a new key that will NOT match your registered device.");
   }
-  if (mode === "ingest" && !values["device-id"]) {
-    console.error("Ingest mode requires --device-id.");
-    process.exitCode = 1;
-    return;
-  }
-
   if (mode === "ingest") {
-    const deviceId = values["device-id"];
+    const storedDeviceId = loadDeviceIdFromFile(deviceIdFile);
+    const deviceId = values["device-id"] ?? storedDeviceId;
+    if (!deviceId) {
+      console.error("Ingest mode requires --device-id or a saved device id file.");
+      process.exitCode = 1;
+      return;
+    }
+    if (!values["device-id"] && storedDeviceId) {
+      console.log(`Using device id from ${deviceIdFile}.`);
+    }
     const accessToken = values["access-token"];
     let token = accessToken;
     if (!token) {
@@ -459,6 +481,15 @@ async function main() {
 
       console.log("Registration success:", regParsed ?? regRaw);
       registeredDeviceId = regParsed?.device_id ?? regParsed?.deviceId ?? null;
+      if (registeredDeviceId) {
+        try {
+          const savedPath = saveDeviceIdToFile(deviceIdFile, registeredDeviceId);
+          if (savedPath) console.log(`  device id saved: ${savedPath}`);
+        }
+        catch (err) {
+          console.warn("Warning: failed to persist device id.", err instanceof Error ? err.message : err);
+        }
+      }
       break;
     }
 

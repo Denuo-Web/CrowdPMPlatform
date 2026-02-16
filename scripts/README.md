@@ -36,6 +36,7 @@ pnpm device:pair -- --key .device-key.json --interval 3
 
 - Saves/reuses the Ed25519 keypair at `.device-key.json`.
 - Calls `/device/start`, prints `device_code` and `user_code`, then polls `/device/token` and auto-posts `jwk_pub_kl` to `/device/register` when a `registration_token` arrives.
+- Persists the registered `device_id` to `.device-id` (override with `--device-id-file`).
 - Default API: `http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi`. Override with `--api <url>`.
 - Other flags:
   - `--model <name>` (default `CLI-EMU`)
@@ -43,7 +44,20 @@ pnpm device:pair -- --key .device-key.json --interval 3
   - `--nonce <value>` (optional idempotency)
   - `--device-code <code>` (poll an existing session)
 
-## Poll Token Only (for an existing code)
+## Send ingest batches without a device code
+
+After pairing once, you can send batches without re-pairing or pasting a device id:
+
+```bash
+pnpm device:pair -- --mode ingest --key .device-key.json --minutes 5
+```
+
+- Uses the `device_id` saved in `.device-id` (or whatever you passed to `--device-id-file`).
+- Add `--device-id <id>` if you want to override the stored value.
+
+## Advanced
+
+### Poll Token Only (for an existing code)
 
 ```bash
 pnpm device:poll-token -- --device-code <code> --key .device-key.json --interval 3
