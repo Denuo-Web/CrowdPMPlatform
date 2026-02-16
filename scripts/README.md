@@ -32,6 +32,23 @@ pnpm device:poll-token -- --device-code <code> --key .device-key.json --interval
 - Uses the same keypair to generate DPoP proofs.
 - Stops on success or hard error; respects `authorization_pending`/`slow_down`.
 
+## Run OSU Bike Simulation (multi-device ingest)
+
+```bash
+pnpm device:simulate:osu -- --count 20 --minutes 36
+```
+
+- Signs in with the local Auth emulator (`smoke-tester@crowdpm.dev` / `crowdpm-dev` by default).
+- Sends one smoke-test ingest per device through `/v1/admin/ingest-smoke-test`.
+- Default device IDs are `osu-bike-01..osu-bike-20`.
+- Useful overrides:
+  - `--prefix <text>`
+  - `--start-index <n>`
+  - `--delay-ms <n>`
+  - `--visibility <public|private>`
+  - `--api <url>`
+  - `--auth-url <url>`
+
 ## Notes
 
 - Keep the private key file out of git.

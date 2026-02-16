@@ -15,6 +15,7 @@
     "predev": "pnpm run prepare:functions-deps && pnpm --filter crowdpm-functions build",
     "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions emulate\" \"pnpm --filter crowdpm-functions build:watch\"",
     "device:pair": "node scripts/device-emulator.mjs",
+    "device:simulate:osu": "node scripts/osu-bike-sim.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "eslint \"{functions,frontend}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
