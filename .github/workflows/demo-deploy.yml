@@ -61,7 +61,7 @@ jobs:
           gcloud config set project "$FIREBASE_PROJECT_ID"
 
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools@13
+        run: npm install -g firebase-tools@15.5.1
 
       - name: Confirm Firebase target project
         run: firebase projects:list | grep "$FIREBASE_PROJECT_ID"
@@ -110,7 +110,17 @@ jobs:
 
       - name: Deploy Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
-        run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force
+        run: |
+          if ! output="$(firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force 2>&1)"; then
+            printf "%s\n" "$output"
+            if printf "%s" "$output" | grep -q "HTTP Error: 409, index already exists"; then
+              echo "::warning::Firestore indexes already existed in project; continuing deploy."
+            else
+              exit 1
+            fi
+          else
+            printf "%s\n" "$output"
+          fi
 
       - name: Wait for Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
