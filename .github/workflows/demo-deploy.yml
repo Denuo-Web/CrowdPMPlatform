@@ -110,17 +110,40 @@ jobs:
 
       - name: Deploy Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force
+
+      - name: Verify Firestore field overrides
+        if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
         run: |
-          if ! output="$(firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force 2>&1)"; then
-            printf "%s\n" "$output"
-            if printf "%s" "$output" | grep -q "HTTP Error: 409, index already exists"; then
-              echo "::warning::Firestore indexes already existed in project; continuing deploy."
-            else
-              exit 1
-            fi
-          else
-            printf "%s\n" "$output"
-          fi
+          firebase firestore:indexes --project "$FIREBASE_PROJECT_ID" > /tmp/remote-indexes.json
+          node -e '
+            const fs = require("fs");
+            const local = JSON.parse(fs.readFileSync("firestore.indexes.json", "utf8"));
+            const remote = JSON.parse(fs.readFileSync("/tmp/remote-indexes.json", "utf8"));
+            const normalize = (field) => {
+              const indexes = (field.indexes || [])
+                .map((idx) => JSON.stringify({
+                  order: idx.order || null,
+                  arrayConfig: idx.arrayConfig || null,
+                  queryScope: idx.queryScope || null,
+                }))
+                .sort();
+              return JSON.stringify({
+                collectionGroup: field.collectionGroup,
+                fieldPath: field.fieldPath,
+                ttl: !!field.ttl,
+                indexes,
+              });
+            };
+            const localOverrides = local.fieldOverrides || [];
+            const remoteSet = new Set((remote.fieldOverrides || []).map(normalize));
+            const missing = localOverrides.filter((field) => !remoteSet.has(normalize(field)));
+            if (missing.length > 0) {
+              console.error("Missing deployed fieldOverrides:", JSON.stringify(missing, null, 2));
+              process.exit(1);
+            }
+            console.log(`Verified ${localOverrides.length} fieldOverrides.`);
+          '
 
       - name: Wait for Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
