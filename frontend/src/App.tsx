@@ -227,6 +227,7 @@ export default function App() {
   };
 
   const areResourceLinksExpanded = shouldCollapseResourceLinks ? resourceLinksExpandedOverride : true;
+  const isMapTabActive = activeTab === "map";
   const tabPanelFallback = (
     <Flex
       direction="column"
@@ -259,149 +260,7 @@ export default function App() {
             align="center"
             style={{ maxWidth: "1100px", margin: "0 auto" }}
           >
-            <Flex
-              direction={{ initial: "column", md: "row" }}
-              gap="6"
-              align="stretch"
-              style={{ width: "100%" }}
-            >
-              <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
-              <Heading as="h2" size="5" trim="start">
-                <Link
-                  href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
-                  target="_blank"
-                  rel="noreferrer"
-                  color="iris"
-                  highContrast
-                >
-                  OSU EECS
-                </Link>{" "}
-                Capstone Team
-              </Heading>
-              <Text size="2" color="gray" mt="2">
-                Key collaborators for the capstone effort and their primary roles.
-              </Text>
-              <Flex direction="column" gap="3" mt="3">
-                {TEAM_MEMBERS.map((member) => (
-                  <Flex key={member.name} align="center" gap="3" style={{ width: "100%" }}>
-                    <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
-                      <Avatar
-                        radius="full"
-                        size="2"
-                        fallback={member.name.charAt(0).toUpperCase() || "?"}
-                      />
-                      <Text size="2" weight="medium">
-                        <Link href={`mailto:${member.email}`} color="iris" highContrast>
-                          {member.name}
-                        </Link>
-                      </Text>
-                    </Flex>
-                    <Text
-                      size="1"
-                      color="gray"
-                      style={{ minWidth: "120px", textAlign: "right" }}
-                    >
-                      {member.role}
-                    </Text>
-                    <Flex gap="2">
-                      <IconButton
-                        asChild
-                        variant="soft"
-                        size="1"
-                        radius="full"
-                        aria-label={`${member.name} GitHub profile`}
-                      >
-                        <a href={member.github} target="_blank" rel="noreferrer">
-                          <GitHubLogoIcon />
-                        </a>
-                      </IconButton>
-                      <IconButton
-                        asChild
-                        variant="soft"
-                        size="1"
-                        radius="full"
-                        aria-label={`${member.name} LinkedIn profile`}
-                      >
-                        <a href={member.linkedin} target="_blank" rel="noreferrer">
-                          <LinkedInLogoIcon />
-                        </a>
-                      </IconButton>
-                    </Flex>
-                  </Flex>
-                ))}
-              </Flex>
-              {isSignedIn ? (
-                <>
-                  <Separator my="4" />
-                  {shouldCollapseResourceLinks ? (
-                    <Box>
-                      <Flex align="center" justify="between" gap="2" wrap="wrap">
-                        <Text size="2" color="gray">
-                          Coordination links
-                        </Text>
-                        <Button
-                          variant="soft"
-                          size="1"
-                          onClick={() => setResourceLinksExpandedOverride((prev) => !prev)}
-                          aria-expanded={areResourceLinksExpanded}
-                          aria-controls={COORDINATION_LINKS_CONTENT_ID}
-                        >
-                          {areResourceLinksExpanded ? "Hide" : "Show"} links
-                          <ChevronDownIcon
-                            style={{
-                              marginLeft: "var(--space-1)",
-                              transition: "transform 200ms ease",
-                              transform: areResourceLinksExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                            }}
-                            aria-hidden
-                          />
-                        </Button>
-                      </Flex>
-                      {areResourceLinksExpanded ? (
-                        <Box id={COORDINATION_LINKS_CONTENT_ID} mt="2">
-                          <Flex direction="column" gap="2">
-                            {RESOURCE_LINKS.map((resource) => (
-                              <Link
-                                key={resource.href}
-                                href={resource.href}
-                                target="_blank"
-                                rel="noreferrer"
-                                color="iris"
-                                size="2"
-                              >
-                                {resource.label}
-                              </Link>
-                            ))}
-                          </Flex>
-                        </Box>
-                      ) : null}
-                    </Box>
-                  ) : (
-                    <>
-                      <Text size="2" color="gray">
-                        Coordination links
-                      </Text>
-                      <Flex direction="column" gap="2" mt="2">
-                        {RESOURCE_LINKS.map((resource) => (
-                          <Link
-                            key={resource.href}
-                            href={resource.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            color="iris"
-                            size="2"
-                          >
-                            {resource.label}
-                          </Link>
-                        ))}
-                      </Flex>
-                    </>
-                  )}
-                </>
-              ) : null}
-              </Card>
-
-              <Card size="4" style={{ flex: 1, minWidth: 0 }}>
+            <Card size="4" style={{ width: "100%", minWidth: 0 }}>
               <Heading as="h2" size="6" trim="start">
                 CrowdPM Platform
               </Heading>
@@ -475,7 +334,11 @@ export default function App() {
                   boxShadow: "var(--shadow-3)",
                 }}
               >
-                <Box style={{ padding: "var(--space-4)" }}>
+                <Box
+                  style={{
+                    padding: isMapTabActive ? "0" : "var(--space-4)",
+                  }}
+                >
                   <Suspense fallback={tabPanelFallback}>
                     {activeTab === "dashboard" && user ? (
                       <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
@@ -494,6 +357,7 @@ export default function App() {
                         onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
                         pendingCleanupDetail={user ? pendingSmokeCleanup : null}
                         onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
+                        fullscreen={isMapTabActive}
                       />
                     ) : (
                       <Flex
@@ -513,8 +377,17 @@ export default function App() {
                   </Suspense>
                 </Box>
               </Box>
-              </Card>
-            </Flex>
+            </Card>
+            <Box asChild style={{ width: "100%" }}>
+              <footer>
+                <TeamFooterCard
+                  isSignedIn={isSignedIn}
+                  shouldCollapseResourceLinks={shouldCollapseResourceLinks}
+                  areResourceLinksExpanded={areResourceLinksExpanded}
+                  onToggleResourceLinks={() => setResourceLinksExpandedOverride((prev) => !prev)}
+                />
+              </footer>
+            </Box>
           </Flex>
         </Box>
       </main>
@@ -526,6 +399,158 @@ export default function App() {
         onAuthenticated={() => setTab("dashboard")}
       />
     </Theme>
+  );
+}
+
+type TeamFooterCardProps = {
+  isSignedIn: boolean;
+  shouldCollapseResourceLinks: boolean;
+  areResourceLinksExpanded: boolean;
+  onToggleResourceLinks: () => void;
+};
+
+function TeamFooterCard({
+  isSignedIn,
+  shouldCollapseResourceLinks,
+  areResourceLinksExpanded,
+  onToggleResourceLinks,
+}: TeamFooterCardProps) {
+  return (
+    <Card size="4" style={{ overflow: "visible" }}>
+      <Heading as="h2" size="5" trim="start">
+        <Link
+          href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
+          target="_blank"
+          rel="noreferrer"
+          color="iris"
+          highContrast
+        >
+          OSU EECS
+        </Link>{" "}
+        Capstone Team
+      </Heading>
+      <Text size="2" color="gray" mt="2">
+        Key collaborators for the capstone effort and their primary roles.
+      </Text>
+      <Flex direction="column" gap="3" mt="3">
+        {TEAM_MEMBERS.map((member) => (
+          <Flex key={member.name} align="center" gap="3" style={{ width: "100%" }}>
+            <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
+              <Avatar
+                radius="full"
+                size="2"
+                fallback={member.name.charAt(0).toUpperCase() || "?"}
+              />
+              <Text size="2" weight="medium">
+                <Link href={`mailto:${member.email}`} color="iris" highContrast>
+                  {member.name}
+                </Link>
+              </Text>
+            </Flex>
+            <Text
+              size="1"
+              color="gray"
+              style={{ minWidth: "120px", textAlign: "right" }}
+            >
+              {member.role}
+            </Text>
+            <Flex gap="2">
+              <IconButton
+                asChild
+                variant="soft"
+                size="1"
+                radius="full"
+                aria-label={`${member.name} GitHub profile`}
+              >
+                <a href={member.github} target="_blank" rel="noreferrer">
+                  <GitHubLogoIcon />
+                </a>
+              </IconButton>
+              <IconButton
+                asChild
+                variant="soft"
+                size="1"
+                radius="full"
+                aria-label={`${member.name} LinkedIn profile`}
+              >
+                <a href={member.linkedin} target="_blank" rel="noreferrer">
+                  <LinkedInLogoIcon />
+                </a>
+              </IconButton>
+            </Flex>
+          </Flex>
+        ))}
+      </Flex>
+      {isSignedIn ? (
+        <>
+          <Separator my="4" />
+          {shouldCollapseResourceLinks ? (
+            <Box>
+              <Flex align="center" justify="between" gap="2" wrap="wrap">
+                <Text size="2" color="gray">
+                  Coordination links
+                </Text>
+                <Button
+                  variant="soft"
+                  size="1"
+                  onClick={onToggleResourceLinks}
+                  aria-expanded={areResourceLinksExpanded}
+                  aria-controls={COORDINATION_LINKS_CONTENT_ID}
+                >
+                  {areResourceLinksExpanded ? "Hide" : "Show"} links
+                  <ChevronDownIcon
+                    style={{
+                      marginLeft: "var(--space-1)",
+                      transition: "transform 200ms ease",
+                      transform: areResourceLinksExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
+                    aria-hidden
+                  />
+                </Button>
+              </Flex>
+              {areResourceLinksExpanded ? (
+                <Box id={COORDINATION_LINKS_CONTENT_ID} mt="2">
+                  <Flex direction="column" gap="2">
+                    {RESOURCE_LINKS.map((resource) => (
+                      <Link
+                        key={resource.href}
+                        href={resource.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        color="iris"
+                        size="2"
+                      >
+                        {resource.label}
+                      </Link>
+                    ))}
+                  </Flex>
+                </Box>
+              ) : null}
+            </Box>
+          ) : (
+            <>
+              <Text size="2" color="gray">
+                Coordination links
+              </Text>
+              <Flex direction="column" gap="2" mt="2">
+                {RESOURCE_LINKS.map((resource) => (
+                  <Link
+                    key={resource.href}
+                    href={resource.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    color="iris"
+                    size="2"
+                  >
+                    {resource.label}
+                  </Link>
+                ))}
+              </Flex>
+            </>
+          )}
+        </>
+      ) : null}
+    </Card>
   );
 }
 

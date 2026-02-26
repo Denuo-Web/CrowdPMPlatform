@@ -128,6 +128,7 @@ type MapPageProps = {
   onSmokeResultConsumed?: () => void;
   pendingCleanupDetail?: IngestSmokeTestCleanupResponse | null;
   onCleanupDetailConsumed?: () => void;
+  fullscreen?: boolean;
 };
 
 function buildClearedSet(detail?: IngestSmokeTestCleanupResponse | null) {
@@ -158,6 +159,7 @@ export default function MapPage({
   onSmokeResultConsumed,
   pendingCleanupDetail = null,
   onCleanupDetailConsumed,
+  fullscreen = false,
 }: MapPageProps = {}) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { settings } = useUserSettings();
@@ -515,7 +517,7 @@ export default function MapPage({
   const selectedPoint = rows[selectedIndex];
   const selectedMomentMs = selectedPoint ? timestampToMillis(selectedPoint.timestamp) : null;
   const selectedMoment = selectedMomentMs !== null ? new Date(selectedMomentMs) : null;
-  const shouldRenderMap = Boolean(selectedBatchKey && rows.length);
+  const shouldRenderMap = fullscreen || Boolean(selectedBatchKey && rows.length);
   const allModeBatchCount = useMemo(() => (
     new Set(
       rows
@@ -525,128 +527,149 @@ export default function MapPage({
   ), [rows]);
 
   return (
-    <div style={{ padding: 12 }}>
-      <h2>CrowdPM Map</h2>
-      {queryError ? (
-        <p style={{ color: "tomato", marginBottom: 8, fontSize: 14 }}>
-          {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
-        </p>
-      ) : null}
-      <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6 }}>
-        Measurement batch
-      </label>
-      <select
-        id="batch-select"
-        value={selectedBatchKey}
-        onChange={(e) => handleBatchSelect(e.target.value)}
-        disabled={isAuthLoading}
-      >
-        <option value="">{user ? "Select batch" : "Select a public batch"}</option>
-        <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public balls (last 24h)</option>
-        {visibleBatches.map((batch) => {
-          const key = encodeBatchKey(batch.deviceId, batch.batchId);
-          return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
-        })}
-      </select>
-      {!visibleBatches.length ? (
-        <p style={{ marginTop: 8, fontSize: 14 }}>
-          {user
-            ? "No batches available yet. Run a smoke test from the dashboard to generate one."
-            : "No public batches are available yet."}
-        </p>
-      ) : null}
-      {rows.length ? (
-        <div style={{ marginTop: 16 }}>
-          {isShowingAllPublic24h ? (
-            <div
-              style={{
-                marginTop: 8,
-                padding: 12,
-                borderRadius: 8,
-                background: "var(--color-panel)",
-                color: "var(--gray-12)",
-                border: "1px solid var(--gray-a6)",
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
-                Showing all public balls from the last 24 hours
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                Loaded <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> public batches.
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                Click any ball on the map to switch to that batch&apos;s individual timeline view.
-              </p>
-            </div>
-          ) : (
-            <>
-              <label htmlFor="measurement-slider">Measurement timeline</label>
-              <input
-                id="measurement-slider"
-                type="range"
-                min={0}
-                max={rows.length - 1}
-                step={1}
-                value={selectedIndex}
-                onChange={(e) => setIndexOverride(Number(e.target.value))}
-                style={{ width: "100%", marginTop: 8 }}
-              />
-              {selectedPoint ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: "var(--color-panel)",
-                    color: "var(--gray-12)",
-                    border: "1px solid var(--gray-a6)",
-                  }}
-                >
-                  <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
-                    {selectedMoment ? selectedMoment.toLocaleString() : ""}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Value: <strong>{selectedPoint.value} {selectedPoint.unit || "ug/m3"}</strong>
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Location: {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    GPS accuracy: {selectedPoint.precision !== undefined && selectedPoint.precision !== null
-                      ? `+/-${selectedPoint.precision} m`
-                      : "not provided"}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Altitude: {selectedPoint.altitude !== undefined && selectedPoint.altitude !== null
-                      ? `${selectedPoint.altitude.toFixed(1)} m`
-                      : "not provided"}
-                  </p>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : (
-        <p style={{ marginTop: 16 }}>
-          {isShowingAllPublic24h
-            ? (isLoadingBatch ? "Loading public measurements from the last 24 hours..." : "No public measurements were found in the last 24 hours.")
-            : selectedBatchKey
-            ? (isLoadingBatch ? "Loading measurements for the selected batch..." : "No measurements available for this batch.")
-            : "Select a batch with recent measurements to explore the timeline."}
-        </p>
-      )}
+    <div
+      style={
+        fullscreen
+          ? undefined
+          : { padding: 12 }
+      }
+    >
+      <div style={fullscreen ? { padding: "var(--space-4)" } : undefined}>
+        <h2>CrowdPM Map</h2>
+        {queryError ? (
+          <p style={{ color: "tomato", marginBottom: 8, fontSize: 14 }}>
+            {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
+          </p>
+        ) : null}
+        <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6 }}>
+          Measurement batch
+        </label>
+        <select
+          id="batch-select"
+          value={selectedBatchKey}
+          onChange={(e) => handleBatchSelect(e.target.value)}
+          disabled={isAuthLoading}
+        >
+          <option value="">{user ? "Select batch" : "Select a public batch"}</option>
+          <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public balls (last 24h)</option>
+          {visibleBatches.map((batch) => {
+            const key = encodeBatchKey(batch.deviceId, batch.batchId);
+            return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
+          })}
+        </select>
+        {!visibleBatches.length ? (
+          <p style={{ marginTop: 8, fontSize: 14 }}>
+            {user
+              ? "No batches available yet. Run a smoke test from the dashboard to generate one."
+              : "No public batches are available yet."}
+          </p>
+        ) : null}
+        {rows.length ? (
+          <div style={{ marginTop: 16 }}>
+            {isShowingAllPublic24h ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: "var(--color-panel)",
+                  color: "var(--gray-12)",
+                  border: "1px solid var(--gray-a6)",
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
+                  Showing all public balls from the last 24 hours
+                </p>
+                <p style={{ margin: "4px 0 0" }}>
+                  Loaded <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> public batches.
+                </p>
+                <p style={{ margin: "4px 0 0" }}>
+                  Click any ball on the map to switch to that batch&apos;s individual timeline view.
+                </p>
+              </div>
+            ) : (
+              <>
+                <label htmlFor="measurement-slider">Measurement timeline</label>
+                <input
+                  id="measurement-slider"
+                  type="range"
+                  min={0}
+                  max={rows.length - 1}
+                  step={1}
+                  value={selectedIndex}
+                  onChange={(e) => setIndexOverride(Number(e.target.value))}
+                  style={{ width: "100%", marginTop: 8 }}
+                />
+                {selectedPoint ? (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: 12,
+                      borderRadius: 8,
+                      background: "var(--color-panel)",
+                      color: "var(--gray-12)",
+                      border: "1px solid var(--gray-a6)",
+                    }}
+                  >
+                    <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
+                      {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                    </p>
+                    <p style={{ margin: "4px 0 0" }}>
+                      Value: <strong>{selectedPoint.value} {selectedPoint.unit || "ug/m3"}</strong>
+                    </p>
+                    <p style={{ margin: "4px 0 0" }}>
+                      Location: {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
+                    </p>
+                    <p style={{ margin: "4px 0 0" }}>
+                      GPS accuracy: {selectedPoint.precision !== undefined && selectedPoint.precision !== null
+                        ? `+/-${selectedPoint.precision} m`
+                        : "not provided"}
+                    </p>
+                    <p style={{ margin: "4px 0 0" }}>
+                      Altitude: {selectedPoint.altitude !== undefined && selectedPoint.altitude !== null
+                        ? `${selectedPoint.altitude.toFixed(1)} m`
+                        : "not provided"}
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : (
+          <p style={{ marginTop: 16 }}>
+            {isShowingAllPublic24h
+              ? (isLoadingBatch ? "Loading public measurements from the last 24 hours..." : "No public measurements were found in the last 24 hours.")
+              : selectedBatchKey
+              ? (isLoadingBatch ? "Loading measurements for the selected batch..." : "No measurements available for this batch.")
+              : "Select a batch with recent measurements to explore the timeline."}
+          </p>
+        )}
+      </div>
       {shouldRenderMap ? (
-        <Suspense fallback={<p style={{ marginTop: 16 }}>Loading map...</p>}>
-          <Map3D
-            data={data}
-            selectedIndex={selectedIndex}
-            onSelectIndex={isShowingAllPublic24h ? undefined : setIndexOverride}
-            onSelectPoint={handleMapPointSelect}
-            autoCenterKey={autoCenterKey}
-            interleaved={settings.interleavedRendering}
-            showAllMode={isShowingAllPublic24h}
-          />
-        </Suspense>
+        <div
+          style={
+            fullscreen
+              ? {
+                marginTop: "var(--space-4)",
+                height: "clamp(360px, 72vh, 920px)",
+                padding: "0 var(--space-4) var(--space-4)",
+              }
+              : { marginTop: 16 }
+          }
+        >
+          <Suspense fallback={<p style={{ marginTop: 16 }}>Loading map...</p>}>
+            <Map3D
+              data={data}
+              selectedIndex={selectedIndex}
+              onSelectIndex={isShowingAllPublic24h ? undefined : setIndexOverride}
+              onSelectPoint={handleMapPointSelect}
+              autoCenterKey={autoCenterKey}
+              interleaved={settings.interleavedRendering}
+              showAllMode={isShowingAllPublic24h}
+              height={fullscreen ? "100%" : "80vh"}
+            />
+          </Suspense>
+        </div>
       ) : null}
     </div>
   );
