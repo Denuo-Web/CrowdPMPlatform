@@ -195,8 +195,15 @@ export default function MapPage({
       if (!user) {
         return listPublicBatches();
       }
-      const list = await listBatches();
-      return mergeCachedSummary(list, getCachedBatch());
+      const [owned, publicBatches] = await Promise.all([
+        listBatches().catch(() => []),
+        listPublicBatches(),
+      ]);
+      const merged = mergeCachedSummary(owned, getCachedBatch());
+      const byKey = new Map<string, BatchSummary>();
+      publicBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
+      merged.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
+      return Array.from(byKey.values());
     },
     enabled: !isAuthLoading,
     placeholderData: (prev) => prev ?? [],
@@ -269,11 +276,15 @@ export default function MapPage({
 
       const parsed = decodeBatchKey(selectedBatchKey);
       if (!parsed) return [];
-      const detail = user
-        ? await fetchBatchDetail(parsed.deviceId, parsed.batchId)
-        : await fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
-      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
-    },
+
+	      const selectedSummary = visibleBatches.find((batch) => (
+	        batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId
+	      ));
+	      const shouldUsePrivateDetail = Boolean(user) && selectedSummary !== undefined && selectedSummary.visibility !== "public";
+	      const fetchDetail = shouldUsePrivateDetail ? fetchBatchDetail : fetchPublicBatchDetail;
+	      const detail = await fetchDetail(parsed.deviceId, parsed.batchId);
+	      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
+	    },
     retryOnMount: false,
     throwOnError: false,
     placeholderData: (prev) => prev ?? [],
