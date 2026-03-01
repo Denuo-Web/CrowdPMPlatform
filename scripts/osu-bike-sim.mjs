@@ -190,7 +190,10 @@ async function verifyPublicCount({ apiBase, prefix, limit }) {
 }
 
 async function run() {
+  const rawArgs = process.argv.slice(2);
+  const cleanedArgs = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   const { values } = parseArgs({
+    args: cleanedArgs,
     options: {
       api: { type: "string", default: DEFAULT_API_BASE },
       "auth-url": { type: "string", default: DEFAULT_AUTH_URL },
