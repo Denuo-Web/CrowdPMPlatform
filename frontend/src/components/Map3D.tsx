@@ -25,6 +25,7 @@ type Map3DProps = {
   autoCenterKey?: string;
   interleaved?: boolean;
   showAllMode?: boolean;
+  height?: string;
 };
 
 const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
@@ -148,6 +149,7 @@ export default function Map3D({
   autoCenterKey,
   interleaved = false,
   showAllMode = false,
+  height = "80vh",
 }: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -310,5 +312,5 @@ export default function Map3D({
     };
   }, [syncOverlay, interleaved, showAllMode]);
 
-  return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
+  return <div ref={divRef} style={{ width: "100%", height }} />;
 }
