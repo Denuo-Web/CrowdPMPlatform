@@ -255,6 +255,7 @@ export type ActivationSession = {
   requester_asn?: string | null;
   status: SessionStatus;
   poll_interval: number;
+  device_id?: string | null;
   authorized_account?: string | null;
   viewer_account?: string | null;
 };

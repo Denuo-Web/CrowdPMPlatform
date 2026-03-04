@@ -239,6 +239,7 @@ export function sessionForClient(session: PairingSession) {
     requester_ip: session.requesterIp,
     requester_asn: session.requesterAsn,
     poll_interval: session.pollInterval,
+    device_id: session.deviceId,
   };
 }
 

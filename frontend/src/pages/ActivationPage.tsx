@@ -11,6 +11,7 @@ import {
 
 type ActivationPageProps = {
   layout?: "standalone" | "dialog";
+  onActivationComplete?: () => void;
 };
 
 function getInitialCode(): string {
@@ -46,7 +47,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
-export function ActivationPage({ layout = "standalone" }: ActivationPageProps = {}) {
+export function ActivationPage({ layout = "standalone", onActivationComplete }: ActivationPageProps = {}) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -60,6 +61,7 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
   const [now, setNow] = useState(() => Date.now());
   const initialCodeRef = useRef(userCode.trim());
   const hasAutoLookupRef = useRef(false);
+  const hasCompletedRef = useRef(false);
 
   useEffect(() => {
     if (!user && !authDialogOpen) {
@@ -86,6 +88,7 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
       setError("Enter the user code displayed on your node.");
       return;
     }
+    hasCompletedRef.current = false;
     setIsLoading(true);
     setError(null);
     setStatusMessage(null);
@@ -121,7 +124,7 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
     try {
       const result = await authorizeActivationSession(session.user_code);
       setSession(result);
-      setStatusMessage("Device approved. The node can continue the pairing flow.");
+      setStatusMessage("Device approved. Waiting for the node to finish registration…");
     }
     catch (err) {
       setError(err instanceof Error ? err.message : "Unable to authorize this device.");
@@ -131,7 +134,54 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
     }
   }, [session]);
 
+  useEffect(() => {
+    if (!session) {
+      hasCompletedRef.current = false;
+      return;
+    }
+    if (session.status.toLowerCase() !== "redeemed" || hasCompletedRef.current) {
+      return;
+    }
+    hasCompletedRef.current = true;
+    setError(null);
+    setStatusMessage("Device registered. Updating your dashboard…");
+    onActivationComplete?.();
+  }, [onActivationComplete, session]);
+
+  useEffect(() => {
+    if (!user || !session || session.status.toLowerCase() !== "authorized") return;
+
+    const intervalMs = Math.max(2_000, Math.min(5_000, session.poll_interval * 1_000));
+    let cancelled = false;
+    let timeoutId: number | undefined;
+
+    const poll = async () => {
+      try {
+        const result = await fetchActivationSession(session.user_code);
+        if (cancelled) return;
+        setSession(result);
+        if (result.status.toLowerCase() === "authorized") {
+          timeoutId = window.setTimeout(poll, intervalMs);
+        }
+      }
+      catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Unable to refresh device registration status.");
+        timeoutId = window.setTimeout(poll, intervalMs);
+      }
+    };
+
+    timeoutId = window.setTimeout(poll, intervalMs);
+    return () => {
+      cancelled = true;
+      if (typeof timeoutId === "number") {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [session, user]);
+
   const isAuthorized = session?.status?.toLowerCase() === "authorized";
+  const isRedeemed = session?.status?.toLowerCase() === "redeemed";
   const deepLink = useMemo(() => {
     if (!session) return null;
     try {
@@ -259,9 +309,15 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
             ) : null}
 
             <Separator my="3" />
-            {isAuthorized ? (
+            {isRedeemed ? (
               <Callout.Root color="green">
-                <Callout.Text>This node is authorized for your account. Return to the device to continue registration.</Callout.Text>
+                <Callout.Text>
+                  Device {session.device_id ? <strong>{session.device_id}</strong> : "registration"} is complete. Closing this window.
+                </Callout.Text>
+              </Callout.Root>
+            ) : isAuthorized ? (
+              <Callout.Root color="green">
+                <Callout.Text>This node is authorized for your account. Waiting for the node to finish registration.</Callout.Text>
               </Callout.Root>
             ) : (
               <Flex direction="column" gap="3">

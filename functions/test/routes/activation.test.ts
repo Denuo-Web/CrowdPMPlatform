@@ -58,6 +58,7 @@ const session = {
 };
 
 beforeEach(() => {
+  process.env.ENABLE_RATE_LIMITS = "true";
   mocks.findSessionByUserCode.mockReset();
   mocks.authorizeSession.mockReset();
   mocks.sessionForClient.mockReset();
@@ -78,6 +79,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete process.env.ENABLE_RATE_LIMITS;
   vi.clearAllMocks();
 });
 
