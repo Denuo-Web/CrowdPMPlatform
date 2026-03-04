@@ -115,6 +115,7 @@ export default function App() {
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
+  const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
   const [shouldCollapseResourceLinks, setShouldCollapseResourceLinks] = useState(() => getShouldCollapseCoordinationLinks());
@@ -187,6 +188,12 @@ export default function App() {
     setActivationModalOpen(true);
   };
 
+  const handleActivationComplete = () => {
+    setActivationModalOpen(false);
+    setTab("dashboard");
+    setDashboardRefreshToken((prev) => prev + 1);
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const updateShouldCollapse = () => {
@@ -242,7 +249,11 @@ export default function App() {
   return (
     <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
       {import.meta.env.DEV ? <ThemePanel defaultOpen={false} /> : null}
-      <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
+      <ActivationModal
+        open={isActivationModalOpen}
+        onOpenChange={setActivationModalOpen}
+        onActivationComplete={handleActivationComplete}
+      />
       <main id="main-content">
         <Box
           style={{
@@ -478,7 +489,11 @@ export default function App() {
                 <Box style={{ padding: "var(--space-4)" }}>
                   <Suspense fallback={tabPanelFallback}>
                     {activeTab === "dashboard" && user ? (
-                      <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
+                      <UserDashboard
+                        key={`dashboard:${userScopedKey}`}
+                        onRequestActivation={openActivationModal}
+                        refreshToken={dashboardRefreshToken}
+                      />
                     ) : activeTab === "smoke" && user && canUseSmokeTests ? (
                       <SmokeTestLab
                         key={`smoke:${userScopedKey}`}
@@ -543,9 +558,10 @@ function isSmokeTestEmail(email: string): boolean {
 type ActivationModalProps = {
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  onActivationComplete: () => void;
 };
 
-function ActivationModal({ open, onOpenChange }: ActivationModalProps) {
+function ActivationModal({ open, onOpenChange, onActivationComplete }: ActivationModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content
@@ -558,7 +574,7 @@ function ActivationModal({ open, onOpenChange }: ActivationModalProps) {
         }}
       >
         <Suspense fallback={<Text size="2" color="gray">Loading activation...</Text>}>
-          <ActivationPage layout="dialog" />
+          <ActivationPage layout="dialog" onActivationComplete={onActivationComplete} />
         </Suspense>
       </Dialog.Content>
     </Dialog.Root>

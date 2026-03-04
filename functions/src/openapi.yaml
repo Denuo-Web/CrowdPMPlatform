@@ -866,6 +866,9 @@ components:
           nullable: true
         poll_interval:
           type: integer
+        device_id:
+          type: string
+          nullable: true
         authorized_account:
           type: string
           nullable: true
