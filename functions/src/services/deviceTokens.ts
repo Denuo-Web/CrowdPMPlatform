@@ -48,12 +48,42 @@ let verificationKeyPromise: Promise<VerificationKey> | null = null;
 
 class DeviceTokenKeyError extends Error {
   readonly statusCode = 500;
-  readonly code = "missing_device_token_private_key";
+  readonly code: "missing_device_token_private_key" | "invalid_device_token_private_key";
 
-  constructor(message: string) {
+  constructor(message: string, code: "missing_device_token_private_key" | "invalid_device_token_private_key" = "missing_device_token_private_key") {
     super(message);
+    this.code = code;
     Object.setPrototypeOf(this, DeviceTokenKeyError.prototype);
   }
+}
+
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith("\"") && value.endsWith("\""))
+    || (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+export function normalizeConfiguredPrivateKey(raw: string): string {
+  const unwrapped = stripWrappingQuotes(raw.trim());
+  const normalized = unwrapped
+    .replace(/\r\n/gu, "\n")
+    .replace(/\\r\\n/gu, "\n")
+    .replace(/\\n/gu, "\n")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.includes("-----BEGIN")) {
+    return normalized;
+  }
+
+  return `-----BEGIN PRIVATE KEY-----\n${normalized}\n-----END PRIVATE KEY-----`;
 }
 
 function allowEphemeralKeys(): boolean {
@@ -85,15 +115,21 @@ function loadOrCreateKeyMaterial(): KeyMaterial {
   if (cachedKeys) return cachedKeys;
   const configured = getDeviceTokenPrivateKey()?.trim();
   if (configured) {
-    const privatePem = configured.includes("-----BEGIN") ? configured : `-----BEGIN PRIVATE KEY-----\n${configured}\n-----END PRIVATE KEY-----`;
-    const privateKey = crypto.createPrivateKey(privatePem);
-    const publicKey = crypto.createPublicKey(privateKey);
-    cachedKeys = {
-      privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-      publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
-      generated: false,
-    };
-    return cachedKeys;
+    try {
+      const privatePem = normalizeConfiguredPrivateKey(configured);
+      const privateKey = crypto.createPrivateKey(privatePem);
+      const publicKey = crypto.createPublicKey(privateKey);
+      cachedKeys = {
+        privatePem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+        publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(),
+        generated: false,
+      };
+      return cachedKeys;
+    }
+    catch (err) {
+      const message = err instanceof Error ? err.message : "invalid device token private key";
+      throw new DeviceTokenKeyError(`DEVICE_TOKEN_PRIVATE_KEY is invalid: ${message}`, "invalid_device_token_private_key");
+    }
   }
   if (!allowEphemeralKeys()) {
     throw new DeviceTokenKeyError("DEVICE_TOKEN_PRIVATE_KEY is not configured; refusing to issue device tokens.");
