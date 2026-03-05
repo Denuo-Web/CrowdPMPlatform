@@ -106,11 +106,13 @@ const ActivationPage = lazy(async () => {
   const module = await import("./pages/ActivationPage");
   return { default: module.ActivationPage };
 });
+const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
 
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
-  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin">("map");
+  const initialPairingGuidePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/pairing-guide");
+  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin" | "pairing-info">(initialPairingGuidePath ? "pairing-info" : "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
@@ -126,7 +128,7 @@ export default function App() {
     return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
   })();
   const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
-  const activeTab = !isSignedIn && tab !== "map"
+  const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info"
     ? "map"
     : (tab === "smoke" && (!user || !canUseSmokeTests)
       ? "map"
@@ -171,13 +173,32 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const pathname = window.location.pathname.toLowerCase();
+    if (tab === "pairing-info") {
+      if (!pathname.startsWith("/pairing-guide")) {
+        window.history.pushState({}, "", "/pairing-guide");
+      }
+    }
+    else if (pathname.startsWith("/pairing-guide")) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const handlePopState = () => {
-      const next = window.location.pathname.toLowerCase().startsWith("/activate");
-      setActivationModalOpen(next);
+      const pathname = window.location.pathname.toLowerCase();
+      setActivationModalOpen(pathname.startsWith("/activate"));
+      if (pathname.startsWith("/pairing-guide")) {
+        setTab("pairing-info");
+      }
+      else if (tab === "pairing-info") {
+        setTab("map");
+      }
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [tab]);
 
   const openActivationModal = () => {
     if (!user) {
@@ -419,6 +440,9 @@ export default function App() {
                   <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
                     Map
                   </Button>
+                  <Button variant={activeTab === "pairing-info" ? "solid" : "soft"} onClick={() => setTab("pairing-info")}>
+                    Pairing Guide
+                  </Button>
                   {isSignedIn ? (
                     <>
                       <Button
@@ -487,6 +511,8 @@ export default function App() {
                       />
                     ) : activeTab === "admin" && user && canUseAdmin ? (
                       <AdminModerationPage key={`admin:${userScopedKey}`} />
+                    ) : activeTab === "pairing-info" ? (
+                      <PairingInfoPage onOpenActivation={openActivationModal} />
                     ) : activeTab === "map" ? (
                       <MapPage
                         key={`map:${userScopedKey}`}

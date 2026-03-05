@@ -168,6 +168,12 @@ export function ActivationPage({ layout = "standalone" }: ActivationPageProps = 
           Enter the <strong>user code</strong> displayed on your device to review its metadata and approve pairing.
           If your account has 2FA enabled, completing a fresh MFA challenge is required before authorizing.
         </Text>
+        <Text size="2" mt="2" as="p">
+          First time?{" "}
+          <a href="/pairing-guide" target="_blank" rel="noreferrer" style={{ color: "var(--accent-11)" }}>
+            Read the pairing guide →
+          </a>
+        </Text>
       </Box>
 
       <Card>
