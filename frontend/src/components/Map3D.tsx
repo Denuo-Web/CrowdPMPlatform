@@ -25,9 +25,13 @@ type Map3DProps = {
   autoCenterKey?: string;
   interleaved?: boolean;
   showAllMode?: boolean;
+  defaultCenter?: { lat: number; lng: number };
+  defaultZoom?: number;
 };
 
-const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
+// Pacific NW default
+const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
+const FALLBACK_ZOOM = 7;
 type PathDatum = { path: [number, number, number][] };
 
 function ensureRange(min: number, max: number): [number, number] {
@@ -148,6 +152,8 @@ export default function Map3D({
   autoCenterKey,
   interleaved = false,
   showAllMode = false,
+  defaultCenter,
+  defaultZoom,
 }: Map3DProps) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -235,14 +241,18 @@ export default function Map3D({
 
       const currentSeries = latestDataRef.current;
       const firstPoint = currentSeries[0];
-      const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : FALLBACK_CENTER;
+      const resolvedCenter = defaultCenter ?? FALLBACK_CENTER;
+      const resolvedZoom = defaultZoom ?? FALLBACK_ZOOM;
+      const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
+      const initialZoom = firstPoint ? 15 : resolvedZoom;
+      const initialTilt = firstPoint ? 67.5 : 0;
 
       const MapCtor = mapsLib.Map as typeof google.maps.Map;
       const map = new MapCtor(element, {
         mapId,
         center,
-        zoom: 15,
-        tilt: 67.5,
+        zoom: initialZoom,
+        tilt: initialTilt,
         heading: 0,
         gestureHandling: "greedy",
         disableDefaultUI: true,
@@ -287,7 +297,7 @@ export default function Map3D({
       });
       overlay.setMap(map);
 
-      if (typeof map.moveCamera === "function") {
+      if (currentSeries.length && typeof map.moveCamera === "function") {
         map.moveCamera({ tilt: 67.5, heading: 0, zoom: 18 });
       }
       overlayRef.current = overlay;
@@ -310,5 +320,5 @@ export default function Map3D({
     };
   }, [syncOverlay, interleaved, showAllMode]);
 
-  return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
+  return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 }

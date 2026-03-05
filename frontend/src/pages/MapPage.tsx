@@ -515,7 +515,6 @@ export default function MapPage({
   const selectedPoint = rows[selectedIndex];
   const selectedMomentMs = selectedPoint ? timestampToMillis(selectedPoint.timestamp) : null;
   const selectedMoment = selectedMomentMs !== null ? new Date(selectedMomentMs) : null;
-  const shouldRenderMap = Boolean(selectedBatchKey && rows.length);
   const allModeBatchCount = useMemo(() => (
     new Set(
       rows
@@ -524,130 +523,376 @@ export default function MapPage({
     ).size
   ), [rows]);
 
+  // Always render the map — use all-public mode by default when nothing is selected
+  const effectiveShowAllMode = isShowingAllPublic24h || !selectedBatchKey;
+
   return (
-    <div style={{ padding: 12 }}>
-      <h2>CrowdPM Map</h2>
-      {queryError ? (
-        <p style={{ color: "tomato", marginBottom: 8, fontSize: 14 }}>
-          {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
-        </p>
-      ) : null}
-      <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6 }}>
-        Measurement batch
-      </label>
-      <select
-        id="batch-select"
-        value={selectedBatchKey}
-        onChange={(e) => handleBatchSelect(e.target.value)}
-        disabled={isAuthLoading}
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* ---- Always-visible map ---- */}
+      <Suspense fallback={<div style={{ width: "100%", height: "100%", background: "var(--color-surface)" }} />}>
+        <Map3D
+          data={data}
+          selectedIndex={selectedIndex}
+          onSelectIndex={effectiveShowAllMode ? undefined : setIndexOverride}
+          onSelectPoint={handleMapPointSelect}
+          autoCenterKey={autoCenterKey}
+          interleaved={settings.interleavedRendering}
+          showAllMode={effectiveShowAllMode}
+        />
+      </Suspense>
+
+      {/* ---- Branded top bar ---- */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 4,
+          display: "flex",
+          flexDirection: "column",
+          pointerEvents: "none",
+        }}
       >
-        <option value="">{user ? "Select batch" : "Select a public batch"}</option>
-        <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public balls (last 24h)</option>
-        {visibleBatches.map((batch) => {
-          const key = encodeBatchKey(batch.deviceId, batch.batchId);
-          return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
-        })}
-      </select>
-      {!visibleBatches.length ? (
-        <p style={{ marginTop: 8, fontSize: 14 }}>
-          {user
-            ? "No batches available yet. Run a smoke test from the dashboard to generate one."
-            : "No public batches are available yet."}
-        </p>
-      ) : null}
-      {rows.length ? (
-        <div style={{ marginTop: 16 }}>
-          {isShowingAllPublic24h ? (
-            <div
-              style={{
-                marginTop: 8,
-                padding: 12,
-                borderRadius: 8,
-                background: "var(--color-panel)",
-                color: "var(--gray-12)",
-                border: "1px solid var(--gray-a6)",
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
-                Showing all public balls from the last 24 hours
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                Loaded <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> public batches.
-              </p>
-              <p style={{ margin: "4px 0 0" }}>
-                Click any ball on the map to switch to that batch&apos;s individual timeline view.
-              </p>
-            </div>
-          ) : (
-            <>
-              <label htmlFor="measurement-slider">Measurement timeline</label>
-              <input
-                id="measurement-slider"
-                type="range"
-                min={0}
-                max={rows.length - 1}
-                step={1}
-                value={selectedIndex}
-                onChange={(e) => setIndexOverride(Number(e.target.value))}
-                style={{ width: "100%", marginTop: 8 }}
-              />
-              {selectedPoint ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: "var(--color-panel)",
-                    color: "var(--gray-12)",
-                    border: "1px solid var(--gray-a6)",
-                  }}
-                >
-                  <p style={{ margin: 0, fontWeight: 600, color: "var(--gray-12)" }}>
-                    {selectedMoment ? selectedMoment.toLocaleString() : ""}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Value: <strong>{selectedPoint.value} {selectedPoint.unit || "ug/m3"}</strong>
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Location: {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    GPS accuracy: {selectedPoint.precision !== undefined && selectedPoint.precision !== null
-                      ? `+/-${selectedPoint.precision} m`
-                      : "not provided"}
-                  </p>
-                  <p style={{ margin: "4px 0 0" }}>
-                    Altitude: {selectedPoint.altitude !== undefined && selectedPoint.altitude !== null
-                      ? `${selectedPoint.altitude.toFixed(1)} m`
-                      : "not provided"}
-                  </p>
-                </div>
-              ) : null}
-            </>
-          )}
+        {/* Accent gradient line */}
+        <div
+          style={{
+            height: 3,
+            background: "linear-gradient(90deg, var(--accent-9), var(--accent-7), var(--accent-9))",
+            opacity: 0.9,
+          }}
+        />
+        {/* Logo bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "var(--space-3) var(--space-4)",
+            paddingLeft: 64,
+            background: "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)",
+          }}
+        >
+          {/* Cloud / air quality icon */}
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden>
+            <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
+            <path
+              d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
+              stroke="white"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
+            <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
+            <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
+          </svg>
+          <span
+            style={{
+              fontSize: "var(--font-size-4)",
+              fontWeight: 700,
+              color: "white",
+              letterSpacing: "-0.02em",
+              textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+            }}
+          >
+            CrowdPM
+          </span>
+          <span
+            style={{
+              fontSize: "var(--font-size-1)",
+              color: "rgba(255,255,255,0.6)",
+              fontWeight: 400,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            Air Quality Network
+          </span>
         </div>
-      ) : (
-        <p style={{ marginTop: 16 }}>
-          {isShowingAllPublic24h
-            ? (isLoadingBatch ? "Loading public measurements from the last 24 hours..." : "No public measurements were found in the last 24 hours.")
-            : selectedBatchKey
-            ? (isLoadingBatch ? "Loading measurements for the selected batch..." : "No measurements available for this batch.")
-            : "Select a batch with recent measurements to explore the timeline."}
-        </p>
-      )}
-      {shouldRenderMap ? (
-        <Suspense fallback={<p style={{ marginTop: 16 }}>Loading map...</p>}>
-          <Map3D
-            data={data}
-            selectedIndex={selectedIndex}
-            onSelectIndex={isShowingAllPublic24h ? undefined : setIndexOverride}
-            onSelectPoint={handleMapPointSelect}
-            autoCenterKey={autoCenterKey}
-            interleaved={settings.interleavedRendering}
-            showAllMode={isShowingAllPublic24h}
-          />
-        </Suspense>
+      </div>
+
+      {/* ---- Welcome hero overlay (when no batch selected and no data) ---- */}
+      {!selectedBatchKey && !rows.length ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 2,
+          }}
+        >
+          <div
+            style={{
+              pointerEvents: "auto",
+              background: "rgba(0, 0, 0, 0.7)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              borderRadius: "var(--radius-4)",
+              padding: "var(--space-6)",
+              maxWidth: 460,
+              textAlign: "center",
+              color: "var(--gray-12)",
+              boxShadow: "var(--shadow-5)",
+            }}
+          >
+            {/* Logo mark */}
+            <svg width="48" height="48" viewBox="0 0 28 28" fill="none" aria-hidden style={{ margin: "0 auto var(--space-3)" }}>
+              <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
+              <path
+                d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
+              <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
+              <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
+            </svg>
+            <h2 style={{ margin: 0, fontSize: "var(--font-size-6)", fontWeight: 700 }}>
+              Real-time community air quality, mapped in 3D
+            </h2>
+            <p style={{ marginTop: "var(--space-3)", color: "var(--gray-11)", fontSize: "var(--font-size-3)" }}>
+              Explore public sensor data below, or pair your own node to start contributing measurements.
+            </p>
+            <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", marginTop: "var(--space-4)", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => handleBatchSelect(SHOW_ALL_PUBLIC_24H_KEY)}
+                style={{
+                  padding: "var(--space-2) var(--space-4)",
+                  borderRadius: "var(--radius-3)",
+                  border: "none",
+                  background: "var(--accent-9)",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "var(--font-size-2)",
+                  cursor: "pointer",
+                }}
+              >
+                Browse public data
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open("/pairing-guide", "_blank")}
+                style={{
+                  padding: "var(--space-2) var(--space-4)",
+                  borderRadius: "var(--radius-3)",
+                  border: "1px solid var(--gray-a7)",
+                  background: "transparent",
+                  color: "var(--gray-12)",
+                  fontWeight: 500,
+                  fontSize: "var(--font-size-2)",
+                  cursor: "pointer",
+                }}
+              >
+                Pair a node
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
+
+      {/* ---- Floating controls panel (top-right) ---- */}
+      <div
+        style={{
+          position: "absolute",
+          top: "var(--space-4)",
+          right: "var(--space-4)",
+          zIndex: 3,
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-3)",
+          maxWidth: 360,
+          width: "calc(100% - var(--space-8))",
+        }}
+      >
+        {/* Error banner */}
+        {queryError ? (
+          <div
+            style={{
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-3)",
+              background: "rgba(220, 38, 38, 0.85)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              color: "white",
+              fontSize: "var(--font-size-2)",
+            }}
+          >
+            {queryError instanceof Error ? queryError.message : "Unable to load batches. Please retry."}
+          </div>
+        ) : null}
+
+        {/* Batch selector */}
+        <div
+          style={{
+            padding: "var(--space-4)",
+            borderRadius: "var(--radius-3)",
+            background: "rgba(0, 0, 0, 0.7)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "var(--shadow-3)",
+          }}
+        >
+          <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+            Measurement batch
+          </label>
+          <select
+            id="batch-select"
+            value={selectedBatchKey}
+            onChange={(e) => handleBatchSelect(e.target.value)}
+            disabled={isAuthLoading}
+            style={{
+              width: "100%",
+              padding: "var(--space-2) var(--space-4) var(--space-2) var(--space-2)",
+              borderRadius: "var(--radius-2)",
+              border: "1px solid var(--gray-a6)",
+              background: "var(--color-surface)",
+              color: "var(--gray-12)",
+              fontSize: "var(--font-size-2)",
+              appearance: "none",
+              WebkitAppearance: "none",
+              backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239BA1A6' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E\")",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right var(--space-2) center",
+              backgroundSize: "12px",
+            }}
+          >
+            <option value="">{user ? "Select batch" : "Select a public batch"}</option>
+            <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public (last 24h)</option>
+            {visibleBatches.map((batch) => {
+              const key = encodeBatchKey(batch.deviceId, batch.batchId);
+              return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
+            })}
+          </select>
+        </div>
+
+        {/* Detail / timeline panel */}
+        {rows.length ? (
+          <div
+            style={{
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-3)",
+              background: "rgba(0, 0, 0, 0.7)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              boxShadow: "var(--shadow-3)",
+              color: "var(--gray-12)",
+            }}
+          >
+            {isShowingAllPublic24h ? (
+              <>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
+                  All public data — last 24 hours
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                  <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> batches.
+                  Click any point to drill in.
+                </p>
+              </>
+            ) : (
+              <>
+                <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                  Timeline
+                </label>
+                <input
+                  id="measurement-slider"
+                  type="range"
+                  min={0}
+                  max={rows.length - 1}
+                  step={1}
+                  value={selectedIndex}
+                  onChange={(e) => setIndexOverride(Number(e.target.value))}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+                {selectedPoint ? (
+                  <div style={{ marginTop: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
+                      {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                      PM2.5: <strong>{selectedPoint.value} {selectedPoint.unit || "µg/m³"}</strong>
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                      {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
+                      {selectedPoint.precision != null ? ` · ±${selectedPoint.precision}m` : ""}
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : selectedBatchKey && isLoadingBatch ? (
+          <div
+            style={{
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-3)",
+              background: "rgba(0, 0, 0, 0.7)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              color: "var(--gray-11)",
+              fontSize: "var(--font-size-2)",
+            }}
+          >
+            Loading measurements…
+          </div>
+        ) : null}
+      </div>
+
+      {/* ---- Stats strip (bottom-left) ---- */}
+      {/* ---- Stats strip (bottom-left) ---- */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "var(--space-4)",
+          left: "var(--space-4)",
+          zIndex: 3,
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-3)",
+          padding: "var(--space-2) var(--space-4)",
+          borderRadius: "var(--radius-3)",
+          background: "rgba(0, 0, 0, 0.6)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          color: "var(--gray-11)",
+          fontSize: "var(--font-size-1)",
+        }}
+      >
+        {/* Live dot indicator */}
+        <span
+          style={{
+            display: "inline-block",
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            backgroundColor: "var(--accent-9)",
+            boxShadow: "0 0 6px var(--accent-9)",
+            animation: rows.length > 0 ? "pulse-dot 2s ease-in-out infinite" : "none",
+          }}
+        />
+        <span>
+          {rows.length > 0
+            ? isShowingAllPublic24h
+              ? `${allModeBatchCount} active batches · ${rows.length} measurements`
+              : `${rows.length} measurements in batch`
+            : "No data loaded"}
+        </span>
+      </div>
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.4); }
+        }
+      `}</style>
     </div>
   );
 }

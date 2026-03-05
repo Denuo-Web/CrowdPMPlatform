@@ -249,13 +249,15 @@ export default function App() {
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
             <IconButton
-              variant="soft"
+              variant="solid"
               size="3"
               aria-label="Navigation menu"
               style={{
                 backdropFilter: "blur(12px)",
-                backgroundColor: "var(--color-panel-translucent)",
-                boxShadow: "var(--shadow-3)",
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                color: "white",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+                border: "1px solid rgba(255,255,255,0.12)",
               }}
             >
               <HamburgerMenuIcon width={18} height={18} />
@@ -322,81 +324,89 @@ export default function App() {
         </DropdownMenu.Root>
       </Box>
 
-      <main id="main-content">
-        <Box
-          style={{
-            minHeight: "100vh",
-            padding: "var(--space-6)",
-            backgroundColor: "var(--color-surface)",
-            backgroundImage:
-              "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
-          }}
-        >
-          <Flex
-            direction="column"
-            gap="6"
-            align="center"
-            style={{ maxWidth: "1100px", margin: "0 auto" }}
+      <main id="main-content" style={{ minHeight: "100vh" }}>
+        {activeTab === "map" ? (
+          /* Full-bleed map — fills the entire viewport */
+          <Box style={{ width: "100%", height: "100vh" }}>
+            <Suspense fallback={tabPanelFallback}>
+              <MapPage
+                key={`map:${userScopedKey}`}
+                pendingSmokeResult={user ? pendingSmokeResult : null}
+                onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
+                pendingCleanupDetail={user ? pendingSmokeCleanup : null}
+                onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
+              />
+            </Suspense>
+          </Box>
+        ) : (
+          /* All other tabs keep the existing padded Card layout */
+          <Box
+            style={{
+              minHeight: "100vh",
+              padding: "var(--space-6)",
+              backgroundColor: "var(--color-surface)",
+              backgroundImage:
+                "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
+            }}
           >
+            <Flex
+              direction="column"
+              gap="6"
+              align="center"
+              style={{ maxWidth: "1100px", margin: "0 auto" }}
+            >
               <Card size="4" style={{ width: "100%" }}>
-              <Heading as="h2" size="6" trim="start">
-                CrowdPM Platform
-              </Heading>
-              <Text size="2" color="gray" mt="2">
-                Explore the map or adjust ingest settings across your network.
-              </Text>
+                <Heading as="h2" size="6" trim="start">
+                  CrowdPM Platform
+                </Heading>
+                <Text size="2" color="gray" mt="2">
+                  Explore the map or adjust ingest settings across your network.
+                </Text>
 
-              <Box
-                mt="4"
-                style={{
-                  borderRadius: "var(--radius-4)",
-                  background: "var(--color-panel-solid)",
-                  boxShadow: "var(--shadow-3)",
-                }}
-              >
-                <Box style={{ padding: "var(--space-4)" }}>
-                  <Suspense fallback={tabPanelFallback}>
-                    {activeTab === "dashboard" && user ? (
-                      <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
-                    ) : activeTab === "smoke" && user && canUseSmokeTests ? (
-                      <SmokeTestLab
-                        key={`smoke:${userScopedKey}`}
-                        onSmokeTestComplete={handleSmokeTestComplete}
-                        onSmokeTestCleared={handleSmokeTestCleanup}
-                      />
-                    ) : activeTab === "admin" && user && canUseAdmin ? (
-                      <AdminModerationPage key={`admin:${userScopedKey}`} />
-                    ) : activeTab === "pairing-info" ? (
-                      <PairingInfoPage onOpenActivation={openActivationModal} />
-                    ) : activeTab === "map" ? (
-                      <MapPage
-                        key={`map:${userScopedKey}`}
-                        pendingSmokeResult={user ? pendingSmokeResult : null}
-                        onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
-                        pendingCleanupDetail={user ? pendingSmokeCleanup : null}
-                        onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
-                      />
-                    ) : (
-                      <Flex
-                        direction="column"
-                        align="center"
-                        justify="center"
-                        gap="3"
-                        style={{ padding: "var(--space-8)", textAlign: "center" }}
-                      >
-                        <Heading size="5">Sign in to access CrowdPM</Heading>
-                        <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                          Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
-                          resources.
-                        </Text>
-                      </Flex>
-                    )}
-                  </Suspense>
+                <Box
+                  mt="4"
+                  style={{
+                    borderRadius: "var(--radius-4)",
+                    background: "var(--color-panel-solid)",
+                    boxShadow: "var(--shadow-3)",
+                  }}
+                >
+                  <Box style={{ padding: "var(--space-4)" }}>
+                    <Suspense fallback={tabPanelFallback}>
+                      {activeTab === "dashboard" && user ? (
+                        <UserDashboard key={`dashboard:${userScopedKey}`} onRequestActivation={openActivationModal} />
+                      ) : activeTab === "smoke" && user && canUseSmokeTests ? (
+                        <SmokeTestLab
+                          key={`smoke:${userScopedKey}`}
+                          onSmokeTestComplete={handleSmokeTestComplete}
+                          onSmokeTestCleared={handleSmokeTestCleanup}
+                        />
+                      ) : activeTab === "admin" && user && canUseAdmin ? (
+                        <AdminModerationPage key={`admin:${userScopedKey}`} />
+                      ) : activeTab === "pairing-info" ? (
+                        <PairingInfoPage onOpenActivation={openActivationModal} />
+                      ) : (
+                        <Flex
+                          direction="column"
+                          align="center"
+                          justify="center"
+                          gap="3"
+                          style={{ padding: "var(--space-8)", textAlign: "center" }}
+                        >
+                          <Heading size="5">Sign in to access CrowdPM</Heading>
+                          <Text size="2" color="gray" style={{ maxWidth: 360 }}>
+                            Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
+                            resources.
+                          </Text>
+                        </Flex>
+                      )}
+                    </Suspense>
+                  </Box>
                 </Box>
-              </Box>
               </Card>
-          </Flex>
-        </Box>
+            </Flex>
+          </Box>
+        )}
       </main>
       <AuthDialog
         open={isAuthDialogOpen}
