@@ -7,6 +7,7 @@ import {
   ThemePanel,
   Box,
   Card,
+  DropdownMenu,
   Flex,
   Heading,
   Text,
@@ -17,7 +18,7 @@ import {
   IconButton,
   Dialog,
 } from "@radix-ui/themes";
-import { ChevronDownIcon, GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
+import { ChevronDownIcon, GitHubLogoIcon, HamburgerMenuIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
 const rawSmokeTestEmails = import.meta.env.VITE_SMOKE_TEST_USER_EMAILS
   ?? import.meta.env.VITE_SMOKE_TEST_USER_EMAIL
@@ -264,6 +265,82 @@ export default function App() {
     <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
       {import.meta.env.DEV ? <ThemePanel defaultOpen={false} /> : null}
       <ActivationModal open={isActivationModalOpen} onOpenChange={setActivationModalOpen} />
+
+      {/* ---- Hamburger navigation menu ---- */}
+      <Box style={{ position: "fixed", top: "var(--space-4)", left: "var(--space-4)", zIndex: 100 }}>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <IconButton
+              variant="soft"
+              size="3"
+              aria-label="Navigation menu"
+              style={{
+                backdropFilter: "blur(12px)",
+                backgroundColor: "var(--color-panel-translucent)",
+                boxShadow: "var(--shadow-3)",
+              }}
+            >
+              <HamburgerMenuIcon width={18} height={18} />
+            </IconButton>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content sideOffset={8} align="start">
+            <DropdownMenu.Item
+              onSelect={() => setTab("map")}
+              style={activeTab === "map" ? { fontWeight: 600 } : undefined}
+            >
+              Map
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("pairing-info")}
+              style={activeTab === "pairing-info" ? { fontWeight: 600 } : undefined}
+            >
+              Pairing Guide
+            </DropdownMenu.Item>
+            {isSignedIn ? (
+              <>
+                <DropdownMenu.Item
+                  onSelect={() => handleProtectedTabClick("dashboard")}
+                  style={activeTab === "dashboard" ? { fontWeight: 600 } : undefined}
+                >
+                  User Dashboard
+                </DropdownMenu.Item>
+                {canUseSmokeTests ? (
+                  <DropdownMenu.Item
+                    onSelect={() => handleProtectedTabClick("smoke")}
+                    style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
+                  >
+                    Smoke Test
+                  </DropdownMenu.Item>
+                ) : null}
+                {canUseAdmin ? (
+                  <DropdownMenu.Item
+                    onSelect={() => handleProtectedTabClick("admin")}
+                    style={activeTab === "admin" ? { fontWeight: 600 } : undefined}
+                  >
+                    Admin
+                  </DropdownMenu.Item>
+                ) : null}
+              </>
+            ) : null}
+            <DropdownMenu.Separator />
+            {user ? (
+              <DropdownMenu.Item color="red" onSelect={handleSignOut}>
+                Sign out
+              </DropdownMenu.Item>
+            ) : (
+              <>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("login")}>
+                  Log in
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("signup")}>
+                  Sign up
+                </DropdownMenu.Item>
+              </>
+            )}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </Box>
+
       <main id="main-content">
         <Box
           style={{
@@ -429,67 +506,6 @@ export default function App() {
               <Text size="2" color="gray" mt="2">
                 Explore the map or adjust ingest settings across your network.
               </Text>
-              <Flex
-                direction={{ initial: "column", sm: "row" }}
-                align={{ initial: "stretch", sm: "center" }}
-                justify="between"
-                gap="3"
-                mt="4"
-              >
-                <Flex gap="3">
-                  <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
-                    Map
-                  </Button>
-                  <Button variant={activeTab === "pairing-info" ? "solid" : "soft"} onClick={() => setTab("pairing-info")}>
-                    Pairing Guide
-                  </Button>
-                  {isSignedIn ? (
-                    <>
-                      <Button
-                        variant={activeTab === "dashboard" ? "solid" : "soft"}
-                        onClick={() => handleProtectedTabClick("dashboard")}
-                        disabled={isLoading}
-                      >
-                        User Dashboard
-                      </Button>
-                      {canUseSmokeTests ? (
-                        <Button
-                          variant={activeTab === "smoke" ? "solid" : "soft"}
-                          onClick={() => handleProtectedTabClick("smoke")}
-                          disabled={isLoading}
-                        >
-                          Smoke Test
-                        </Button>
-                      ) : null}
-                      {canUseAdmin ? (
-                        <Button
-                          variant={activeTab === "admin" ? "solid" : "soft"}
-                          onClick={() => handleProtectedTabClick("admin")}
-                          disabled={isLoading}
-                        >
-                          Admin
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </Flex>
-                <Flex gap="2" justify="end">
-                  {user ? (
-                    <Button variant="soft" onClick={handleSignOut}>
-                      Sign out
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="soft" onClick={() => openAuthDialog("login")} disabled={isLoading}>
-                        Log in
-                      </Button>
-                      <Button onClick={() => openAuthDialog("signup")} disabled={isLoading}>
-                        Sign up
-                      </Button>
-                    </>
-                  )}
-                </Flex>
-              </Flex>
 
               <Box
                 mt="4"
