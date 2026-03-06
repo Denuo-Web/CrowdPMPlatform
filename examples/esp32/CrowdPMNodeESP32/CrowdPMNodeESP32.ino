@@ -158,8 +158,7 @@ CrowdPM::Config makeConfig() {
   config.version = "0.0.1";
   config.forceRepair = false;
   config.autoRepairOnRevocation = true;
-  config.formatQueueFsOnMountFailure = true;
-  config.maxQueuedPayloads = 256;
+  config.maxQueuedPayloads = 16;
   config.maxAccessTokenAgeMs = 120000UL;
   return config;
 }

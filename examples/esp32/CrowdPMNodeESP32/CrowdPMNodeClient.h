@@ -41,7 +41,7 @@ struct Config {
   uint16_t httpTimeoutMs = 15000;
   uint16_t httpConnectTimeoutMs = 15000;
   uint16_t tlsHandshakeTimeoutSeconds = 15;
-  size_t maxQueuedPayloads = 128;
+  size_t maxQueuedPayloads = 16;
 };
 
 class NodeClient {
@@ -149,9 +149,15 @@ private:
   void scheduleDelay(unsigned long delayMs);
   bool readyForAction() const;
 
+  size_t queueCapacity() const;
+  uint32_t queueHead();
+  uint32_t queueCountValue();
+  bool writeQueueState(uint32_t head, uint32_t count);
+  bool dropOldestQueuedPayload(String* droppedKey = nullptr);
+  String queueSlotKey(uint32_t slot) const;
   String nextQueueFilePath();
-  String oldestQueueFile() const;
-  bool readFile(const String& path, String& contents) const;
+  String oldestQueueFile();
+  bool readFile(const String& path, String& contents);
   bool writeFile(const String& path, const String& contents);
   bool removeFile(const String& path);
   void trimQueueIfNeeded();
