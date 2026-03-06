@@ -11,7 +11,7 @@ extern const char GtsRootR1[] PROGMEM;
 struct Point {
   const char* pollutant = "pm25";
   float value = 0.0f;
-  const char* unit = "ug/m3";
+  const char* unit = "\xC2\xB5g/m\xC2\xB3";
   double lat = 0.0;
   double lon = 0.0;
   String timestamp;
