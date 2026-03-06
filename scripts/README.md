@@ -87,3 +87,14 @@ pnpm device:simulate:osu -- --count 20 --minutes 36
 
 - Keep the private key file out of git.
 - If you see HTML responses, your `--api` is pointing at Hosting; switch to the Functions base.
+
+## Live Deployment Helper
+
+If you already registered a live device with `scripts/live-device-registration.sh`, send one batch with:
+
+```bash
+scripts/live-device-send-batch.sh [batch.json]
+```
+
+- Reuses `.crowdpm-live-device-key.json` and `.crowdpm-live-device-id` by default.
+- Accepts a payload file, `CROWDPM_BATCH_JSON`, stdin (`-`), or falls back to a one-point sample batch.
