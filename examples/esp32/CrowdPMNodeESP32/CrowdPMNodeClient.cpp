@@ -102,7 +102,11 @@ bool NodeClient::begin() {
   if (!fsReady_) {
     fsReady_ = SPIFFS.begin(config_.formatQueueFsOnMountFailure);
     if (!fsReady_) {
-      log("SPIFFS mount failed. Offline queueing is unavailable.");
+      if (config_.formatQueueFsOnMountFailure) {
+        log("SPIFFS mount failed. Check that your Arduino IDE partition scheme includes a SPIFFS partition.");
+      } else {
+        log("SPIFFS mount failed. Select an Arduino IDE partition scheme with SPIFFS or set formatQueueFsOnMountFailure=true.");
+      }
       return false;
     }
   }
