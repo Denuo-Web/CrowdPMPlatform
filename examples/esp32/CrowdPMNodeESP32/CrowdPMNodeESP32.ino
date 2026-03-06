@@ -169,7 +169,7 @@ CrowdPM::Point buildSamplePoint() {
   CrowdPM::Point point;
   point.pollutant = "pm25";
   point.value = 10.0f + static_cast<float>((millis() / 1000UL) % 20UL) * 0.35f;
-  point.unit = "ug/m3";
+  point.unit = "\xC2\xB5g/m\xC2\xB3";
   point.lat = 45.5231;
   point.lon = -122.6765;
   point.precision = 6;

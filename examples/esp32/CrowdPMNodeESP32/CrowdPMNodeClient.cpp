@@ -18,6 +18,7 @@ const char* kDefaultActivationUrl = "https://crowdpmplatform.web.app/activate";
 const char* kDefaultIngestUrl = "https://us-central1-crowdpmplatform.cloudfunctions.net/ingestGateway";
 const char* kDefaultModel = "esp32-live-node";
 const char* kDefaultVersion = "0.0.1";
+const char* kDefaultPm25Unit = "\xC2\xB5g/m\xC2\xB3";
 
 const char* kPrefPrivateKey = "sk";
 const char* kPrefPublicKey = "pk";
@@ -169,7 +170,7 @@ bool NodeClient::queuePoint(const Point& point) {
   JsonObject entry = points.add<JsonObject>();
   entry["pollutant"] = point.pollutant ? point.pollutant : "pm25";
   entry["value"] = point.value;
-  entry["unit"] = point.unit ? point.unit : "ug/m3";
+  entry["unit"] = point.unit ? point.unit : kDefaultPm25Unit;
   entry["lat"] = point.lat;
   entry["lon"] = point.lon;
   entry["timestamp"] = point.timestamp.length() > 0 ? point.timestamp : iso8601UtcNow();
@@ -862,6 +863,10 @@ bool NodeClient::normalizePayloadForCurrentDevice(const String& rawPayload, Stri
   JsonArray points = document["points"].as<JsonArray>();
   for (JsonObject point : points) {
     point["device_id"] = deviceId_;
+    if (!point["pollutant"].is<const char*>()) {
+      point["pollutant"] = "pm25";
+    }
+    point["unit"] = kDefaultPm25Unit;
     if (!point["timestamp"].is<const char*>()) {
       point["timestamp"] = iso8601UtcNow();
     }
