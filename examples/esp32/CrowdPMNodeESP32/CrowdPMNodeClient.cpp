@@ -3,8 +3,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <FS.h>
-#include <SPIFFS.h>
 #include <Crypto.h>
 #include <Ed25519.h>
 #include <esp_system.h>
@@ -24,7 +22,8 @@ const char* kDefaultVersion = "0.0.1";
 const char* kPrefPrivateKey = "sk";
 const char* kPrefPublicKey = "pk";
 const char* kPrefDeviceId = "device_id";
-const char* kPrefQueueSeq = "qseq";
+const char* kPrefQueueHead = "qhead";
+const char* kPrefQueueCount = "qcount";
 
 String toLowerCopy(String value) {
   value.toLowerCase();
@@ -100,15 +99,7 @@ bool NodeClient::begin() {
   }
 
   if (!fsReady_) {
-    fsReady_ = SPIFFS.begin(config_.formatQueueFsOnMountFailure);
-    if (!fsReady_) {
-      if (config_.formatQueueFsOnMountFailure) {
-        log("SPIFFS mount failed. Check that your Arduino IDE partition scheme includes a SPIFFS partition.");
-      } else {
-        log("SPIFFS mount failed. Select an Arduino IDE partition scheme with SPIFFS or set formatQueueFsOnMountFailure=true.");
-      }
-      return false;
-    }
+    fsReady_ = true;
   }
 
   startTimeSyncIfNeeded();
@@ -195,7 +186,7 @@ bool NodeClient::queuePayload(const JsonDocument& document) {
 
 bool NodeClient::queuePayloadJson(const String& payloadJson) {
   if (!fsReady_) {
-    log("Queue filesystem is not ready.");
+    log("Queue storage is not ready.");
     return false;
   }
   if (config_.maxQueuedPayloads == 0) {
@@ -219,9 +210,27 @@ bool NodeClient::queuePayloadJson(const String& payloadJson) {
 
   trimQueueIfNeeded();
 
-  const String path = nextQueueFilePath();
-  if (!writeFile(path, payloadJson)) {
-    log("Failed to persist queued payload to SPIFFS.");
+  String path = nextQueueFilePath();
+  while (!writeFile(path, payloadJson)) {
+    if (queuedPayloadCount() == 0) {
+      log("Failed to persist queued payload to Preferences.");
+      return false;
+    }
+
+    String droppedKey;
+    if (!dropOldestQueuedPayload(&droppedKey)) {
+      log("Failed to free queue storage in Preferences.");
+      return false;
+    }
+    log("Queue storage full; dropping oldest payload " + droppedKey);
+    path = nextQueueFilePath();
+  }
+
+  const uint32_t count = queueCountValue();
+  const uint32_t head = queueHead();
+  if (!writeQueueState(head, count + 1)) {
+    removeFile(path);
+    log("Failed to update queue state in Preferences.");
     return false;
   }
 
@@ -232,15 +241,10 @@ bool NodeClient::queuePayloadJson(const String& payloadJson) {
 
 void NodeClient::clearQueue() {
   if (!fsReady_) return;
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-  while (file) {
-    const String name = String(file.name());
-    file = root.openNextFile();
-    if (name.startsWith(config_.queueFilePrefix)) {
-      SPIFFS.remove(name);
-    }
+  for (uint32_t slot = 0; slot < queueCapacity(); ++slot) {
+    removeFile(queueSlotKey(slot));
   }
+  writeQueueState(0, 0);
 }
 
 void NodeClient::clearProvisioning(bool clearKeys) {
@@ -280,17 +284,7 @@ const String& NodeClient::pendingActivationUrl() const {
 }
 
 size_t NodeClient::queuedPayloadCount() {
-  if (!fsReady_) return 0;
-  size_t count = 0;
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-  while (file) {
-    if (String(file.name()).startsWith(config_.queueFilePrefix)) {
-      ++count;
-    }
-    file = root.openNextFile();
-  }
-  return count;
+  return fsReady_ ? queueCountValue() : 0;
 }
 
 void NodeClient::setLogCallback(LogCallback callback) {
@@ -615,7 +609,7 @@ bool NodeClient::flushOneQueuedPayload() {
   String rawPayload;
   if (!readFile(queuePath, rawPayload)) {
     log("Failed to read queued payload; dropping " + queuePath);
-    removeFile(queuePath);
+    dropOldestQueuedPayload();
     nextActionAtMs_ = 0;
     return false;
   }
@@ -623,7 +617,7 @@ bool NodeClient::flushOneQueuedPayload() {
   String normalizedPayload;
   if (!normalizePayloadForCurrentDevice(rawPayload, normalizedPayload)) {
     log("Queued payload is invalid; dropping " + queuePath);
-    removeFile(queuePath);
+    dropOldestQueuedPayload();
     nextActionAtMs_ = 0;
     return false;
   }
@@ -633,10 +627,11 @@ bool NodeClient::flushOneQueuedPayload() {
     return false;
   }
 
-  if (!removeFile(queuePath)) {
-    log("Queued payload sent but file removal failed for " + queuePath);
+  String removedKey;
+  if (!dropOldestQueuedPayload(&removedKey)) {
+    log("Queued payload sent but queue state removal failed for " + queuePath);
   } else {
-    log("Queued payload delivered and removed: " + queuePath);
+    log("Queued payload delivered and removed: " + removedKey);
   }
 
   resetRetryState();
@@ -752,62 +747,105 @@ bool NodeClient::readyForAction() const {
   return nextActionAtMs_ == 0 || static_cast<long>(millis() - nextActionAtMs_) >= 0;
 }
 
-String NodeClient::nextQueueFilePath() {
-  const uint32_t nextValue = prefs_.getULong(kPrefQueueSeq, 0) + 1;
-  prefs_.putULong(kPrefQueueSeq, nextValue);
+size_t NodeClient::queueCapacity() const {
+  return config_.maxQueuedPayloads;
+}
 
-  char buffer[96];
-  snprintf(buffer, sizeof(buffer), "%s%08lu.json", config_.queueFilePrefix, static_cast<unsigned long>(nextValue));
+uint32_t NodeClient::queueHead() {
+  const size_t capacity = queueCapacity();
+  if (capacity == 0) return 0;
+  return prefs_.getULong(kPrefQueueHead, 0) % capacity;
+}
+
+uint32_t NodeClient::queueCountValue() {
+  const size_t capacity = queueCapacity();
+  const uint32_t count = prefs_.getULong(kPrefQueueCount, 0);
+  if (capacity == 0) return 0;
+  return count > capacity ? capacity : count;
+}
+
+bool NodeClient::writeQueueState(uint32_t head, uint32_t count) {
+  const size_t capacity = queueCapacity();
+  const uint32_t normalizedHead = capacity == 0 ? 0 : head % capacity;
+  if (prefs_.putULong(kPrefQueueHead, normalizedHead) == 0) {
+    return false;
+  }
+  return prefs_.putULong(kPrefQueueCount, count) > 0;
+}
+
+bool NodeClient::dropOldestQueuedPayload(String* droppedKey) {
+  const uint32_t count = queueCountValue();
+  if (count == 0) {
+    if (droppedKey) {
+      droppedKey->remove(0);
+    }
+    return false;
+  }
+
+  const uint32_t head = queueHead();
+  const String key = queueSlotKey(head);
+  removeFile(key);
+
+  const uint32_t nextCount = count - 1;
+  const uint32_t nextHead = nextCount == 0 ? 0 : (head + 1) % queueCapacity();
+  if (!writeQueueState(nextHead, nextCount)) {
+    return false;
+  }
+
+  if (droppedKey) {
+    *droppedKey = key;
+  }
+  return true;
+}
+
+String NodeClient::queueSlotKey(uint32_t slot) const {
+  char buffer[16];
+  snprintf(buffer, sizeof(buffer), "q%lu", static_cast<unsigned long>(slot));
   return String(buffer);
 }
 
-String NodeClient::oldestQueueFile() const {
-  if (!fsReady_) return String();
-
-  String oldest;
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-  while (file) {
-    const String name = String(file.name());
-    if (name.startsWith(config_.queueFilePrefix) && (oldest.length() == 0 || name < oldest)) {
-      oldest = name;
-    }
-    file = root.openNextFile();
+String NodeClient::nextQueueFilePath() {
+  const size_t capacity = queueCapacity();
+  if (capacity == 0) {
+    return String();
   }
-  return oldest;
+  const uint32_t head = queueHead();
+  const uint32_t count = queueCountValue();
+  const uint32_t slot = count == 0 ? head : (head + count) % capacity;
+  return queueSlotKey(slot);
 }
 
-bool NodeClient::readFile(const String& path, String& contents) const {
-  File file = SPIFFS.open(path, FILE_READ);
-  if (!file) {
+String NodeClient::oldestQueueFile() {
+  if (!fsReady_) return String();
+  return queueCountValue() == 0 ? String() : queueSlotKey(queueHead());
+}
+
+bool NodeClient::readFile(const String& path, String& contents) {
+  if (!prefs_.isKey(path.c_str())) {
     return false;
   }
-  contents = file.readString();
+  contents = prefs_.getString(path.c_str(), "");
   return true;
 }
 
 bool NodeClient::writeFile(const String& path, const String& contents) {
-  File file = SPIFFS.open(path, FILE_WRITE);
-  if (!file) {
+  if (path.length() == 0) {
     return false;
   }
-  const size_t written = file.print(contents);
-  file.close();
-  return written == contents.length();
+  return prefs_.putString(path.c_str(), contents) == contents.length();
 }
 
 bool NodeClient::removeFile(const String& path) {
-  return SPIFFS.remove(path);
+  return prefs_.remove(path.c_str()) || !prefs_.isKey(path.c_str());
 }
 
 void NodeClient::trimQueueIfNeeded() {
   while (queuedPayloadCount() >= config_.maxQueuedPayloads) {
-    const String oldest = oldestQueueFile();
-    if (oldest.length() == 0) {
+    String droppedKey;
+    if (!dropOldestQueuedPayload(&droppedKey)) {
       return;
     }
-    log("Queue full; dropping oldest payload " + oldest);
-    removeFile(oldest);
+    log("Queue full; dropping oldest payload " + droppedKey);
   }
 }
 
