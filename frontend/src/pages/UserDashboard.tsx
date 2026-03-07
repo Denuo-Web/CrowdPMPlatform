@@ -306,9 +306,14 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
           <Text color="gray">
             Plug in your node, wait for the pairing code to appear, and open the activation UI to approve the request.
           </Text>
-          <Button onClick={handleOpenActivation} style={{ alignSelf: "start" }}>
-            Open activation UI
-          </Button>
+          <Flex gap="3" align="center" wrap="wrap">
+            <Button onClick={handleOpenActivation}>
+              Open activation UI
+            </Button>
+            <Button variant="ghost" asChild>
+              <a href="/pairing-guide" target="_blank" rel="noreferrer">How does pairing work?</a>
+            </Button>
+          </Flex>
         </Flex>
       </Card>
 

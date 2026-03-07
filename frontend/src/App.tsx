@@ -6,18 +6,17 @@ import {
   Theme,
   ThemePanel,
   Box,
-  Card,
+  DropdownMenu,
   Flex,
   Heading,
   Text,
   Avatar,
   Separator,
-  Button,
   Link,
   IconButton,
   Dialog,
 } from "@radix-ui/themes";
-import { ChevronDownIcon, GitHubLogoIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
+import { GitHubLogoIcon, HamburgerMenuIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
 const rawSmokeTestEmails = import.meta.env.VITE_SMOKE_TEST_USER_EMAILS
   ?? import.meta.env.VITE_SMOKE_TEST_USER_EMAIL
@@ -94,10 +93,6 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
   },
 ];
 
-const COORDINATION_LINKS_COLLAPSE_WIDTH = 1024;
-const COORDINATION_LINKS_CONTENT_ID = "coordination-links-content";
-const getShouldCollapseCoordinationLinks = () =>
-  typeof window !== "undefined" ? window.innerWidth < COORDINATION_LINKS_COLLAPSE_WIDTH : false;
 const MapPage = lazy(() => import("./pages/MapPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
@@ -106,20 +101,25 @@ const ActivationPage = lazy(async () => {
   const module = await import("./pages/ActivationPage");
   return { default: module.ActivationPage };
 });
+const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
+const NodePage = lazy(() => import("./pages/NodePage"));
 
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
-  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin">("map");
+  const initialPairingGuidePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/pairing-guide");
+  const initialAboutPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/about");
+  const initialNodePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/node");
+  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin" | "pairing-info" | "about" | "node">(initialNodePath ? "node" : initialAboutPath ? "about" : initialPairingGuidePath ? "pairing-info" : "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
+  const [isTeamModalOpen, setTeamModalOpen] = useState(false);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
-  const [shouldCollapseResourceLinks, setShouldCollapseResourceLinks] = useState(() => getShouldCollapseCoordinationLinks());
-  const [resourceLinksExpandedOverride, setResourceLinksExpandedOverride] = useState(false);
 
   const isSignedIn = Boolean(user);
   const canUseSmokeTests = (() => {
@@ -127,7 +127,7 @@ export default function App() {
     return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
   })();
   const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
-  const activeTab = !isSignedIn && tab !== "map"
+  const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
     : (tab === "smoke" && (!user || !canUseSmokeTests)
       ? "map"
@@ -172,13 +172,48 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const pathname = window.location.pathname.toLowerCase();
+    if (tab === "pairing-info") {
+      if (!pathname.startsWith("/pairing-guide")) {
+        window.history.pushState({}, "", "/pairing-guide");
+      }
+    }
+    else if (tab === "about") {
+      if (!pathname.startsWith("/about")) {
+        window.history.pushState({}, "", "/about");
+      }
+    }
+    else if (tab === "node") {
+      if (!pathname.startsWith("/node")) {
+        window.history.pushState({}, "", "/node");
+      }
+    }
+    else if (pathname.startsWith("/pairing-guide") || pathname.startsWith("/about") || pathname.startsWith("/node")) {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const handlePopState = () => {
-      const next = window.location.pathname.toLowerCase().startsWith("/activate");
-      setActivationModalOpen(next);
+      const pathname = window.location.pathname.toLowerCase();
+      setActivationModalOpen(pathname.startsWith("/activate"));
+      if (pathname.startsWith("/pairing-guide")) {
+        setTab("pairing-info");
+      }
+      else if (pathname.startsWith("/about")) {
+        setTab("about");
+      }
+      else if (pathname.startsWith("/node")) {
+        setTab("node");
+      }
+      else if (tab === "pairing-info" || tab === "about" || tab === "node") {
+        setTab("map");
+      }
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [tab]);
 
   const openActivationModal = () => {
     if (!user) {
@@ -193,22 +228,6 @@ export default function App() {
     setTab("dashboard");
     setDashboardRefreshToken((prev) => prev + 1);
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const updateShouldCollapse = () => {
-      const nextShouldCollapse = getShouldCollapseCoordinationLinks();
-      setShouldCollapseResourceLinks((prev) => {
-        if (prev === nextShouldCollapse) return prev;
-        return nextShouldCollapse;
-      });
-      if (nextShouldCollapse) {
-        setResourceLinksExpandedOverride(false);
-      }
-    };
-    window.addEventListener("resize", updateShouldCollapse);
-    return () => window.removeEventListener("resize", updateShouldCollapse);
-  }, []);
 
   const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
     setPendingSmokeResult(result);
@@ -233,7 +252,6 @@ export default function App() {
     });
   };
 
-  const areResourceLinksExpanded = shouldCollapseResourceLinks ? resourceLinksExpandedOverride : true;
   const tabPanelFallback = (
     <Flex
       direction="column"
@@ -254,284 +272,274 @@ export default function App() {
         onOpenChange={setActivationModalOpen}
         onActivationComplete={handleActivationComplete}
       />
-      <main id="main-content">
-        <Box
+      <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
+
+      {/* ---- Branded top bar (fixed across all pages) ---- */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 99,
+          display: "flex",
+          flexDirection: "column",
+          pointerEvents: "none",
+        }}
+      >
+        {/* Accent gradient line */}
+        <div
           style={{
-            minHeight: "100vh",
-            padding: "var(--space-6)",
-            backgroundColor: "var(--color-surface)",
-            backgroundImage:
-              "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
+            height: 3,
+            background: "linear-gradient(90deg, var(--accent-9), var(--accent-7), var(--accent-9))",
+            opacity: 0.9,
+          }}
+        />
+        {/* Logo bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "var(--space-3) var(--space-4)",
+            paddingLeft: "calc(var(--space-4) + 2.5px)",
+            background: activeTab === "map"
+              ? "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)"
+              : "rgba(0, 0, 0, 0.75)",
+            backdropFilter: activeTab === "map" ? "none" : "blur(12px)",
+            WebkitBackdropFilter: activeTab === "map" ? "none" : "blur(12px)",
+            pointerEvents: "auto",
           }}
         >
-          <Flex
-            direction="column"
-            gap="6"
-            align="center"
-            style={{ maxWidth: "1100px", margin: "0 auto" }}
+          {/* Clickable logo + title — navigates back to map */}
+          <button
+            type="button"
+            onClick={() => setTab("map")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "inherit",
+            }}
+            aria-label="Return to map"
           >
-            <Flex
-              direction={{ initial: "column", md: "row" }}
-              gap="6"
-              align="stretch"
-              style={{ width: "100%" }}
+            <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-hidden>
+              <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
+              <path
+                d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
+              <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
+              <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
+            </svg>
+            <span
+              style={{
+                fontSize: "var(--font-size-4)",
+                fontWeight: 700,
+                color: "white",
+                letterSpacing: "-0.02em",
+                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+              }}
             >
-              <Card size="4" style={{ flexBasis: "320px", flexShrink: 0, overflow: "visible" }}>
-              <Heading as="h2" size="5" trim="start">
-                <Link
-                  href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
-                  target="_blank"
-                  rel="noreferrer"
-                  color="iris"
-                  highContrast
+              CrowdPM
+            </span>
+            <span
+              style={{
+                fontSize: "var(--font-size-1)",
+                color: "rgba(255,255,255,0.6)",
+                fontWeight: 400,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              Air Quality Network
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* ---- Hamburger navigation menu ---- */}
+      <Box style={{ position: "fixed", top: 68, left: "var(--space-4)", zIndex: 100 }}>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <IconButton
+              variant="solid"
+              size="3"
+              aria-label="Navigation menu"
+              style={{
+                backdropFilter: "blur(12px)",
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                color: "white",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+            >
+              <HamburgerMenuIcon width={18} height={18} />
+            </IconButton>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content sideOffset={8} align="start">
+            <DropdownMenu.Item
+              onSelect={() => setTab("map")}
+              style={activeTab === "map" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              Map
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("pairing-info")}
+              style={activeTab === "pairing-info" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              Pairing Guide
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("node")}
+              style={activeTab === "node" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              Node
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)} disabled={isLoading}>
+              Team
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("about")}
+              style={activeTab === "about" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              About
+            </DropdownMenu.Item>
+            {isSignedIn ? (
+              <>
+                <DropdownMenu.Item
+                  onSelect={() => handleProtectedTabClick("dashboard")}
+                  style={activeTab === "dashboard" ? { fontWeight: 600 } : undefined}
+                  disabled={isLoading}
                 >
-                  OSU EECS
-                </Link>{" "}
-                Capstone Team
-              </Heading>
-              <Text size="2" color="gray" mt="2">
-                Key collaborators for the capstone effort and their primary roles.
-              </Text>
-              <Flex direction="column" gap="3" mt="3">
-                {TEAM_MEMBERS.map((member) => (
-                  <Flex key={member.name} align="center" gap="3" style={{ width: "100%" }}>
-                    <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
-                      <Avatar
-                        radius="full"
-                        size="2"
-                        fallback={member.name.charAt(0).toUpperCase() || "?"}
-                      />
-                      <Text size="2" weight="medium">
-                        <Link href={`mailto:${member.email}`} color="iris" highContrast>
-                          {member.name}
-                        </Link>
-                      </Text>
-                    </Flex>
-                    <Text
-                      size="1"
-                      color="gray"
-                      style={{ minWidth: "120px", textAlign: "right" }}
-                    >
-                      {member.role}
-                    </Text>
-                    <Flex gap="2">
-                      <IconButton
-                        asChild
-                        variant="soft"
-                        size="1"
-                        radius="full"
-                        aria-label={`${member.name} GitHub profile`}
-                      >
-                        <a href={member.github} target="_blank" rel="noreferrer">
-                          <GitHubLogoIcon />
-                        </a>
-                      </IconButton>
-                      <IconButton
-                        asChild
-                        variant="soft"
-                        size="1"
-                        radius="full"
-                        aria-label={`${member.name} LinkedIn profile`}
-                      >
-                        <a href={member.linkedin} target="_blank" rel="noreferrer">
-                          <LinkedInLogoIcon />
-                        </a>
-                      </IconButton>
-                    </Flex>
-                  </Flex>
-                ))}
-              </Flex>
-              {isSignedIn ? (
-                <>
-                  <Separator my="4" />
-                  {shouldCollapseResourceLinks ? (
-                    <Box>
-                      <Flex align="center" justify="between" gap="2" wrap="wrap">
-                        <Text size="2" color="gray">
-                          Coordination links
-                        </Text>
-                        <Button
-                          variant="soft"
-                          size="1"
-                          onClick={() => setResourceLinksExpandedOverride((prev) => !prev)}
-                          aria-expanded={areResourceLinksExpanded}
-                          aria-controls={COORDINATION_LINKS_CONTENT_ID}
-                        >
-                          {areResourceLinksExpanded ? "Hide" : "Show"} links
-                          <ChevronDownIcon
-                            style={{
-                              marginLeft: "var(--space-1)",
-                              transition: "transform 200ms ease",
-                              transform: areResourceLinksExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                            }}
-                            aria-hidden
-                          />
-                        </Button>
-                      </Flex>
-                      {areResourceLinksExpanded ? (
-                        <Box id={COORDINATION_LINKS_CONTENT_ID} mt="2">
-                          <Flex direction="column" gap="2">
-                            {RESOURCE_LINKS.map((resource) => (
-                              <Link
-                                key={resource.href}
-                                href={resource.href}
-                                target="_blank"
-                                rel="noreferrer"
-                                color="iris"
-                                size="2"
-                              >
-                                {resource.label}
-                              </Link>
-                            ))}
-                          </Flex>
-                        </Box>
-                      ) : null}
-                    </Box>
-                  ) : (
-                    <>
-                      <Text size="2" color="gray">
-                        Coordination links
-                      </Text>
-                      <Flex direction="column" gap="2" mt="2">
-                        {RESOURCE_LINKS.map((resource) => (
-                          <Link
-                            key={resource.href}
-                            href={resource.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            color="iris"
-                            size="2"
-                          >
-                            {resource.label}
-                          </Link>
-                        ))}
-                      </Flex>
-                    </>
-                  )}
-                </>
-              ) : null}
-              </Card>
+                  User Dashboard
+                </DropdownMenu.Item>
+                {canUseSmokeTests ? (
+                  <DropdownMenu.Item
+                    onSelect={() => handleProtectedTabClick("smoke")}
+                    style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
+                    disabled={isLoading}
+                  >
+                    Smoke Test
+                  </DropdownMenu.Item>
+                ) : null}
+                {canUseAdmin ? (
+                  <DropdownMenu.Item
+                    onSelect={() => handleProtectedTabClick("admin")}
+                    style={activeTab === "admin" ? { fontWeight: 600 } : undefined}
+                    disabled={isLoading}
+                  >
+                    Admin
+                  </DropdownMenu.Item>
+                ) : null}
+              </>
+            ) : null}
+            <DropdownMenu.Separator />
+            {user ? (
+              <DropdownMenu.Item color="red" onSelect={handleSignOut}>
+                Sign out
+              </DropdownMenu.Item>
+            ) : (
+              <>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("login")} disabled={isLoading}>
+                  Log in
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("signup")} disabled={isLoading}>
+                  Sign up
+                </DropdownMenu.Item>
+              </>
+            )}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </Box>
 
-              <Card size="4" style={{ flex: 1, minWidth: 0 }}>
-              <Heading as="h2" size="6" trim="start">
-                CrowdPM Platform
-              </Heading>
-              <Text size="2" color="gray" mt="2">
-                Explore the map or adjust ingest settings across your network.
-              </Text>
-              <Flex
-                direction={{ initial: "column", sm: "row" }}
-                align={{ initial: "stretch", sm: "center" }}
-                justify="between"
-                gap="3"
-                mt="4"
-              >
-                <Flex gap="3">
-                  <Button variant={activeTab === "map" ? "solid" : "soft"} onClick={() => setTab("map")}>
-                    Map
-                  </Button>
-                  {isSignedIn ? (
-                    <>
-                      <Button
-                        variant={activeTab === "dashboard" ? "solid" : "soft"}
-                        onClick={() => handleProtectedTabClick("dashboard")}
-                        disabled={isLoading}
-                      >
-                        User Dashboard
-                      </Button>
-                      {canUseSmokeTests ? (
-                        <Button
-                          variant={activeTab === "smoke" ? "solid" : "soft"}
-                          onClick={() => handleProtectedTabClick("smoke")}
-                          disabled={isLoading}
-                        >
-                          Smoke Test
-                        </Button>
-                      ) : null}
-                      {canUseAdmin ? (
-                        <Button
-                          variant={activeTab === "admin" ? "solid" : "soft"}
-                          onClick={() => handleProtectedTabClick("admin")}
-                          disabled={isLoading}
-                        >
-                          Admin
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </Flex>
-                <Flex gap="2" justify="end">
-                  {user ? (
-                    <Button variant="soft" onClick={handleSignOut}>
-                      Sign out
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="soft" onClick={() => openAuthDialog("login")} disabled={isLoading}>
-                        Log in
-                      </Button>
-                      <Button onClick={() => openAuthDialog("signup")} disabled={isLoading}>
-                        Sign up
-                      </Button>
-                    </>
-                  )}
-                </Flex>
-              </Flex>
-
+      <main id="main-content" style={{ minHeight: "100vh" }}>
+        {activeTab === "map" ? (
+          /* Full-bleed map — fills the entire viewport */
+          <Box style={{ width: "100%", height: "100vh" }}>
+            <Suspense fallback={tabPanelFallback}>
+              <MapPage
+                key={`map:${userScopedKey}`}
+                pendingSmokeResult={user ? pendingSmokeResult : null}
+                onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
+                pendingCleanupDetail={user ? pendingSmokeCleanup : null}
+                onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
+              />
+            </Suspense>
+          </Box>
+        ) : (
+          /* All other tabs get the branded header + content layout */
+          <Box
+            style={{
+              minHeight: "100vh",
+              backgroundColor: "var(--color-surface)",
+              backgroundImage:
+                "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
+            }}
+          >
+            {/* ---- Page content ---- */}
+            <Box style={{ maxWidth: 1100, margin: "0 auto", padding: "var(--space-5) var(--space-6)", paddingTop: 64 }}>
               <Box
-                mt="4"
                 style={{
                   borderRadius: "var(--radius-4)",
                   background: "var(--color-panel-solid)",
                   boxShadow: "var(--shadow-3)",
+                  padding: "var(--space-4)",
                 }}
               >
-                <Box style={{ padding: "var(--space-4)" }}>
-                  <Suspense fallback={tabPanelFallback}>
-                    {activeTab === "dashboard" && user ? (
-                      <UserDashboard
-                        key={`dashboard:${userScopedKey}`}
-                        onRequestActivation={openActivationModal}
-                        refreshToken={dashboardRefreshToken}
-                      />
-                    ) : activeTab === "smoke" && user && canUseSmokeTests ? (
-                      <SmokeTestLab
-                        key={`smoke:${userScopedKey}`}
-                        onSmokeTestComplete={handleSmokeTestComplete}
-                        onSmokeTestCleared={handleSmokeTestCleanup}
-                      />
-                    ) : activeTab === "admin" && user && canUseAdmin ? (
-                      <AdminModerationPage key={`admin:${userScopedKey}`} />
-                    ) : activeTab === "map" ? (
-                      <MapPage
-                        key={`map:${userScopedKey}`}
-                        pendingSmokeResult={user ? pendingSmokeResult : null}
-                        onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
-                        pendingCleanupDetail={user ? pendingSmokeCleanup : null}
-                        onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
-                      />
-                    ) : (
-                      <Flex
-                        direction="column"
-                        align="center"
-                        justify="center"
-                        gap="3"
-                        style={{ padding: "var(--space-8)", textAlign: "center" }}
-                      >
-                        <Heading size="5">Sign in to access CrowdPM</Heading>
-                        <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                          Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
-                          resources.
-                        </Text>
-                      </Flex>
-                    )}
-                  </Suspense>
-                </Box>
+                <Suspense fallback={tabPanelFallback}>
+                  {activeTab === "dashboard" && user ? (
+                    <UserDashboard
+                      key={`dashboard:${userScopedKey}`}
+                      onRequestActivation={openActivationModal}
+                      refreshToken={dashboardRefreshToken}
+                    />
+                  ) : activeTab === "smoke" && user && canUseSmokeTests ? (
+                    <SmokeTestLab
+                      key={`smoke:${userScopedKey}`}
+                      onSmokeTestComplete={handleSmokeTestComplete}
+                      onSmokeTestCleared={handleSmokeTestCleanup}
+                    />
+                  ) : activeTab === "admin" && user && canUseAdmin ? (
+                    <AdminModerationPage key={`admin:${userScopedKey}`} />
+                  ) : activeTab === "pairing-info" ? (
+                    <PairingInfoPage onOpenActivation={openActivationModal} />
+                  ) : activeTab === "about" ? (
+                    <AboutPage />
+                  ) : activeTab === "node" ? (
+                    <NodePage />
+                  ) : (
+                    <Flex
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      gap="3"
+                      style={{ padding: "var(--space-8)", textAlign: "center" }}
+                    >
+                      <Heading size="5">Sign in to access CrowdPM</Heading>
+                      <Text size="2" color="gray" style={{ maxWidth: 360 }}>
+                        Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
+                        resources.
+                      </Text>
+                    </Flex>
+                  )}
+                </Suspense>
               </Box>
-              </Card>
-            </Flex>
-          </Flex>
-        </Box>
+            </Box>
+          </Box>
+        )}
       </main>
       <AuthDialog
         open={isAuthDialogOpen}
@@ -576,6 +584,115 @@ function ActivationModal({ open, onOpenChange, onActivationComplete }: Activatio
         <Suspense fallback={<Text size="2" color="gray">Loading activation...</Text>}>
           <ActivationPage layout="dialog" onActivationComplete={onActivationComplete} />
         </Suspense>
+      </Dialog.Content>
+    </Dialog.Root>
+  );
+}
+
+type TeamModalProps = {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  isSignedIn: boolean;
+};
+
+function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Content
+        size="4"
+        style={{
+          width: "min(560px, 96vw)",
+          maxWidth: "560px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        <Heading as="h2" size="5" trim="start">
+          <Link
+            href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
+            target="_blank"
+            rel="noreferrer"
+            color="iris"
+            highContrast
+          >
+            OSU EECS
+          </Link>{" "}
+          Capstone Team
+        </Heading>
+        <Text size="2" color="gray" mt="2">
+          Key collaborators for the capstone effort and their primary roles.
+        </Text>
+        <Flex direction="column" gap="3" mt="4">
+          {TEAM_MEMBERS.map((member) => (
+            <Flex key={member.name} align="center" gap="3" style={{ width: "100%" }}>
+              <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
+                <Avatar
+                  radius="full"
+                  size="2"
+                  fallback={member.name.charAt(0).toUpperCase() || "?"}
+                />
+                <Text size="2" weight="medium">
+                  <Link href={`mailto:${member.email}`} color="iris" highContrast>
+                    {member.name}
+                  </Link>
+                </Text>
+              </Flex>
+              <Text
+                size="1"
+                color="gray"
+                style={{ minWidth: "120px", textAlign: "right" }}
+              >
+                {member.role}
+              </Text>
+              <Flex gap="2">
+                <IconButton
+                  asChild
+                  variant="soft"
+                  size="1"
+                  radius="full"
+                  aria-label={`${member.name} GitHub profile`}
+                >
+                  <a href={member.github} target="_blank" rel="noreferrer">
+                    <GitHubLogoIcon />
+                  </a>
+                </IconButton>
+                <IconButton
+                  asChild
+                  variant="soft"
+                  size="1"
+                  radius="full"
+                  aria-label={`${member.name} LinkedIn profile`}
+                >
+                  <a href={member.linkedin} target="_blank" rel="noreferrer">
+                    <LinkedInLogoIcon />
+                  </a>
+                </IconButton>
+              </Flex>
+            </Flex>
+          ))}
+        </Flex>
+        {isSignedIn ? (
+          <>
+            <Separator my="4" />
+            <Text size="2" color="gray">
+              Coordination links
+            </Text>
+            <Flex direction="column" gap="2" mt="2">
+              {RESOURCE_LINKS.map((resource) => (
+                <Link
+                  key={resource.href}
+                  href={resource.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  color="iris"
+                  size="2"
+                >
+                  {resource.label}
+                </Link>
+              ))}
+            </Flex>
+          </>
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   );

@@ -39,11 +39,15 @@ type Map3DProps = {
   autoCenterKey?: string;
   interleaved?: boolean;
   showAllMode?: boolean;
+  defaultCenter?: { lat: number; lng: number };
+  defaultZoom?: number;
   forceFollowSelection?: boolean;
   playbackPathMode?: PlaybackPathMode;
 };
 
-const FALLBACK_CENTER = { lat: 45.5, lng: -122.67 };
+// Pacific NW default
+const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
+const FALLBACK_ZOOM = 7;
 type PathDatum = { path: [number, number, number][] };
 
 function waitForNextAnimationFrame(): Promise<number> {
@@ -412,6 +416,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   autoCenterKey,
   interleaved = false,
   showAllMode = false,
+  defaultCenter,
+  defaultZoom,
   forceFollowSelection = false,
   playbackPathMode = "full",
 }: Map3DProps, ref) {
@@ -422,15 +428,21 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const selectedIndexRef = useRef<number>(selectedIndex);
   const onSelectRef = useRef<typeof onSelectIndex>(onSelectIndex);
   const onSelectPointRef = useRef<typeof onSelectPoint>(onSelectPoint);
+  const showAllModeRef = useRef(showAllMode);
+  const playbackPathModeRef = useRef(playbackPathMode);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const hasUserControlRef = useRef(false);
   const dataSignatureRef = useRef(signature(data));
+  const defaultCenterLat = defaultCenter?.lat;
+  const defaultCenterLng = defaultCenter?.lng;
   const syncOverlayRef = useRef<((options?: { forceCenter?: boolean }) => void) | null>(null);
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => { onSelectRef.current = onSelectIndex; }, [onSelectIndex]);
   useEffect(() => { onSelectPointRef.current = onSelectPoint; }, [onSelectPoint]);
+  useEffect(() => { showAllModeRef.current = showAllMode; }, [showAllMode]);
+  useEffect(() => { playbackPathModeRef.current = playbackPathMode; }, [playbackPathMode]);
   useEffect(() => {
     const sig = signature(data);
     if (dataSignatureRef.current !== sig) {
@@ -482,10 +494,13 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         const targetZoom = forceFollowSelection
           ? Math.max(map.getZoom() ?? 18, 18)
           : Math.max(map.getZoom() ?? 17, 16);
-        if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: targetZoom });
+        const currentTilt = map.getTilt() ?? 0;
+        const targetTilt = currentTilt < 10 ? 67.5 : undefined;
+        if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: targetZoom, tilt: targetTilt });
         else {
           map.setCenter(center);
           map.setZoom(targetZoom);
+          if (targetTilt !== undefined) map.setTilt(targetTilt);
         }
       }
     }
@@ -525,14 +540,20 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
       const currentSeries = latestDataRef.current;
       const firstPoint = currentSeries[0];
-      const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : FALLBACK_CENTER;
+      const resolvedCenter = (typeof defaultCenterLat === "number" && typeof defaultCenterLng === "number")
+        ? { lat: defaultCenterLat, lng: defaultCenterLng }
+        : FALLBACK_CENTER;
+      const resolvedZoom = defaultZoom ?? FALLBACK_ZOOM;
+      const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
+      const initialZoom = firstPoint ? 15 : resolvedZoom;
+      const initialTilt = firstPoint ? 67.5 : 0;
 
       const MapCtor = mapsLib.Map as typeof google.maps.Map;
       const map = new MapCtor(element, {
         mapId,
         center,
-        zoom: 15,
-        tilt: 67.5,
+        zoom: initialZoom,
+        tilt: initialTilt,
         heading: 0,
         gestureHandling: "greedy",
         disableDefaultUI: true,
@@ -571,14 +592,14 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
           (index) => onSelectRef.current?.(index),
           (point) => onSelectPointRef.current?.(point),
           sphereGeometry,
-          showAllMode,
-          playbackPathMode
+          showAllModeRef.current,
+          playbackPathModeRef.current
         ),
         interleaved
       });
       overlay.setMap(map);
 
-      if (typeof map.moveCamera === "function") {
+      if (currentSeries.length && typeof map.moveCamera === "function") {
         map.moveCamera({ tilt: 67.5, heading: 0, zoom: 18 });
       }
       overlayRef.current = overlay;
@@ -599,9 +620,9 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       overlayRef.current = null;
       mapRef.current = null;
     };
-  }, [interleaved]);
+  }, [interleaved, defaultCenterLat, defaultCenterLng, defaultZoom]);
 
-  return <div ref={divRef} style={{ width: "100%", height: "80vh" }} />;
+  return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
 
 Map3D.displayName = "Map3D";
