@@ -945,7 +945,7 @@ export default function MapPage({
             }}
           >
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-              🎬 Video Export
+              Video Export
             </p>
             {exportDisabledReason ? (
               <p style={{ margin: "6px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
