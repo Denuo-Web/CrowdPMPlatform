@@ -165,6 +165,8 @@ export default function Map3D({
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const hasUserControlRef = useRef(false);
   const dataSignatureRef = useRef(signature(data));
+  const defaultCenterLat = defaultCenter?.lat;
+  const defaultCenterLng = defaultCenter?.lng;
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -241,7 +243,9 @@ export default function Map3D({
 
       const currentSeries = latestDataRef.current;
       const firstPoint = currentSeries[0];
-      const resolvedCenter = defaultCenter ?? FALLBACK_CENTER;
+      const resolvedCenter = (typeof defaultCenterLat === "number" && typeof defaultCenterLng === "number")
+        ? { lat: defaultCenterLat, lng: defaultCenterLng }
+        : FALLBACK_CENTER;
       const resolvedZoom = defaultZoom ?? FALLBACK_ZOOM;
       const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
       const initialZoom = firstPoint ? 15 : resolvedZoom;
@@ -318,7 +322,7 @@ export default function Map3D({
       overlayRef.current = null;
       mapRef.current = null;
     };
-  }, [syncOverlay, interleaved, showAllMode]);
+  }, [syncOverlay, interleaved, showAllMode, defaultCenterLat, defaultCenterLng, defaultZoom]);
 
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 }

@@ -165,13 +165,13 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
       {/* ---- What you need ---- */}
       <Card>
         <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">What you'll need</Heading>
+          <Heading as="h2" size="4">What you&apos;ll need</Heading>
           <Flex direction="column" gap="2" pl="2">
             <Text size="2" as="p">
               <strong>1.</strong>&ensp;A CrowdPM-compatible sensor node, powered on and connected to the internet.
             </Text>
             <Text size="2" as="p">
-              <strong>2.</strong>&ensp;A CrowdPM account&nbsp;— sign up or log in from the top bar if you haven't already.
+              <strong>2.</strong>&ensp;A CrowdPM account&nbsp;— sign up or log in from the top bar if you haven&apos;t already.
             </Text>
             <Text size="2" as="p">
               <strong>3.</strong>&ensp;A web browser on any device (phone, laptop, tablet).
@@ -237,7 +237,7 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
               <strong>Code not appearing?</strong>&ensp;Make sure the node has internet access and the LED / display is functioning.
             </Text>
             <Text size="2" as="p">
-              <strong>"Session not found"?</strong>&ensp;Double-check for typos. The code uses capital letters and a dash (e.g.&nbsp;<code style={{ fontFamily: "var(--code-font-family)" }}>ABCD-EFGH-J</code>).
+              <strong>&quot;Session not found&quot;?</strong>&ensp;Double-check for typos. The code uses capital letters and a dash (e.g.&nbsp;<code style={{ fontFamily: "var(--code-font-family)" }}>ABCD-EFGH-J</code>).
             </Text>
             <Text size="2" as="p">
               <strong>Still stuck?</strong>&ensp;Reach out on the{" "}
@@ -291,7 +291,7 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
                   <InfoCircledIcon />
                 </Callout.Icon>
                 <Callout.Text size="2">
-                  You don't need to understand these details to pair a node — they're included
+                  You don&apos;t need to understand these details to pair a node — they&apos;re included
                   for transparency and for developers integrating custom hardware.
                 </Callout.Text>
               </Callout.Root>
@@ -341,7 +341,7 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
                     • Tokens are <strong>DPoP-bound</strong> — stolen tokens are useless without the private key on the device.
                   </Text>
                   <Text size="2" as="p">
-                    • The <strong>fingerprint</strong> lets you visually verify the device's identity before approving.
+                    • The <strong>fingerprint</strong> lets you visually verify the device&apos;s identity before approving.
                   </Text>
                   <Text size="2" as="p">
                     • Pairing sessions expire after <strong>15 minutes</strong> and can only be redeemed once.

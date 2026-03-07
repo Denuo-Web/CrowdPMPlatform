@@ -267,16 +267,18 @@ export default function App() {
             <DropdownMenu.Item
               onSelect={() => setTab("map")}
               style={activeTab === "map" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
             >
               Map
             </DropdownMenu.Item>
             <DropdownMenu.Item
               onSelect={() => setTab("pairing-info")}
               style={activeTab === "pairing-info" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
             >
               Pairing Guide
             </DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)}>
+            <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)} disabled={isLoading}>
               Team
             </DropdownMenu.Item>
             {isSignedIn ? (
@@ -284,6 +286,7 @@ export default function App() {
                 <DropdownMenu.Item
                   onSelect={() => handleProtectedTabClick("dashboard")}
                   style={activeTab === "dashboard" ? { fontWeight: 600 } : undefined}
+                  disabled={isLoading}
                 >
                   User Dashboard
                 </DropdownMenu.Item>
@@ -291,6 +294,7 @@ export default function App() {
                   <DropdownMenu.Item
                     onSelect={() => handleProtectedTabClick("smoke")}
                     style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
+                    disabled={isLoading}
                   >
                     Smoke Test
                   </DropdownMenu.Item>
@@ -299,6 +303,7 @@ export default function App() {
                   <DropdownMenu.Item
                     onSelect={() => handleProtectedTabClick("admin")}
                     style={activeTab === "admin" ? { fontWeight: 600 } : undefined}
+                    disabled={isLoading}
                   >
                     Admin
                   </DropdownMenu.Item>
@@ -312,10 +317,10 @@ export default function App() {
               </DropdownMenu.Item>
             ) : (
               <>
-                <DropdownMenu.Item onSelect={() => openAuthDialog("login")}>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("login")} disabled={isLoading}>
                   Log in
                 </DropdownMenu.Item>
-                <DropdownMenu.Item onSelect={() => openAuthDialog("signup")}>
+                <DropdownMenu.Item onSelect={() => openAuthDialog("signup")} disabled={isLoading}>
                   Sign up
                 </DropdownMenu.Item>
               </>
