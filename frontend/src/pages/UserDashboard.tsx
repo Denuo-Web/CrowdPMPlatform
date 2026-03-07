@@ -18,6 +18,7 @@ import { buildActivationLink } from "../lib/activation";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
+  refreshToken?: number;
 };
 
 function describeStatus(status?: string | null): { label: string; tone: "green" | "yellow" | "red" | "gray" } {
@@ -28,7 +29,7 @@ function describeStatus(status?: string | null): { label: string; tone: "green" 
   return { label: status ?? "Unknown", tone: "red" };
 }
 
-export default function UserDashboard({ onRequestActivation }: UserDashboardProps) {
+export default function UserDashboard({ onRequestActivation, refreshToken = 0 }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -91,8 +92,10 @@ export default function UserDashboard({ onRequestActivation }: UserDashboardProp
     }
   }, [user]);
 
-  useEffect(() => { refreshDevices(); }, [refreshDevices]);
-  useEffect(() => { refreshBatches(); }, [refreshBatches]);
+  useEffect(() => {
+    void refreshDevices();
+    void refreshBatches();
+  }, [refreshBatches, refreshDevices, refreshToken]);
 
   const ownedCount = useMemo(() => devices.length, [devices]);
   const activeCount = useMemo(
