@@ -613,7 +613,7 @@ export default function MapPage({
   const canStartExport = isExportSectionVisible && !isExporting && !exportDisabledReason;
 
   useEffect(() => {
-    if (!shouldRenderMap || isShowingAllPublic24h) {
+    if (!isExportSectionVisible) {
       setCaptureAvailable(false);
       return;
     }
@@ -628,7 +628,7 @@ export default function MapPage({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isShowingAllPublic24h, rows.length, selectedBatchKey, shouldRenderMap]);
+  }, [isExportSectionVisible]);
 
   useEffect(() => {
     return () => {
@@ -755,6 +755,7 @@ export default function MapPage({
       {/* ---- Always-visible map ---- */}
       <Suspense fallback={<div style={{ width: "100%", height: "100%", background: "var(--color-surface)" }} />}>
         <Map3D
+          ref={map3DRef}
           data={data}
           selectedIndex={selectedIndex}
           onSelectIndex={effectiveShowAllMode ? undefined : setIndexOverride}
@@ -793,12 +794,12 @@ export default function MapPage({
             alignItems: "center",
             gap: 10,
             padding: "var(--space-3) var(--space-4)",
-            paddingLeft: 64,
+            paddingLeft: "calc(var(--space-4) - 5px)",
             background: "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)",
           }}
         >
           {/* Cloud / air quality icon */}
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden>
+          <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-hidden>
             <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
             <path
               d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
@@ -998,6 +999,123 @@ export default function MapPage({
             })}
           </select>
         </div>
+
+        {/* Video export card (when a specific batch is selected) */}
+        {isExportSectionVisible ? (
+          <div
+            style={{
+              padding: "var(--space-4)",
+              borderRadius: "var(--radius-3)",
+              background: "rgba(0, 0, 0, 0.7)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              boxShadow: "var(--shadow-3)",
+              color: "var(--gray-12)",
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
+              🎬 Video Export
+            </p>
+            {exportDisabledReason ? (
+              <p style={{ margin: "6px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                {exportDisabledReason}
+              </p>
+            ) : isExporting ? (
+              <div style={{ marginTop: 8 }}>
+                <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                  {exportStatus ?? "Exporting..."}
+                </p>
+                <div
+                  style={{
+                    marginTop: 6,
+                    height: 4,
+                    borderRadius: 2,
+                    background: "var(--gray-a5)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round(exportProgress * 100)}%`,
+                      height: "100%",
+                      background: "var(--accent-9)",
+                      borderRadius: 2,
+                      transition: "width 0.2s ease",
+                    }}
+                  />
+                </div>
+              </div>
+            ) : renderedVideoUrl ? (
+              <div style={{ marginTop: 8 }}>
+                <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--accent-11)" }}>
+                  {exportStatus ?? "Video ready!"}
+                </p>
+                <div style={{ display: "flex", gap: "var(--space-2)", marginTop: 8, flexWrap: "wrap" }}>
+                  <a
+                    href={renderedVideoUrl}
+                    download={renderedVideoName ?? "export.webm"}
+                    style={{
+                      display: "inline-block",
+                      padding: "var(--space-1) var(--space-3)",
+                      borderRadius: "var(--radius-2)",
+                      background: "var(--accent-9)",
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: "var(--font-size-1)",
+                      textDecoration: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Download {renderedVideoMimeType === "video/mp4" ? "MP4" : "WebM"}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleRenderVideo}
+                    style={{
+                      padding: "var(--space-1) var(--space-3)",
+                      borderRadius: "var(--radius-2)",
+                      border: "1px solid var(--gray-a6)",
+                      background: "transparent",
+                      color: "var(--gray-12)",
+                      fontSize: "var(--font-size-1)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Re-render
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                <p style={{ margin: "0 0 8px", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                  Render a flythrough video of this batch's measurements.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRenderVideo}
+                  disabled={!canStartExport}
+                  style={{
+                    padding: "var(--space-1) var(--space-3)",
+                    borderRadius: "var(--radius-2)",
+                    border: "none",
+                    background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
+                    color: canStartExport ? "white" : "var(--gray-11)",
+                    fontWeight: 600,
+                    fontSize: "var(--font-size-1)",
+                    cursor: canStartExport ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Render Video
+                </button>
+              </div>
+            )}
+            {exportError ? (
+              <p style={{ margin: "8px 0 0", fontSize: "var(--font-size-1)", color: "#f87171" }}>
+                {exportError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Detail / timeline panel */}
         {rows.length ? (

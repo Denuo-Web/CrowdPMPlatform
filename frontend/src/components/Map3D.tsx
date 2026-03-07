@@ -490,10 +490,13 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         const targetZoom = forceFollowSelection
           ? Math.max(map.getZoom() ?? 18, 18)
           : Math.max(map.getZoom() ?? 17, 16);
-        if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: targetZoom });
+        const currentTilt = map.getTilt() ?? 0;
+        const targetTilt = currentTilt < 10 ? 67.5 : undefined;
+        if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: targetZoom, tilt: targetTilt });
         else {
           map.setCenter(center);
           map.setZoom(targetZoom);
+          if (targetTilt !== undefined) map.setTilt(targetTilt);
         }
       }
     }

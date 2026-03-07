@@ -256,7 +256,7 @@ export default function App() {
       <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
 
       {/* ---- Hamburger navigation menu ---- */}
-      <Box style={{ position: "fixed", top: "var(--space-4)", left: "var(--space-4)", zIndex: 100 }}>
+      <Box style={{ position: "fixed", top: 52, left: "var(--space-4)", zIndex: 100 }}>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
             <IconButton
