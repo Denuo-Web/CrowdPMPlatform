@@ -2,6 +2,7 @@ import type { FastifyRequest } from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { rateLimitGuard } from "../../src/lib/routeGuards.js";
 import { RateLimitError } from "../../src/lib/rateLimiter.js";
+import { withRateLimitsEnabled } from "../helpers/rateLimitEnv.js";
 
 const mocks = vi.hoisted(() => ({
   rateLimitOrThrow: vi.fn(),
@@ -15,6 +16,8 @@ vi.mock("../../src/lib/rateLimiter.js", async (importOriginal) => {
 function makeRequest(shape: Record<string, unknown>): FastifyRequest {
   return shape as unknown as FastifyRequest;
 }
+
+withRateLimitsEnabled();
 
 describe("rateLimitGuard", () => {
   beforeEach(() => {

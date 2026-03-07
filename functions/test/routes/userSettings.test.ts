@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { userSettingsRoutes } from "../../src/routes/userSettings.js";
 import { toHttpError } from "../../src/lib/httpError.js";
 import { RateLimitError } from "../../src/lib/rateLimiter.js";
+import { withRateLimitsEnabled } from "../helpers/rateLimitEnv.js";
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
@@ -60,6 +61,8 @@ async function buildApp() {
   await app.ready();
   return app;
 }
+
+withRateLimitsEnabled();
 
 beforeEach(() => {
   dbStore = new Map<string, Record<string, unknown>>();

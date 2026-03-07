@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { batchesRoutes } from "../../src/routes/batches.js";
 import { toHttpError } from "../../src/lib/httpError.js";
 import { RateLimitError } from "../../src/lib/rateLimiter.js";
+import { withRateLimitsEnabled } from "../helpers/rateLimitEnv.js";
 
 const mocks = vi.hoisted(() => ({
   loadOwnedDeviceDocs: vi.fn(),
@@ -132,6 +133,8 @@ function makeBatchQuery(docs: Array<{ id: string; data: () => Record<string, unk
   };
   return query;
 }
+
+withRateLimitsEnabled();
 
 beforeEach(() => {
   mocks.loadOwnedDeviceDocs.mockReset();
