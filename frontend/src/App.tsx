@@ -6,7 +6,6 @@ import {
   Theme,
   ThemePanel,
   Box,
-  Card,
   DropdownMenu,
   Flex,
   Heading,
@@ -103,12 +102,16 @@ const ActivationPage = lazy(async () => {
   return { default: module.ActivationPage };
 });
 const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
+const NodePage = lazy(() => import("./pages/NodePage"));
 
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
   const userScopedKey = user?.uid ?? "anon";
   const initialPairingGuidePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/pairing-guide");
-  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin" | "pairing-info">(initialPairingGuidePath ? "pairing-info" : "map");
+  const initialAboutPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/about");
+  const initialNodePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/node");
+  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin" | "pairing-info" | "about" | "node">(initialNodePath ? "node" : initialAboutPath ? "about" : initialPairingGuidePath ? "pairing-info" : "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
@@ -124,7 +127,7 @@ export default function App() {
     return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
   })();
   const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
-  const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info"
+  const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
     : (tab === "smoke" && (!user || !canUseSmokeTests)
       ? "map"
@@ -175,7 +178,17 @@ export default function App() {
         window.history.pushState({}, "", "/pairing-guide");
       }
     }
-    else if (pathname.startsWith("/pairing-guide")) {
+    else if (tab === "about") {
+      if (!pathname.startsWith("/about")) {
+        window.history.pushState({}, "", "/about");
+      }
+    }
+    else if (tab === "node") {
+      if (!pathname.startsWith("/node")) {
+        window.history.pushState({}, "", "/node");
+      }
+    }
+    else if (pathname.startsWith("/pairing-guide") || pathname.startsWith("/about") || pathname.startsWith("/node")) {
       window.history.replaceState({}, "", "/");
     }
   }, [tab]);
@@ -188,7 +201,13 @@ export default function App() {
       if (pathname.startsWith("/pairing-guide")) {
         setTab("pairing-info");
       }
-      else if (tab === "pairing-info") {
+      else if (pathname.startsWith("/about")) {
+        setTab("about");
+      }
+      else if (pathname.startsWith("/node")) {
+        setTab("node");
+      }
+      else if (tab === "pairing-info" || tab === "about" || tab === "node") {
         setTab("map");
       }
     };
@@ -255,8 +274,100 @@ export default function App() {
       />
       <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
 
+      {/* ---- Branded top bar (fixed across all pages) ---- */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 99,
+          display: "flex",
+          flexDirection: "column",
+          pointerEvents: "none",
+        }}
+      >
+        {/* Accent gradient line */}
+        <div
+          style={{
+            height: 3,
+            background: "linear-gradient(90deg, var(--accent-9), var(--accent-7), var(--accent-9))",
+            opacity: 0.9,
+          }}
+        />
+        {/* Logo bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "var(--space-3) var(--space-4)",
+            paddingLeft: "calc(var(--space-4) + 2.5px)",
+            background: activeTab === "map"
+              ? "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)"
+              : "rgba(0, 0, 0, 0.75)",
+            backdropFilter: activeTab === "map" ? "none" : "blur(12px)",
+            WebkitBackdropFilter: activeTab === "map" ? "none" : "blur(12px)",
+            pointerEvents: "auto",
+          }}
+        >
+          {/* Clickable logo + title — navigates back to map */}
+          <button
+            type="button"
+            onClick={() => setTab("map")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "inherit",
+            }}
+            aria-label="Return to map"
+          >
+            <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-hidden>
+              <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
+              <path
+                d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
+              <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
+              <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
+            </svg>
+            <span
+              style={{
+                fontSize: "var(--font-size-4)",
+                fontWeight: 700,
+                color: "white",
+                letterSpacing: "-0.02em",
+                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+              }}
+            >
+              CrowdPM
+            </span>
+            <span
+              style={{
+                fontSize: "var(--font-size-1)",
+                color: "rgba(255,255,255,0.6)",
+                fontWeight: 400,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              Air Quality Network
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* ---- Hamburger navigation menu ---- */}
-      <Box style={{ position: "fixed", top: 52, left: "var(--space-4)", zIndex: 100 }}>
+      <Box style={{ position: "fixed", top: 68, left: "var(--space-4)", zIndex: 100 }}>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
             <IconButton
@@ -289,8 +400,22 @@ export default function App() {
             >
               Pairing Guide
             </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("node")}
+              style={activeTab === "node" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              Node
+            </DropdownMenu.Item>
             <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)} disabled={isLoading}>
               Team
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={() => setTab("about")}
+              style={activeTab === "about" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              About
             </DropdownMenu.Item>
             {isSignedIn ? (
               <>
@@ -355,76 +480,64 @@ export default function App() {
             </Suspense>
           </Box>
         ) : (
-          /* All other tabs keep the existing padded Card layout */
+          /* All other tabs get the branded header + content layout */
           <Box
             style={{
               minHeight: "100vh",
-              padding: "var(--space-6)",
               backgroundColor: "var(--color-surface)",
               backgroundImage:
                 "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
             }}
           >
-            <Flex
-              direction="column"
-              gap="6"
-              align="center"
-              style={{ maxWidth: "1100px", margin: "0 auto" }}
-            >
-              <Card size="4" style={{ width: "100%" }}>
-                <Heading as="h2" size="6" trim="start">
-                  CrowdPM Platform
-                </Heading>
-                <Text size="2" color="gray" mt="2">
-                  Explore the map or adjust ingest settings across your network.
-                </Text>
-
-                <Box
-                  mt="4"
-                  style={{
-                    borderRadius: "var(--radius-4)",
-                    background: "var(--color-panel-solid)",
-                    boxShadow: "var(--shadow-3)",
-                  }}
-                >
-                  <Box style={{ padding: "var(--space-4)" }}>
-                    <Suspense fallback={tabPanelFallback}>
-                      {activeTab === "dashboard" && user ? (
-                        <UserDashboard
-                        key={`dashboard:${userScopedKey}`}
-                        onRequestActivation={openActivationModal}
-                        refreshToken={dashboardRefreshToken}
-                      />
-                      ) : activeTab === "smoke" && user && canUseSmokeTests ? (
-                        <SmokeTestLab
-                          key={`smoke:${userScopedKey}`}
-                          onSmokeTestComplete={handleSmokeTestComplete}
-                          onSmokeTestCleared={handleSmokeTestCleanup}
-                        />
-                      ) : activeTab === "admin" && user && canUseAdmin ? (
-                        <AdminModerationPage key={`admin:${userScopedKey}`} />
-                      ) : activeTab === "pairing-info" ? (
-                        <PairingInfoPage onOpenActivation={openActivationModal} />
-                      ) : (
-                        <Flex
-                          direction="column"
-                          align="center"
-                          justify="center"
-                          gap="3"
-                          style={{ padding: "var(--space-8)", textAlign: "center" }}
-                        >
-                          <Heading size="5">Sign in to access CrowdPM</Heading>
-                          <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                            Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
-                            resources.
-                          </Text>
-                        </Flex>
-                      )}
-                    </Suspense>
-                  </Box>
-                </Box>
-              </Card>
-            </Flex>
+            {/* ---- Page content ---- */}
+            <Box style={{ maxWidth: 1100, margin: "0 auto", padding: "var(--space-5) var(--space-6)", paddingTop: 64 }}>
+              <Box
+                style={{
+                  borderRadius: "var(--radius-4)",
+                  background: "var(--color-panel-solid)",
+                  boxShadow: "var(--shadow-3)",
+                  padding: "var(--space-4)",
+                }}
+              >
+                <Suspense fallback={tabPanelFallback}>
+                  {activeTab === "dashboard" && user ? (
+                    <UserDashboard
+                      key={`dashboard:${userScopedKey}`}
+                      onRequestActivation={openActivationModal}
+                      refreshToken={dashboardRefreshToken}
+                    />
+                  ) : activeTab === "smoke" && user && canUseSmokeTests ? (
+                    <SmokeTestLab
+                      key={`smoke:${userScopedKey}`}
+                      onSmokeTestComplete={handleSmokeTestComplete}
+                      onSmokeTestCleared={handleSmokeTestCleanup}
+                    />
+                  ) : activeTab === "admin" && user && canUseAdmin ? (
+                    <AdminModerationPage key={`admin:${userScopedKey}`} />
+                  ) : activeTab === "pairing-info" ? (
+                    <PairingInfoPage onOpenActivation={openActivationModal} />
+                  ) : activeTab === "about" ? (
+                    <AboutPage />
+                  ) : activeTab === "node" ? (
+                    <NodePage />
+                  ) : (
+                    <Flex
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      gap="3"
+                      style={{ padding: "var(--space-8)", textAlign: "center" }}
+                    >
+                      <Heading size="5">Sign in to access CrowdPM</Heading>
+                      <Text size="2" color="gray" style={{ maxWidth: 360 }}>
+                        Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
+                        resources.
+                      </Text>
+                    </Flex>
+                  )}
+                </Suspense>
+              </Box>
+            </Box>
           </Box>
         )}
       </main>

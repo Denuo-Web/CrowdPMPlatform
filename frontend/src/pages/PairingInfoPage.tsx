@@ -148,11 +148,10 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
     <Flex
       direction="column"
       gap="5"
-      style={{ maxWidth: 780, margin: "0 auto" }}
     >
       {/* ---- Hero ---- */}
       <Box>
-        <Heading as="h1" size="7">How to Pair a Node</Heading>
+        <Heading as="h1" size="5">How to Pair a Node</Heading>
         <Text size="3" color="gray" mt="2" as="p">
           Pairing connects your air-quality sensor to your CrowdPM account so it can
           securely stream measurements to the platform. The process takes about two
@@ -182,7 +181,7 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
 
       {/* ---- Step-by-step ---- */}
       <Box>
-        <Heading as="h2" size="5" mb="3">Step-by-step</Heading>
+        <Heading as="h2" size="4" mb="3">Step-by-step</Heading>
         <Flex direction="column" gap="3">
           <Flex gap="3" wrap="wrap">
             <StepCard
@@ -215,7 +214,7 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
 
       {/* ---- Flow diagram ---- */}
       <Box>
-        <Heading as="h2" size="5" mb="3">How it works</Heading>
+        <Heading as="h2" size="4" mb="3">How it works</Heading>
         <Text size="2" color="gray" mb="3" as="p">
           The diagram below shows the message flow between your sensor node, the CrowdPM
           server, and your browser during the pairing process.
