@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { measurementsRoutes } from "../../src/routes/measurements.js";
 import { httpError, toHttpError } from "../../src/lib/httpError.js";
 import { RateLimitError } from "../../src/lib/rateLimiter.js";
+import { withRateLimitsEnabled } from "../helpers/rateLimitEnv.js";
 
 const mocks = vi.hoisted(() => ({
   fetchRange: vi.fn(),
@@ -34,6 +35,8 @@ async function buildApp() {
   await app.ready();
   return app;
 }
+
+withRateLimitsEnabled();
 
 beforeEach(() => {
   mocks.fetchRange.mockReset();
