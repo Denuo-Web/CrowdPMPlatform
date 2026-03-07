@@ -428,6 +428,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const selectedIndexRef = useRef<number>(selectedIndex);
   const onSelectRef = useRef<typeof onSelectIndex>(onSelectIndex);
   const onSelectPointRef = useRef<typeof onSelectPoint>(onSelectPoint);
+  const showAllModeRef = useRef(showAllMode);
+  const playbackPathModeRef = useRef(playbackPathMode);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const hasUserControlRef = useRef(false);
   const dataSignatureRef = useRef(signature(data));
@@ -439,6 +441,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => { onSelectRef.current = onSelectIndex; }, [onSelectIndex]);
   useEffect(() => { onSelectPointRef.current = onSelectPoint; }, [onSelectPoint]);
+  useEffect(() => { showAllModeRef.current = showAllMode; }, [showAllMode]);
+  useEffect(() => { playbackPathModeRef.current = playbackPathMode; }, [playbackPathMode]);
   useEffect(() => {
     const sig = signature(data);
     if (dataSignatureRef.current !== sig) {
@@ -588,8 +592,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
           (index) => onSelectRef.current?.(index),
           (point) => onSelectPointRef.current?.(point),
           sphereGeometry,
-          showAllMode,
-          playbackPathMode
+          showAllModeRef.current,
+          playbackPathModeRef.current
         ),
         interleaved
       });

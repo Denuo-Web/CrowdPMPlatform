@@ -1017,7 +1017,7 @@ export default function MapPage({
             ) : (
               <div style={{ marginTop: 8 }}>
                 <p style={{ margin: "0 0 8px", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  Render a flythrough video of this batch's measurements.
+                  Render a flythrough video of this batch&apos;s measurements.
                 </p>
                 <button
                   type="button"
