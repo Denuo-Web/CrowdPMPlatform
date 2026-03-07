@@ -431,7 +431,9 @@ export default function MapPage({
       count: rawPoints.length,
       processedAt: new Date().toISOString(),
       visibility: detail.visibility ?? "private",
-      moderationState: detail.moderationState ?? "approved",
+      moderationState: ("moderationState" in detail && detail.moderationState === "quarantined")
+        ? "quarantined"
+        : "approved",
     };
 
     upsertBatchSummary(summary);
