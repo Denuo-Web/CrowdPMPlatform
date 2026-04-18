@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Callout, Card, Flex, Heading, IconButton, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
-import { ChevronDownIcon, ChevronUpIcon, ReloadIcon } from "@radix-ui/react-icons";
+import { Badge, Box, Button, Callout, Card, Flex, Heading, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
+import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
 import {
   deleteBatch,
@@ -15,71 +15,12 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
+import { clampVisibleResults, DEFAULT_VISIBLE_RESULTS, MIN_VISIBLE_RESULTS, ResultCountControl } from "../components/PaginationControl";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
   refreshToken?: number;
 };
-
-const MIN_VISIBLE_RESULTS = 1;
-const MAX_VISIBLE_RESULTS = 10;
-
-function clampVisibleResults(total: number, requested: number) {
-  if (total <= 0) return 0;
-  return Math.min(Math.max(requested, MIN_VISIBLE_RESULTS), Math.min(MAX_VISIBLE_RESULTS, total));
-}
-
-type ResultCountControlProps = {
-  itemLabelSingular: string;
-  itemLabelPlural: string;
-  visibleCount: number;
-  totalCount: number;
-  onShowLess: () => void;
-  onShowMore: () => void;
-};
-
-function ResultCountControl({
-  itemLabelSingular,
-  itemLabelPlural,
-  visibleCount,
-  totalCount,
-  onShowLess,
-  onShowMore,
-}: ResultCountControlProps) {
-  if (totalCount <= 1) return null;
-
-  const maxVisibleCount = Math.min(MAX_VISIBLE_RESULTS, totalCount);
-  const noun = totalCount === 1 ? itemLabelSingular : itemLabelPlural;
-  const summary = visibleCount < totalCount
-    ? `Showing first ${visibleCount} of ${totalCount} ${noun}`
-    : `Showing ${visibleCount} ${noun}`;
-
-  return (
-    <Flex align="center" gap="2" wrap="wrap">
-      <Text size="2" color="gray">{summary}</Text>
-      <IconButton
-        type="button"
-        variant="soft"
-        size="1"
-        aria-label={`Show fewer ${itemLabelPlural}`}
-        onClick={onShowLess}
-        disabled={visibleCount <= MIN_VISIBLE_RESULTS}
-      >
-        <ChevronUpIcon />
-      </IconButton>
-      <IconButton
-        type="button"
-        variant="soft"
-        size="1"
-        aria-label={`Show more ${itemLabelPlural}`}
-        onClick={onShowMore}
-        disabled={visibleCount >= maxVisibleCount}
-      >
-        <ChevronDownIcon />
-      </IconButton>
-    </Flex>
-  );
-}
 
 function describeStatus(status?: string | null): { label: string; tone: "green" | "yellow" | "red" | "gray" } {
   const normalized = (status ?? "").toLowerCase();
@@ -97,7 +38,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
-  const [visibleDeviceCount, setVisibleDeviceCount] = useState(MAX_VISIBLE_RESULTS);
+  const [visibleDeviceCount, setVisibleDeviceCount] = useState(DEFAULT_VISIBLE_RESULTS);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [batchesError, setBatchesError] = useState<string | null>(null);
@@ -106,7 +47,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
   const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
   const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
-  const [visibleBatchCount, setVisibleBatchCount] = useState(MAX_VISIBLE_RESULTS);
+  const [visibleBatchCount, setVisibleBatchCount] = useState(DEFAULT_VISIBLE_RESULTS);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const activationUrl = useMemo(() => buildActivationLink(), []);
@@ -486,7 +427,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
               visibleCount={boundedVisibleDeviceCount}
               totalCount={devices.length}
               onShowLess={() => setVisibleDeviceCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-              onShowMore={() => setVisibleDeviceCount((current) => Math.min(MAX_VISIBLE_RESULTS, current + 1))}
+              onShowMore={() => setVisibleDeviceCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
             />
           </Flex>
           <Separator my="2" size="4" />
@@ -571,7 +512,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
                 visibleCount={boundedVisibleBatchCount}
                 totalCount={filteredBatches.length}
                 onShowLess={() => setVisibleBatchCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-                onShowMore={() => setVisibleBatchCount((current) => Math.min(MAX_VISIBLE_RESULTS, current + 1))}
+                onShowMore={() => setVisibleBatchCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
               />
               <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
                 <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
