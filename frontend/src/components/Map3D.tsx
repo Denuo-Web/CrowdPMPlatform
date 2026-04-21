@@ -50,7 +50,6 @@ const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
 const FALLBACK_ZOOM = 7;
 type PathDatum = { path: [number, number, number][] };
 type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
-  _deck?: { redraw?: (force?: boolean) => void } | null;
   _overlay?: (google.maps.OverlayView & { requestRedraw?: () => void }) | null;
 };
 
@@ -243,7 +242,6 @@ function clearMapRoot(root: HTMLDivElement | null) {
 function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
   const internalOverlay = overlay as GoogleMapsOverlayInternal;
-  internalOverlay._deck?.redraw?.(true);
   internalOverlay._overlay?.requestRedraw?.();
 }
 
