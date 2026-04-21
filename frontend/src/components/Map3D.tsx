@@ -447,9 +447,13 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     const sig = signature(data);
     if (dataSignatureRef.current !== sig) {
       dataSignatureRef.current = sig;
-      hasUserControlRef.current = false;
+      hasUserControlRef.current = !forceFollowSelection;
     }
-  }, [data]);
+  }, [data, forceFollowSelection]);
+
+  useEffect(() => {
+    hasUserControlRef.current = !forceFollowSelection;
+  }, [forceFollowSelection]);
 
   const getCaptureCanvas = useCallback(
     () => pickLargestCaptureCanvas(divRef.current),
@@ -515,10 +519,10 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   }, [data, selectedIndex, syncOverlay]);
 
   useEffect(() => {
-    if (!autoCenterKey) return;
+    if (!autoCenterKey || !forceFollowSelection) return;
     hasUserControlRef.current = false;
     syncOverlay({ forceCenter: true });
-  }, [autoCenterKey, syncOverlay]);
+  }, [autoCenterKey, forceFollowSelection, syncOverlay]);
 
   useEffect(() => {
     if (!divRef.current) return;

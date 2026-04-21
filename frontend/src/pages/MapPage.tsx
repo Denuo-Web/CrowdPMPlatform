@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
+import { Switch } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
   fetchPublicBatchDetail,
@@ -351,6 +352,7 @@ export default function MapPage({
 
   // Always derive the index
   const selectedIndex = indexOverride ?? (rows.length ? rows.length - 1 : 0);
+  const [trackBall, setTrackBall] = useState(true);
 
   // Only reset override when the BATCH changes, not when data changes
   useEffect(() => {
@@ -765,6 +767,7 @@ export default function MapPage({
           autoCenterKey={autoCenterKey}
           interleaved={settings.interleavedRendering}
           showAllMode={effectiveShowAllMode}
+          forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
         />
       </Suspense>
 
@@ -1086,6 +1089,26 @@ export default function MapPage({
                   onChange={(e) => setIndexOverride(Number(e.target.value))}
                   style={{ width: "100%", marginTop: 4 }}
                 />
+                <div
+                  style={{
+                    marginTop: "var(--space-2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "var(--space-3)",
+                    color: "var(--gray-11)",
+                    fontSize: "var(--font-size-1)",
+                  }}
+                >
+                  <label htmlFor="ball-tracking-toggle" style={{ cursor: "pointer", fontWeight: 500 }}>
+                    {trackBall ? "Track Node Mode" : "Free Mode"}
+                  </label>
+                  <Switch
+                    id="ball-tracking-toggle"
+                    checked={trackBall}
+                    onCheckedChange={setTrackBall}
+                  />
+                </div>
                 {selectedPoint ? (
                   <div style={{ marginTop: 8 }}>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
