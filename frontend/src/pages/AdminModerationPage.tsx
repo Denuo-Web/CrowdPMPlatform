@@ -24,6 +24,7 @@ import {
   type AdminRole,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
+import { clampVisibleResults, DEFAULT_VISIBLE_RESULTS, MIN_VISIBLE_RESULTS, ResultCountControl } from "../components/PaginationControl";
 
 function formatTimestamp(value: string | null): string {
   const ms = timestampToMillis(value);
@@ -54,6 +55,8 @@ export default function AdminModerationPage() {
 
   const [moderationFilter, setModerationFilter] = useState<SubmissionFilterState>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
+  const [visibleSubmissionCount, setVisibleSubmissionCount] = useState(DEFAULT_VISIBLE_RESULTS);
+  const [visibleUserCount, setVisibleUserCount] = useState(DEFAULT_VISIBLE_RESULTS);
 
   const canAccess = Boolean(user) && isModerator;
 
@@ -62,6 +65,22 @@ export default function AdminModerationPage() {
     visibility: visibilityFilter === "all" ? undefined : visibilityFilter,
     limit: 100,
   }), [moderationFilter, visibilityFilter]);
+  const boundedVisibleSubmissionCount = useMemo(
+    () => clampVisibleResults(submissions.length, visibleSubmissionCount),
+    [submissions.length, visibleSubmissionCount],
+  );
+  const visibleSubmissions = useMemo(
+    () => submissions.slice(0, boundedVisibleSubmissionCount),
+    [boundedVisibleSubmissionCount, submissions],
+  );
+  const boundedVisibleUserCount = useMemo(
+    () => clampVisibleResults(users.length, visibleUserCount),
+    [users.length, visibleUserCount],
+  );
+  const visibleUsers = useMemo(
+    () => users.slice(0, boundedVisibleUserCount),
+    [boundedVisibleUserCount, users],
+  );
 
   const refreshSubmissions = useCallback(async () => {
     if (!canAccess) return;
@@ -108,6 +127,22 @@ export default function AdminModerationPage() {
     if (!canAccess) return;
     void refreshUsers();
   }, [canAccess, refreshUsers]);
+
+  useEffect(() => {
+    if (submissions.length === 0) return;
+    const nextVisibleCount = clampVisibleResults(submissions.length, visibleSubmissionCount);
+    if (nextVisibleCount !== visibleSubmissionCount) {
+      setVisibleSubmissionCount(nextVisibleCount);
+    }
+  }, [submissions.length, visibleSubmissionCount]);
+
+  useEffect(() => {
+    if (users.length === 0) return;
+    const nextVisibleCount = clampVisibleResults(users.length, visibleUserCount);
+    if (nextVisibleCount !== visibleUserCount) {
+      setVisibleUserCount(nextVisibleCount);
+    }
+  }, [users.length, visibleUserCount]);
 
   const handleModerationChange = useCallback(async (entry: AdminSubmissionSummary, moderationState: ModerationState) => {
     if (!canAccess) return;
@@ -181,7 +216,17 @@ export default function AdminModerationPage() {
     <Flex direction="column" gap="5">
       <Card>
         <Flex direction="column" gap="3">
-          <Heading as="h3" size="5">Submission moderation</Heading>
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Heading as="h3" size="5">Submission moderation</Heading>
+            <ResultCountControl
+              itemLabelSingular="submission"
+              itemLabelPlural="submissions"
+              visibleCount={boundedVisibleSubmissionCount}
+              totalCount={submissions.length}
+              onShowLess={() => setVisibleSubmissionCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
+              onShowMore={() => setVisibleSubmissionCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+            />
+          </Flex>
           <Flex gap="3" wrap="wrap" align="end">
             <Box>
               <Text size="2" color="gray">State</Text>
@@ -223,7 +268,7 @@ export default function AdminModerationPage() {
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {submissions.map((entry) => {
+              {visibleSubmissions.map((entry) => {
                 const busy = actionBusyId === `submission:${entry.deviceId}:${entry.batchId}`;
                 return (
                   <Table.Row key={`${entry.deviceId}:${entry.batchId}`}>
@@ -270,7 +315,17 @@ export default function AdminModerationPage() {
 
       <Card>
         <Flex direction="column" gap="3">
-          <Heading as="h3" size="5">User moderation</Heading>
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Heading as="h3" size="5">User moderation</Heading>
+            <ResultCountControl
+              itemLabelSingular="user"
+              itemLabelPlural="users"
+              visibleCount={boundedVisibleUserCount}
+              totalCount={users.length}
+              onShowLess={() => setVisibleUserCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
+              onShowMore={() => setVisibleUserCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+            />
+          </Flex>
           <Flex gap="3" wrap="wrap" align="center">
             <Button onClick={() => { void refreshUsers(); }} disabled={usersLoading}>
               {usersLoading ? "Refreshing..." : "Refresh"}
@@ -298,7 +353,7 @@ export default function AdminModerationPage() {
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {users.map((entry) => {
+              {visibleUsers.map((entry) => {
                 const busyDisabled = actionBusyId === `user:${entry.uid}:disabled`;
                 const busyRoles = actionBusyId === `user:${entry.uid}:roles`;
                 return (

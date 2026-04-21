@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Card, Flex, Heading, SegmentedControl, Separator, Table, Text, TextField, Callout, Switch, Select } from "@radix-ui/themes";
+import { Badge, Box, Button, Callout, Card, Flex, Heading, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
 import {
@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
+import { clampVisibleResults, DEFAULT_VISIBLE_RESULTS, MIN_VISIBLE_RESULTS, ResultCountControl } from "../components/PaginationControl";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
@@ -37,6 +38,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [visibleDeviceCount, setVisibleDeviceCount] = useState(DEFAULT_VISIBLE_RESULTS);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [batchesError, setBatchesError] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
   const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
   const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
+  const [visibleBatchCount, setVisibleBatchCount] = useState(DEFAULT_VISIBLE_RESULTS);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const activationUrl = useMemo(() => buildActivationLink(), []);
@@ -132,6 +135,22 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
       return timeB - timeA;
     });
   }, [batches, selectedBatchDeviceId]);
+  const boundedVisibleDeviceCount = useMemo(
+    () => clampVisibleResults(devices.length, visibleDeviceCount),
+    [devices.length, visibleDeviceCount],
+  );
+  const visibleDevices = useMemo(
+    () => devices.slice(0, boundedVisibleDeviceCount),
+    [boundedVisibleDeviceCount, devices],
+  );
+  const boundedVisibleBatchCount = useMemo(
+    () => clampVisibleResults(filteredBatches.length, visibleBatchCount),
+    [filteredBatches.length, visibleBatchCount],
+  );
+  const visibleBatches = useMemo(
+    () => filteredBatches.slice(0, boundedVisibleBatchCount),
+    [boundedVisibleBatchCount, filteredBatches],
+  );
 
   useEffect(() => {
     if (selectedBatchDeviceId === "all") return;
@@ -140,6 +159,22 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
       setSelectedBatchDeviceId("all");
     }
   }, [batchDeviceOptions, selectedBatchDeviceId]);
+
+  useEffect(() => {
+    if (devices.length === 0) return;
+    const nextVisibleCount = clampVisibleResults(devices.length, visibleDeviceCount);
+    if (nextVisibleCount !== visibleDeviceCount) {
+      setVisibleDeviceCount(nextVisibleCount);
+    }
+  }, [devices.length, visibleDeviceCount]);
+
+  useEffect(() => {
+    if (filteredBatches.length === 0) return;
+    const nextVisibleCount = clampVisibleResults(filteredBatches.length, visibleBatchCount);
+    if (nextVisibleCount !== visibleBatchCount) {
+      setVisibleBatchCount(nextVisibleCount);
+    }
+  }, [filteredBatches.length, visibleBatchCount]);
 
   const handleDefaultVisibilityChange = useCallback(async (nextValue: string) => {
     const next = nextValue as BatchVisibility;
@@ -381,8 +416,20 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
 
       <Card>
         <Flex direction="column" gap="3">
-          <Heading as="h3" size="4">Registered devices</Heading>
-          <Text color="gray">These are exposed by the Functions API via /v1/devices for your account.</Text>
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Box>
+              <Heading as="h3" size="4">Registered devices</Heading>
+              <Text color="gray">These are exposed by the Functions API via /v1/devices for your account.</Text>
+            </Box>
+            <ResultCountControl
+              itemLabelSingular="device"
+              itemLabelPlural="devices"
+              visibleCount={boundedVisibleDeviceCount}
+              totalCount={devices.length}
+              onShowLess={() => setVisibleDeviceCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
+              onShowMore={() => setVisibleDeviceCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+            />
+          </Flex>
           <Separator my="2" size="4" />
           {revokeError ? (
             <Callout.Root color="tomato">
@@ -406,7 +453,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {devices.map((device) => {
+                {visibleDevices.map((device) => {
                   const status = describeStatus(device.registryStatus ?? device.status);
                   const createdMs = timestampToMillis(device.createdAt);
                   const created = createdMs === null ? "—" : new Date(createdMs).toLocaleDateString();
@@ -458,9 +505,19 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
               <Heading as="h3" size="4">Batch uploads</Heading>
               <Text color="gray">Manage uploaded batches for each registered device.</Text>
             </Box>
-            <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
-              <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
-            </Button>
+            <Flex align="center" gap="2" wrap="wrap">
+              <ResultCountControl
+                itemLabelSingular="batch"
+                itemLabelPlural="batches"
+                visibleCount={boundedVisibleBatchCount}
+                totalCount={filteredBatches.length}
+                onShowLess={() => setVisibleBatchCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
+                onShowMore={() => setVisibleBatchCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+              />
+              <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
+                <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
+              </Button>
+            </Flex>
           </Flex>
 
           <Separator my="2" size="4" />
@@ -516,7 +573,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {filteredBatches.map((batch) => {
+                {visibleBatches.map((batch) => {
                   const actionKey = `${batch.deviceId}:${batch.batchId}`;
                   const isUpdating = updatingBatchKey === actionKey;
                   const isDeleting = deletingBatchKey === actionKey;
