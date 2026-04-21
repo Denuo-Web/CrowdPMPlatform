@@ -49,6 +49,10 @@ type Map3DProps = {
 const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
 const FALLBACK_ZOOM = 7;
 type PathDatum = { path: [number, number, number][] };
+type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
+  _deck?: { redraw?: (force?: boolean) => void } | null;
+  _overlay?: (google.maps.OverlayView & { requestRedraw?: () => void }) | null;
+};
 
 function waitForNextAnimationFrame(): Promise<number> {
   return new Promise((resolve) => {
@@ -201,6 +205,8 @@ function getVisibleCanvases(root: HTMLDivElement | null): HTMLCanvasElement[] {
   if (!root) return [];
   return Array.from(root.querySelectorAll("canvas")).filter((canvas): canvas is HTMLCanvasElement => {
     if (!(canvas instanceof HTMLCanvasElement)) return false;
+    const style = window.getComputedStyle(canvas);
+    if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(canvas.width, Math.round(rect.width));
     const height = Math.max(canvas.height, Math.round(rect.height));
@@ -220,13 +226,25 @@ function pickLargestCaptureCanvas(root: HTMLDivElement | null): HTMLCanvasElemen
     const width = Math.max(canvas.width, Math.round(rect.width));
     const height = Math.max(canvas.height, Math.round(rect.height));
     const area = width * height;
-    if (area > bestArea) {
+    if (area >= bestArea) {
       best = canvas;
       bestArea = area;
     }
   });
 
   return best;
+}
+
+function clearMapRoot(root: HTMLDivElement | null) {
+  if (!root) return;
+  root.replaceChildren();
+}
+
+function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
+  if (!overlay) return;
+  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  internalOverlay._deck?.redraw?.(true);
+  internalOverlay._overlay?.requestRedraw?.();
 }
 
 function compareCanvasOrder(left: HTMLCanvasElement, right: HTMLCanvasElement): number {
@@ -408,6 +426,16 @@ async function createStreamBackedCaptureSession(root: HTMLDivElement | null): Pr
   };
 }
 
+async function createCaptureSession(
+  root: HTMLDivElement | null,
+  options?: { preferComposite?: boolean }
+): Promise<Map3DCaptureSession | null> {
+  if (options?.preferComposite) {
+    return createCompositeCaptureSession(root);
+  }
+  return createStreamBackedCaptureSession(root);
+}
+
 const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   data,
   selectedIndex,
@@ -455,21 +483,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     hasUserControlRef.current = !forceFollowSelection;
   }, [forceFollowSelection]);
 
-  const getCaptureCanvas = useCallback(
-    () => pickLargestCaptureCanvas(divRef.current),
-    []
-  );
-
-  useImperativeHandle(ref, () => ({
-    getCaptureCanvas,
-    startCaptureSession: () => createStreamBackedCaptureSession(divRef.current),
-    waitForVisualReady: async () => {
-      await waitForNextAnimationFrame();
-      await waitForMapIdle(mapRef.current, forceFollowSelection ? 450 : 250);
-      await waitForAnimationFrames(2);
-    },
-  }), [forceFollowSelection, getCaptureCanvas]);
-
   const syncOverlay = useCallback((options?: { forceCenter?: boolean }) => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -508,6 +521,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         }
       }
     }
+
+    requestOverlayRedraw(overlay);
   }, [forceFollowSelection, playbackPathMode, showAllMode]);
 
   useEffect(() => {
@@ -524,10 +539,30 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     syncOverlay({ forceCenter: true });
   }, [autoCenterKey, forceFollowSelection, syncOverlay]);
 
+  const getCaptureCanvas = useCallback(
+    () => pickLargestCaptureCanvas(divRef.current),
+    []
+  );
+
+  useImperativeHandle(ref, () => ({
+    getCaptureCanvas,
+    startCaptureSession: () => createCaptureSession(divRef.current, { preferComposite: interleaved }),
+    waitForVisualReady: async () => {
+      syncOverlayRef.current?.();
+      requestOverlayRedraw(overlayRef.current);
+      await waitForNextAnimationFrame();
+      await waitForMapIdle(mapRef.current, forceFollowSelection ? 450 : 250);
+      syncOverlayRef.current?.();
+      requestOverlayRedraw(overlayRef.current);
+      await waitForAnimationFrames(2);
+    },
+  }), [forceFollowSelection, getCaptureCanvas, interleaved]);
+
   useEffect(() => {
     if (!divRef.current) return;
     let cancelled = false;
     const element = divRef.current;
+    clearMapRoot(element);
 
     let listeners: google.maps.MapsEventListener[] = [];
 
@@ -623,6 +658,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       listeners = [];
       overlayRef.current = null;
       mapRef.current = null;
+      clearMapRoot(element);
     };
   }, [interleaved, defaultCenterLat, defaultCenterLng, defaultZoom]);
 
