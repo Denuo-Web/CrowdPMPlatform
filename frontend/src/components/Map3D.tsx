@@ -49,8 +49,16 @@ type Map3DProps = {
 const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
 const FALLBACK_ZOOM = 7;
 type PathDatum = { path: [number, number, number][] };
+type GuardedOverlayView = google.maps.OverlayView & {
+  getMap?: () => google.maps.Map | null;
+  requestRedraw?: () => void;
+};
 type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
-  _overlay?: (google.maps.OverlayView & { requestRedraw?: () => void }) | null;
+  _map?: google.maps.Map | null;
+  _overlay?: GuardedOverlayView | null;
+  _positioningOverlay?: GuardedOverlayView | null;
+  _onAdd?: () => void;
+  _onAddVectorOverlay?: () => void;
 };
 
 function waitForNextAnimationFrame(): Promise<number> {
@@ -234,15 +242,30 @@ function pickLargestCaptureCanvas(root: HTMLDivElement | null): HTMLCanvasElemen
   return best;
 }
 
-function clearMapRoot(root: HTMLDivElement | null) {
-  if (!root) return;
-  root.replaceChildren();
-}
-
 function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
   const internalOverlay = overlay as GoogleMapsOverlayInternal;
   internalOverlay._overlay?.requestRedraw?.();
+}
+
+function guardOverlayLifecycle(overlay: GoogleMapsOverlay) {
+  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+
+  if (typeof internalOverlay._onAdd === "function") {
+    const originalOnAdd = internalOverlay._onAdd.bind(overlay);
+    internalOverlay._onAdd = () => {
+      if (!internalOverlay._map || !internalOverlay._overlay?.getMap?.()) return;
+      originalOnAdd();
+    };
+  }
+
+  if (typeof internalOverlay._onAddVectorOverlay === "function") {
+    const originalOnAddVectorOverlay = internalOverlay._onAddVectorOverlay.bind(overlay);
+    internalOverlay._onAddVectorOverlay = () => {
+      if (!internalOverlay._map || !internalOverlay._positioningOverlay?.getMap?.()) return;
+      originalOnAddVectorOverlay();
+    };
+  }
 }
 
 function compareCanvasOrder(left: HTMLCanvasElement, right: HTMLCanvasElement): number {
@@ -560,14 +583,15 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     if (!divRef.current) return;
     let cancelled = false;
     const element = divRef.current;
-    clearMapRoot(element);
 
+    let localMap: google.maps.Map | null = null;
+    let localOverlay: GoogleMapsOverlay | null = null;
     let listeners: google.maps.MapsEventListener[] = [];
 
     (async () => {
       const loader = getMapsLoader();
       const mapsLib = await loader.importLibrary("maps");
-      if (cancelled) return;
+      if (cancelled || divRef.current !== element) return;
 
       const mapId = import.meta.env.VITE_GOOGLE_MAP_ID;
       if (!mapId) {
@@ -596,7 +620,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         disableDefaultUI: true,
         keyboardShortcuts: true,
       }) as google.maps.Map;
-      if (cancelled) return;
+      localMap = map;
+      if (cancelled || divRef.current !== element) return;
       mapRef.current = map;
 
       const markUserControl = () => { hasUserControlRef.current = true; };
@@ -614,6 +639,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       const overlaySupported = typeof deckClass.isSupported === "function"
         ? !!(await deckClass.isSupported())
         : !!(map as MapWithCapabilities).getMapCapabilities?.().isWebGLOverlayViewAvailable;
+      if (cancelled || divRef.current !== element) return;
 
       if (!overlaySupported) {
         console.warn("WebGLOverlayView is not supported in this environment; falling back to standard map rendering.");
@@ -634,7 +660,14 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         ),
         interleaved
       });
+      guardOverlayLifecycle(overlay);
+      localOverlay = overlay;
       overlay.setMap(map);
+      if (cancelled) {
+        overlay.setMap(null);
+        if (typeof overlay.finalize === "function") overlay.finalize();
+        return;
+      }
 
       if (currentSeries.length && typeof map.moveCamera === "function") {
         map.moveCamera({ tilt: 67.5, heading: 0, zoom: 18 });
@@ -654,9 +687,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         if (typeof listener.remove === "function") listener.remove();
       });
       listeners = [];
-      overlayRef.current = null;
-      mapRef.current = null;
-      clearMapRoot(element);
+      if (overlayRef.current === localOverlay) overlayRef.current = null;
+      if (mapRef.current === localMap) mapRef.current = null;
     };
   }, [interleaved, defaultCenterLat, defaultCenterLng, defaultZoom]);
 
