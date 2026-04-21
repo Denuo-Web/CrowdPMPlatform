@@ -122,10 +122,11 @@ export default function App() {
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
 
   const isSignedIn = Boolean(user);
-  const canUseSmokeTests = (() => {
+  const isSmokeTestAccount = (() => {
     const email = user?.email;
     return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
   })();
+  const canUseSmokeTests = Boolean(user) && (isSmokeTestAccount || isSuperAdmin);
   const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
   const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
