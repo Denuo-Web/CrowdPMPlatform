@@ -15,14 +15,14 @@ Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservice
 - **Processing** (`functions/src/services/ingestBatchProcessor.ts`): Shared processing module that applies calibration data from `devices/{deviceId}` (if present), writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`, and updates batch status.
 - **Pairing API** (`functions/src/routes/pairing.ts` + `functions/src/routes/activation.ts`): Implements the device authorization grant (device start/token/register/access-token) using Ed25519 keys, DPoP, and the `/activate` UI for human approval with MFA enforcement.
 - **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, pairing endpoints, and `/v1/device-activation`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
-- **Frontend** (`frontend/`): React 19.2 app built with Vite that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
+- **Frontend** (`frontend/`): React 19 app built with Vite 8 that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
 
 ## Tech Stack
 - [Firebase Cloud Functions](https://firebase.google.com/docs/functions) with [Fastify](https://fastify.dev/)
 - [Cloud Storage](https://cloud.google.com/storage/docs) backend for raw ingest payload retention
 - [Cloud Firestore](https://firebase.google.com/docs/firestore) for device + measurement persistence
-- [React 19.2](https://react.dev/), [Vite 5](https://vitejs.dev/), [deck.gl](https://deck.gl), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
-- [pnpm 10](https://pnpm.io/), [TypeScript 5](https://www.typescriptlang.org/), [ESLint 9](https://eslint.org/), and [Vitest 2](https://vitest.dev/) for tooling
+- [React 19](https://react.dev/), [Vite 8](https://vitejs.dev/), [deck.gl 9](https://deck.gl), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
+- [pnpm 10](https://pnpm.io/), [TypeScript 6](https://www.typescriptlang.org/), [ESLint 9](https://eslint.org/), and [Vitest 4](https://vitest.dev/) for tooling
 - [GitHub Actions](https://github.com/features/actions) workflow (`infra/github-ci.yml`) running workspace builds on push and PR
 
 ## Repository Layout
