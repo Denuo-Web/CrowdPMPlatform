@@ -50,7 +50,12 @@ export default [
       }
     },
     rules: {
-      "react/react-in-jsx-scope": "off"
+      "react/react-in-jsx-scope": "off",
+      // These rules were added to the recommended hooks preset after this codebase's
+      // existing patterns were established. Keep the prior lint contract when
+      // upgrading eslint-plugin-react-hooks instead of forcing a broad refactor here.
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off"
     },
     overrides: [
       {
