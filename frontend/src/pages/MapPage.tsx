@@ -947,7 +947,7 @@ export default function MapPage({
             }}
           >
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-              Video Export
+              Create a movie of this pollution data
             </p>
             {exportDisabledReason ? (
               <p style={{ margin: "6px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
@@ -1021,7 +1021,7 @@ export default function MapPage({
             ) : (
               <div style={{ marginTop: 8 }}>
                 <p style={{ margin: "0 0 8px", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  Render a flythrough video of this batch&apos;s measurements.
+                  Create a video flythrough of the pollution data from your measurement devices selected batch
                 </p>
                 <button
                   type="button"
@@ -1038,7 +1038,7 @@ export default function MapPage({
                     cursor: canStartExport ? "pointer" : "not-allowed",
                   }}
                 >
-                  Render Video
+                  Create Video Now
                 </button>
               </div>
             )}
