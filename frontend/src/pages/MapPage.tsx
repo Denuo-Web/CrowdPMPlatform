@@ -221,7 +221,6 @@ export default function MapPage({
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [renderedVideoName, setRenderedVideoName] = useState<string | null>(null);
-  const [renderedVideoMimeType, setRenderedVideoMimeType] = useState<string | null>(null);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
 
 
@@ -729,7 +728,7 @@ export default function MapPage({
       setRenderedVideoUrl(objectUrl);
       setRenderedVideoName(`${deviceSegment}-${batchSegment}.webm`);
       setRenderedVideoMimeType(blob.type || recordingSupport.mimeType);
-      setExportStatus("Video ready for download.");
+      setExportStatus("Your video is ready to download!");
     }
     catch (err) {
       if (recordingSession) {
@@ -1000,7 +999,7 @@ export default function MapPage({
                       cursor: "pointer",
                     }}
                   >
-                    Download {renderedVideoMimeType === "video/mp4" ? "MP4" : "WebM"}
+                    Download
                   </a>
                   <button
                     type="button"
@@ -1015,7 +1014,7 @@ export default function MapPage({
                       cursor: "pointer",
                     }}
                   >
-                    Re-render
+                    Regenerate Video
                   </button>
                 </div>
               </div>
