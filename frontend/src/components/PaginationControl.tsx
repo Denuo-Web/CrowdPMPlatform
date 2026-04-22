@@ -1,33 +1,24 @@
 import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import { Flex, IconButton, Text } from "@radix-ui/themes";
 
-export const DEFAULT_RESULTS_PAGE_SIZE = 10;
-export const MIN_VISIBLE_RESULTS = 1;
-export const DEFAULT_VISIBLE_RESULTS = DEFAULT_RESULTS_PAGE_SIZE;
+export const RESULTS_PER_PAGE = 10;
 
-export function getPageCount(total: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+function getPageCount(total: number, pageSize = RESULTS_PER_PAGE) {
   if (total <= 0) return 0;
   return Math.ceil(total / pageSize);
 }
 
-export function clampVisibleResults(total: number, requested: number) {
-  if (total <= 0) return 0;
-  return Math.min(Math.max(requested, MIN_VISIBLE_RESULTS), Math.min(DEFAULT_VISIBLE_RESULTS, total));
-}
-
-export function clampPageIndex(total: number, requested: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+export function clampPageIndex(total: number, requested: number, pageSize = RESULTS_PER_PAGE) {
   const pageCount = getPageCount(total, pageSize);
   if (pageCount === 0) return 0;
   return Math.min(Math.max(requested, 0), pageCount - 1);
 }
 
-export function getPaginationWindow(total: number, pageIndex: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+export function getPaginationWindow(total: number, pageIndex: number, pageSize = RESULTS_PER_PAGE) {
   if (total <= 0) {
     return {
-      pageIndex: 0,
       pageStart: 0,
       pageEnd: 0,
-      pageCount: 0,
     };
   }
 
@@ -36,10 +27,8 @@ export function getPaginationWindow(total: number, pageIndex: number, pageSize =
   const pageEnd = Math.min(pageStart + pageSize, total);
 
   return {
-    pageIndex: nextPageIndex,
     pageStart,
     pageEnd,
-    pageCount: getPageCount(total, pageSize),
   };
 }
 
