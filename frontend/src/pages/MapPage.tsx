@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
 import { Switch } from "@radix-ui/themes";
@@ -188,6 +189,10 @@ function sanitizeFileSegment(value: string | null | undefined): string {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
   return normalized || "batch";
+}
+
+function flushExportStateUpdate(action: () => void) {
+  flushSync(action);
 }
 
 export default function MapPage({
@@ -669,8 +674,10 @@ export default function MapPage({
     setExportError(null);
     setExportProgress(0);
     setExportStatus("Preparing live map capture...");
-    setIsExporting(true);
-    setIndexOverride(0);
+    flushExportStateUpdate(() => {
+      setIsExporting(true);
+      setIndexOverride(0);
+    });
 
     try {
       await waitForAnimationFrames(2);
@@ -701,7 +708,9 @@ export default function MapPage({
 
       for (let index = 1; index <= lastIndex; index += 1) {
         const stepStartedAt = performance.now();
-        setIndexOverride(index);
+        flushExportStateUpdate(() => {
+          setIndexOverride(index);
+        });
         setExportStatus(`Rendering point ${index + 1} of ${pointCount}...`);
 
         await waitForAnimationFrames(1);
@@ -741,8 +750,10 @@ export default function MapPage({
     }
     finally {
       captureSession?.stop();
-      setIsExporting(false);
-      setIndexOverride(Math.min(previousIndex, lastIndex));
+      flushExportStateUpdate(() => {
+        setIsExporting(false);
+        setIndexOverride(Math.min(previousIndex, lastIndex));
+      });
     }
   }, [
     canStartExport,
