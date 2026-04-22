@@ -1,38 +1,73 @@
 import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import { Flex, IconButton, Text } from "@radix-ui/themes";
 
+export const DEFAULT_RESULTS_PAGE_SIZE = 10;
 export const MIN_VISIBLE_RESULTS = 1;
-export const DEFAULT_VISIBLE_RESULTS = 10;
+export const DEFAULT_VISIBLE_RESULTS = DEFAULT_RESULTS_PAGE_SIZE;
+
+export function getPageCount(total: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+  if (total <= 0) return 0;
+  return Math.ceil(total / pageSize);
+}
 
 export function clampVisibleResults(total: number, requested: number) {
   if (total <= 0) return 0;
   return Math.min(Math.max(requested, MIN_VISIBLE_RESULTS), Math.min(DEFAULT_VISIBLE_RESULTS, total));
 }
 
+export function clampPageIndex(total: number, requested: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+  const pageCount = getPageCount(total, pageSize);
+  if (pageCount === 0) return 0;
+  return Math.min(Math.max(requested, 0), pageCount - 1);
+}
+
+export function getPaginationWindow(total: number, pageIndex: number, pageSize = DEFAULT_RESULTS_PAGE_SIZE) {
+  if (total <= 0) {
+    return {
+      pageIndex: 0,
+      pageStart: 0,
+      pageEnd: 0,
+      pageCount: 0,
+    };
+  }
+
+  const nextPageIndex = clampPageIndex(total, pageIndex, pageSize);
+  const pageStart = nextPageIndex * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, total);
+
+  return {
+    pageIndex: nextPageIndex,
+    pageStart,
+    pageEnd,
+    pageCount: getPageCount(total, pageSize),
+  };
+}
+
 type ResultCountControlProps = {
   itemLabelSingular: string;
   itemLabelPlural: string;
-  visibleCount: number;
+  pageStart: number;
+  pageEnd: number;
   totalCount: number;
   onShowLess: () => void;
   onShowMore: () => void;
 };
 
-export function ResultCountControl({
-  itemLabelSingular,
-  itemLabelPlural,
-  visibleCount,
-  totalCount,
-  onShowLess,
-  onShowMore,
-}: ResultCountControlProps) {
+export function ResultCountControl(props: ResultCountControlProps) {
+  const {
+    itemLabelSingular,
+    itemLabelPlural,
+    pageStart,
+    pageEnd,
+    totalCount,
+    onShowLess,
+    onShowMore,
+  } = props;
+
   if (totalCount <= 1) return null;
 
-  const maxVisibleCount = Math.min(DEFAULT_VISIBLE_RESULTS, totalCount);
   const noun = totalCount === 1 ? itemLabelSingular : itemLabelPlural;
-  const summary = visibleCount < totalCount
-    ? `Showing first ${visibleCount} of ${totalCount} ${noun}`
-    : `Showing ${visibleCount} ${noun}`;
+  const summary = `Showing ${pageStart + 1}-${pageEnd} of ${totalCount} ${noun}`;
 
   return (
     <Flex align="center" gap="2" wrap="wrap">
@@ -43,7 +78,7 @@ export function ResultCountControl({
         size="1"
         aria-label={`Show fewer ${itemLabelPlural}`}
         onClick={onShowLess}
-        disabled={visibleCount <= MIN_VISIBLE_RESULTS}
+        disabled={pageStart === 0}
       >
         <ChevronUpIcon />
       </IconButton>
@@ -53,7 +88,7 @@ export function ResultCountControl({
         size="1"
         aria-label={`Show more ${itemLabelPlural}`}
         onClick={onShowMore}
-        disabled={visibleCount >= maxVisibleCount}
+        disabled={pageEnd >= totalCount}
       >
         <ChevronDownIcon />
       </IconButton>
