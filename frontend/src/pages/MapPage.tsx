@@ -729,7 +729,7 @@ export default function MapPage({
       setRenderedVideoUrl(objectUrl);
       setRenderedVideoName(`${deviceSegment}-${batchSegment}.webm`);
       setRenderedVideoMimeType(blob.type || recordingSupport.mimeType);
-      setExportStatus("Video ready for download.");
+      setExportStatus("Your video is ready to download!");
     }
     catch (err) {
       if (recordingSession) {
@@ -1000,7 +1000,7 @@ export default function MapPage({
                       cursor: "pointer",
                     }}
                   >
-                    Download {renderedVideoMimeType === "video/mp4" ? "MP4" : "WebM"}
+                    Download
                   </a>
                   <button
                     type="button"
@@ -1015,7 +1015,7 @@ export default function MapPage({
                       cursor: "pointer",
                     }}
                   >
-                    Re-render
+                    Regenerate Video
                   </button>
                 </div>
               </div>
