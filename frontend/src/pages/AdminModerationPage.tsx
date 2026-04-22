@@ -24,7 +24,7 @@ import {
   type AdminRole,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
-import { clampVisibleResults, DEFAULT_VISIBLE_RESULTS, MIN_VISIBLE_RESULTS, ResultCountControl } from "../components/PaginationControl";
+import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
 function formatTimestamp(value: string | null): string {
   const ms = timestampToMillis(value);
@@ -55,8 +55,8 @@ export default function AdminModerationPage() {
 
   const [moderationFilter, setModerationFilter] = useState<SubmissionFilterState>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
-  const [visibleSubmissionCount, setVisibleSubmissionCount] = useState(DEFAULT_VISIBLE_RESULTS);
-  const [visibleUserCount, setVisibleUserCount] = useState(DEFAULT_VISIBLE_RESULTS);
+  const [submissionPageIndex, setSubmissionPageIndex] = useState(0);
+  const [userPageIndex, setUserPageIndex] = useState(0);
 
   const canAccess = Boolean(user) && isModerator;
 
@@ -65,21 +65,21 @@ export default function AdminModerationPage() {
     visibility: visibilityFilter === "all" ? undefined : visibilityFilter,
     limit: 100,
   }), [moderationFilter, visibilityFilter]);
-  const boundedVisibleSubmissionCount = useMemo(
-    () => clampVisibleResults(submissions.length, visibleSubmissionCount),
-    [submissions.length, visibleSubmissionCount],
+  const submissionPagination = useMemo(
+    () => getPaginationWindow(submissions.length, submissionPageIndex),
+    [submissionPageIndex, submissions.length],
   );
   const visibleSubmissions = useMemo(
-    () => submissions.slice(0, boundedVisibleSubmissionCount),
-    [boundedVisibleSubmissionCount, submissions],
+    () => submissions.slice(submissionPagination.pageStart, submissionPagination.pageEnd),
+    [submissionPagination.pageEnd, submissionPagination.pageStart, submissions],
   );
-  const boundedVisibleUserCount = useMemo(
-    () => clampVisibleResults(users.length, visibleUserCount),
-    [users.length, visibleUserCount],
+  const userPagination = useMemo(
+    () => getPaginationWindow(users.length, userPageIndex),
+    [userPageIndex, users.length],
   );
   const visibleUsers = useMemo(
-    () => users.slice(0, boundedVisibleUserCount),
-    [boundedVisibleUserCount, users],
+    () => users.slice(userPagination.pageStart, userPagination.pageEnd),
+    [userPagination.pageEnd, userPagination.pageStart, users],
   );
 
   const refreshSubmissions = useCallback(async () => {
@@ -129,20 +129,18 @@ export default function AdminModerationPage() {
   }, [canAccess, refreshUsers]);
 
   useEffect(() => {
-    if (submissions.length === 0) return;
-    const nextVisibleCount = clampVisibleResults(submissions.length, visibleSubmissionCount);
-    if (nextVisibleCount !== visibleSubmissionCount) {
-      setVisibleSubmissionCount(nextVisibleCount);
+    const nextPageIndex = clampPageIndex(submissions.length, submissionPageIndex);
+    if (nextPageIndex !== submissionPageIndex) {
+      setSubmissionPageIndex(nextPageIndex);
     }
-  }, [submissions.length, visibleSubmissionCount]);
+  }, [submissionPageIndex, submissions.length]);
 
   useEffect(() => {
-    if (users.length === 0) return;
-    const nextVisibleCount = clampVisibleResults(users.length, visibleUserCount);
-    if (nextVisibleCount !== visibleUserCount) {
-      setVisibleUserCount(nextVisibleCount);
+    const nextPageIndex = clampPageIndex(users.length, userPageIndex);
+    if (nextPageIndex !== userPageIndex) {
+      setUserPageIndex(nextPageIndex);
     }
-  }, [users.length, visibleUserCount]);
+  }, [userPageIndex, users.length]);
 
   const handleModerationChange = useCallback(async (entry: AdminSubmissionSummary, moderationState: ModerationState) => {
     if (!canAccess) return;
@@ -221,10 +219,11 @@ export default function AdminModerationPage() {
             <ResultCountControl
               itemLabelSingular="submission"
               itemLabelPlural="submissions"
-              visibleCount={boundedVisibleSubmissionCount}
+              pageStart={submissionPagination.pageStart}
+              pageEnd={submissionPagination.pageEnd}
               totalCount={submissions.length}
-              onShowLess={() => setVisibleSubmissionCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-              onShowMore={() => setVisibleSubmissionCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+              onShowLess={() => setSubmissionPageIndex((current) => clampPageIndex(submissions.length, current - 1))}
+              onShowMore={() => setSubmissionPageIndex((current) => clampPageIndex(submissions.length, current + 1))}
             />
           </Flex>
           <Flex gap="3" wrap="wrap" align="end">
@@ -320,10 +319,11 @@ export default function AdminModerationPage() {
             <ResultCountControl
               itemLabelSingular="user"
               itemLabelPlural="users"
-              visibleCount={boundedVisibleUserCount}
+              pageStart={userPagination.pageStart}
+              pageEnd={userPagination.pageEnd}
               totalCount={users.length}
-              onShowLess={() => setVisibleUserCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-              onShowMore={() => setVisibleUserCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+              onShowLess={() => setUserPageIndex((current) => clampPageIndex(users.length, current - 1))}
+              onShowMore={() => setUserPageIndex((current) => clampPageIndex(users.length, current + 1))}
             />
           </Flex>
           <Flex gap="3" wrap="wrap" align="center">
