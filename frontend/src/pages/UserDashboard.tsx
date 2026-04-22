@@ -15,7 +15,7 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
-import { clampVisibleResults, DEFAULT_VISIBLE_RESULTS, MIN_VISIBLE_RESULTS, ResultCountControl } from "../components/PaginationControl";
+import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
@@ -38,7 +38,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
-  const [visibleDeviceCount, setVisibleDeviceCount] = useState(DEFAULT_VISIBLE_RESULTS);
+  const [devicePageIndex, setDevicePageIndex] = useState(0);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [batchesError, setBatchesError] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
   const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
   const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
-  const [visibleBatchCount, setVisibleBatchCount] = useState(DEFAULT_VISIBLE_RESULTS);
+  const [batchPageIndex, setBatchPageIndex] = useState(0);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const activationUrl = useMemo(() => buildActivationLink(), []);
@@ -135,21 +135,21 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
       return timeB - timeA;
     });
   }, [batches, selectedBatchDeviceId]);
-  const boundedVisibleDeviceCount = useMemo(
-    () => clampVisibleResults(devices.length, visibleDeviceCount),
-    [devices.length, visibleDeviceCount],
+  const devicePagination = useMemo(
+    () => getPaginationWindow(devices.length, devicePageIndex),
+    [devicePageIndex, devices.length],
   );
   const visibleDevices = useMemo(
-    () => devices.slice(0, boundedVisibleDeviceCount),
-    [boundedVisibleDeviceCount, devices],
+    () => devices.slice(devicePagination.pageStart, devicePagination.pageEnd),
+    [devicePagination.pageEnd, devicePagination.pageStart, devices],
   );
-  const boundedVisibleBatchCount = useMemo(
-    () => clampVisibleResults(filteredBatches.length, visibleBatchCount),
-    [filteredBatches.length, visibleBatchCount],
+  const batchPagination = useMemo(
+    () => getPaginationWindow(filteredBatches.length, batchPageIndex),
+    [batchPageIndex, filteredBatches.length],
   );
   const visibleBatches = useMemo(
-    () => filteredBatches.slice(0, boundedVisibleBatchCount),
-    [boundedVisibleBatchCount, filteredBatches],
+    () => filteredBatches.slice(batchPagination.pageStart, batchPagination.pageEnd),
+    [batchPagination.pageEnd, batchPagination.pageStart, filteredBatches],
   );
 
   useEffect(() => {
@@ -161,20 +161,18 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
   }, [batchDeviceOptions, selectedBatchDeviceId]);
 
   useEffect(() => {
-    if (devices.length === 0) return;
-    const nextVisibleCount = clampVisibleResults(devices.length, visibleDeviceCount);
-    if (nextVisibleCount !== visibleDeviceCount) {
-      setVisibleDeviceCount(nextVisibleCount);
+    const nextPageIndex = clampPageIndex(devices.length, devicePageIndex);
+    if (nextPageIndex !== devicePageIndex) {
+      setDevicePageIndex(nextPageIndex);
     }
-  }, [devices.length, visibleDeviceCount]);
+  }, [devicePageIndex, devices.length]);
 
   useEffect(() => {
-    if (filteredBatches.length === 0) return;
-    const nextVisibleCount = clampVisibleResults(filteredBatches.length, visibleBatchCount);
-    if (nextVisibleCount !== visibleBatchCount) {
-      setVisibleBatchCount(nextVisibleCount);
+    const nextPageIndex = clampPageIndex(filteredBatches.length, batchPageIndex);
+    if (nextPageIndex !== batchPageIndex) {
+      setBatchPageIndex(nextPageIndex);
     }
-  }, [filteredBatches.length, visibleBatchCount]);
+  }, [batchPageIndex, filteredBatches.length]);
 
   const handleDefaultVisibilityChange = useCallback(async (nextValue: string) => {
     const next = nextValue as BatchVisibility;
@@ -424,10 +422,11 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
             <ResultCountControl
               itemLabelSingular="device"
               itemLabelPlural="devices"
-              visibleCount={boundedVisibleDeviceCount}
+              pageStart={devicePagination.pageStart}
+              pageEnd={devicePagination.pageEnd}
               totalCount={devices.length}
-              onShowLess={() => setVisibleDeviceCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-              onShowMore={() => setVisibleDeviceCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+              onShowLess={() => setDevicePageIndex((current) => clampPageIndex(devices.length, current - 1))}
+              onShowMore={() => setDevicePageIndex((current) => clampPageIndex(devices.length, current + 1))}
             />
           </Flex>
           <Separator my="2" size="4" />
@@ -509,10 +508,11 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
               <ResultCountControl
                 itemLabelSingular="batch"
                 itemLabelPlural="batches"
-                visibleCount={boundedVisibleBatchCount}
+                pageStart={batchPagination.pageStart}
+                pageEnd={batchPagination.pageEnd}
                 totalCount={filteredBatches.length}
-                onShowLess={() => setVisibleBatchCount((current) => Math.max(MIN_VISIBLE_RESULTS, current - 1))}
-                onShowMore={() => setVisibleBatchCount((current) => Math.min(DEFAULT_VISIBLE_RESULTS, current + 1))}
+                onShowLess={() => setBatchPageIndex((current) => clampPageIndex(filteredBatches.length, current - 1))}
+                onShowMore={() => setBatchPageIndex((current) => clampPageIndex(filteredBatches.length, current + 1))}
               />
               <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
                 <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
