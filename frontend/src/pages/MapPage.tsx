@@ -221,7 +221,6 @@ export default function MapPage({
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [renderedVideoName, setRenderedVideoName] = useState<string | null>(null);
-  const [renderedVideoMimeType, setRenderedVideoMimeType] = useState<string | null>(null);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
 
 
