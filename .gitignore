@@ -19,6 +19,8 @@ pubsub-debug.log
 
 # Local secret overrides for Firebase emulator
 functions/.secret.local
+.device-id
+.device-key.json
 .crowdpm-live-device-key.json
 .crowdpm-live-device-id
 .crowdpm-live-access-token

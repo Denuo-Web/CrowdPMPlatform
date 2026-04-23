@@ -121,6 +121,7 @@ pnpm device:pair -- --mode ingest --device-id <device-id> --key ./emu-key.json -
 ```
 - Replace `<device-id>` with the registered ID and `./emu-key.json` with the same Ed25519 key used during registration.
 - Defaults send 60 points (1-minute spacing, +2 per minute); override with `--minutes`, `--start-value`, or `--value-step`.
+- Send multiple batches in one run with `--batches`, for example `--batches 50`. Generated timestamps are spaced into contiguous batch windows ending at the current time.
 
 ## Testing & Quality Gates
 - Unit tests: `pnpm --filter crowdpm-functions test`
