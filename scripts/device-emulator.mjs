@@ -91,6 +91,13 @@ function parseNumber(value, fallback) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function parsePositiveInteger(value, fallback) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const integer = Math.floor(numeric);
+  return integer > 0 ? integer : fallback;
+}
+
 function buildHistoricalPoints({
   deviceId,
   startValue,
@@ -100,9 +107,9 @@ function buildHistoricalPoints({
   lon,
   altitude,
   precision,
+  endTimeMs = Date.now(),
 }) {
   const historyMinutes = Math.max(1, Math.floor(minutes));
-  const now = Date.now();
   const points = [];
   for (let i = historyMinutes - 1; i >= 0; i -= 1) {
     const value = startValue + valueStep * (historyMinutes - 1 - i);
@@ -113,7 +120,7 @@ function buildHistoricalPoints({
       unit: "\u00b5g/m\u00b3",
       lat,
       lon,
-      timestamp: new Date(now - i * 60_000).toISOString(),
+      timestamp: new Date(endTimeMs - i * 60_000).toISOString(),
       precision,
       altitude,
     });
@@ -154,6 +161,7 @@ Options:
   --device-id <id>  Required in ingest mode; optional in pair mode for override.
   --access-token <t>Use an existing access token instead of minting a new one (ingest mode only).
   --ingest-url <u>  Override ingest gateway URL (default: ${DEFAULT_INGEST_URL})
+  --batches <n>     Number of ingest batches to send (default: 1)
   --minutes <n>     Minutes of history to send (default: 60)
   --start-value <n> Starting value for the first point (default: 15.9)
   --value-step <n>  Increment per minute (default: 2)
@@ -231,6 +239,48 @@ async function sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, acces
   console.log("Ingest accepted:", ingestParsed ?? ingestRaw);
 }
 
+async function sendIngestBatches({
+  ingestUrlRaw,
+  deviceId,
+  privateJwk,
+  publicJwk,
+  accessToken,
+  batchCount,
+  historyMinutes,
+  startValue,
+  valueStep,
+  lat,
+  lon,
+  altitude,
+  precision,
+}) {
+  const batchWindowMs = Math.max(1, Math.floor(historyMinutes)) * 60_000;
+  const newestEndTimeMs = Date.now();
+
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+    const displayIndex = batchIndex + 1;
+    const endTimeMs = newestEndTimeMs - (batchCount - displayIndex) * batchWindowMs;
+    const batchStartValue = startValue + batchIndex * Math.max(1, Math.floor(historyMinutes)) * valueStep;
+    const points = buildHistoricalPoints({
+      deviceId,
+      startValue: batchStartValue,
+      valueStep,
+      minutes: historyMinutes,
+      lat,
+      lon,
+      altitude,
+      precision,
+      endTimeMs,
+    });
+
+    if (batchCount > 1) {
+      console.log(`\nBatch ${displayIndex}/${batchCount}`);
+    }
+
+    await sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, accessToken, points });
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv[0] === "--") argv.shift();
@@ -250,6 +300,7 @@ async function main() {
       interval: { type: "string" },
       ingest: { type: "boolean" },
       "ingest-url": { type: "string" },
+      batches: { type: "string" },
       minutes: { type: "string" },
       "start-value": { type: "string" },
       "value-step": { type: "string" },
@@ -277,6 +328,7 @@ async function main() {
   const startValue = parseNumber(values["start-value"], 15.9);
   const valueStep = parseNumber(values["value-step"], 2);
   const historyMinutes = parseNumber(values.minutes, 60);
+  const batchCount = parsePositiveInteger(values.batches, 1);
   const lat = parseNumber(values.lat, 40.7128);
   const lon = parseNumber(values.lon, -74.00585);
   const altitude = parseNumber(values.altitude, 0);
@@ -315,19 +367,22 @@ async function main() {
       console.log("Using provided access token.");
     }
 
-    const points = buildHistoricalPoints({
-      deviceId,
-      startValue,
-      valueStep,
-      minutes: historyMinutes,
-      lat,
-      lon,
-      altitude,
-      precision,
-    });
-
     try {
-      await sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, accessToken: token, points });
+      await sendIngestBatches({
+        ingestUrlRaw,
+        deviceId,
+        privateJwk,
+        publicJwk,
+        accessToken: token,
+        batchCount,
+        historyMinutes,
+        startValue,
+        valueStep,
+        lat,
+        lon,
+        altitude,
+        precision,
+      });
     }
     catch (err) {
       console.error(err instanceof Error ? err.message : err);
@@ -536,25 +591,21 @@ async function main() {
     return;
   }
 
-  const points = buildHistoricalPoints({
-    deviceId: registeredDeviceId,
-    startValue,
-    valueStep,
-    minutes: historyMinutes,
-    lat,
-    lon,
-    altitude,
-    precision,
-  });
-
   try {
-    await sendIngest({
+    await sendIngestBatches({
       ingestUrlRaw,
       deviceId: registeredDeviceId,
       privateJwk,
       publicJwk,
       accessToken: mintedAccessToken,
-      points,
+      batchCount,
+      historyMinutes,
+      startValue,
+      valueStep,
+      lat,
+      lon,
+      altitude,
+      precision,
     });
   }
   catch (err) {
