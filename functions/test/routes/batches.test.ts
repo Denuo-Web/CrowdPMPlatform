@@ -221,9 +221,9 @@ describe("GET /v1/batches", () => {
       ]);
 
     expect(device1Query.orderBy).toHaveBeenCalledWith("processedAt", "desc");
-    expect(device1Query.limit).toHaveBeenCalledWith(10);
+    expect(device1Query.limit).toHaveBeenCalledWith(50);
     expect(device2Query.orderBy).toHaveBeenCalledWith("processedAt", "desc");
-    expect(device2Query.limit).toHaveBeenCalledWith(10);
+    expect(device2Query.limit).toHaveBeenCalledWith(50);
     await app.close();
   });
 
