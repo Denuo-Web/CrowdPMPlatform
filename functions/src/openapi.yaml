@@ -676,7 +676,7 @@ paths:
       operationId: listBatches
       summary: List recent ingest batches
       description: >
-        Returns the most recent batches for each device the authenticated caller owns (up to 10 per device).
+        Returns the most recent batches for each device the authenticated caller owns (up to 50 per device).
       security:
         - BearerAuth: []
       responses:

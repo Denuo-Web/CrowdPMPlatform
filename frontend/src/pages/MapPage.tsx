@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
-import { Switch } from "@radix-ui/themes";
+import { Select, Switch } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
   fetchPublicBatchDetail,
@@ -27,6 +27,7 @@ import type { Map3DCaptureSession, Map3DHandle } from "../components/Map3D";
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
+const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
 const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
 const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const VIDEO_EXPORT_DURATION_MS = 12_000;
@@ -575,6 +576,8 @@ export default function MapPage({
     () => decodeBatchKey(selectedBatchKey),
     [selectedBatchKey]
   );
+  const batchSelectValue = selectedBatchKey || NO_BATCH_SELECTED_KEY;
+  const batchSelectPlaceholder = user ? "Select batch" : "Select a public batch";
   const allModeBatchCount = useMemo(() => (
     new Set(
       rows
@@ -900,37 +903,72 @@ export default function MapPage({
             boxShadow: "var(--shadow-3)",
           }}
         >
-          <label htmlFor="batch-select" style={{ display: "block", marginBottom: 6, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+          <label style={{ display: "block", marginBottom: 6, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
             Measurement batch
           </label>
-          <select
-            id="batch-select"
-            value={selectedBatchKey}
-            onChange={(e) => handleBatchSelect(e.target.value)}
-            disabled={isAuthLoading}
+          <div
             style={{
-              width: "100%",
-              padding: "var(--space-2) var(--space-4) var(--space-2) var(--space-2)",
-              borderRadius: "var(--radius-2)",
-              border: "1px solid var(--gray-a6)",
-              background: "var(--color-surface)",
-              color: "var(--gray-12)",
-              fontSize: "var(--font-size-2)",
-              appearance: "none",
-              WebkitAppearance: "none",
-              backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239BA1A6' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E\")",
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right var(--space-2) center",
-              backgroundSize: "12px",
+              width: "fit-content",
+              minWidth: "min(420px, 100%)",
+              maxWidth: "min(760px, 100%)",
             }}
           >
-            <option value="">{user ? "Select batch" : "Select a public batch"}</option>
-            <option value={SHOW_ALL_PUBLIC_24H_KEY}>Show all public (last 24h)</option>
-            {visibleBatches.map((batch) => {
-              const key = encodeBatchKey(batch.deviceId, batch.batchId);
-              return <option key={key} value={key}>{formatBatchLabel(batch)}</option>;
-            })}
-          </select>
+            <Select.Root
+              value={batchSelectValue}
+              onValueChange={(value) => handleBatchSelect(value === NO_BATCH_SELECTED_KEY ? "" : value)}
+              disabled={isAuthLoading}
+            >
+              <Select.Trigger
+                aria-label="Measurement batch"
+                placeholder={batchSelectPlaceholder}
+                style={{
+                  width: "100%",
+                  fontFamily: "var(--default-font-family)",
+                  fontSize: "var(--font-size-2)",
+                  fontWeight: 400,
+                  letterSpacing: 0,
+                  color: "var(--gray-12)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              />
+              <Select.Content
+                position="popper"
+                style={{
+                  width: "max-content",
+                  minWidth: "var(--radix-select-trigger-width)",
+                  maxWidth: "calc(100vw - 32px)",
+                  maxHeight: "min(360px, var(--radix-select-content-available-height))",
+                  fontFamily: "var(--default-font-family)",
+                  fontSize: "var(--font-size-2)",
+                  fontWeight: 400,
+                  letterSpacing: 0,
+                }}
+              >
+                <Select.Item value={NO_BATCH_SELECTED_KEY}>
+                  <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {batchSelectPlaceholder}
+                  </span>
+                </Select.Item>
+                <Select.Item value={SHOW_ALL_PUBLIC_24H_KEY}>
+                  <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    Show all public (last 24h)
+                  </span>
+                </Select.Item>
+                {visibleBatches.map((batch) => {
+                  const key = encodeBatchKey(batch.deviceId, batch.batchId);
+                  return (
+                    <Select.Item key={key} value={key}>
+                      <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {formatBatchLabel(batch)}
+                      </span>
+                    </Select.Item>
+                  );
+                })}
+              </Select.Content>
+            </Select.Root>
+          </div>
         </div>
 
         {/* Video export card (when a specific batch is selected) */}

@@ -18,6 +18,8 @@ import {
   requestUserId,
 } from "../lib/routeGuards.js";
 
+const OWNED_BATCH_LIST_LIMIT = 50;
+
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", {
     preHandler: [
@@ -35,7 +37,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
         const deviceName = typeof deviceData?.name === "string" ? deviceData.name : null;
         const batchSnap = await devices.doc(deviceId).collection("batches")
           .orderBy("processedAt", "desc")
-          .limit(10)
+          .limit(OWNED_BATCH_LIST_LIMIT)
           .get();
 
         return batchSnap.docs
