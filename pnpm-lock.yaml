@@ -82,8 +82,8 @@ importers:
         specifier: 3.3.0
         version: 3.3.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tanstack/react-query':
-        specifier: 5.99.2
-        version: 5.99.2(react@19.2.5)
+        specifier: 5.100.8
+        version: 5.100.8(react@19.2.5)
       firebase:
         specifier: 12.12.1
         version: 12.12.1
@@ -96,7 +96,7 @@ importers:
     devDependencies:
       '@tanstack/react-query-devtools':
         specifier: 5.99.2
-        version: 5.99.2(@tanstack/react-query@5.99.2(react@19.2.5))(react@19.2.5)
+        version: 5.99.2(@tanstack/react-query@5.100.8(react@19.2.5))(react@19.2.5)
       '@types/google.maps':
         specifier: 3.64.0
         version: 3.64.0
@@ -2022,8 +2022,8 @@ packages:
   '@swc/helpers@0.5.21':
     resolution: {integrity: sha512-jI/VAmtdjB/RnI8GTnokyX7Ug8c+g+ffD6QRLa6XQewtnGyukKkKSk3wLTM3b5cjt1jNh9x0jfVlagdN2gDKQg==}
 
-  '@tanstack/query-core@5.99.2':
-    resolution: {integrity: sha512-1HunU0bXVsR1ZJMZbcOPE6VtaBJxsW809RE9xPe4Gz7MlB0GWwQvuTPhMoEmQ/hIzFKJ/DWAuttIe7BOaWx0tA==}
+  '@tanstack/query-core@5.100.8':
+    resolution: {integrity: sha512-ceYwSFOqjPwET5TA6IOYxzxlGc0ekyH/gfOtWkP0PX43rzX9bxW48Iuw8KAduKCToi4rJAQ6nRy2kAe8gszdmg==}
 
   '@tanstack/query-devtools@5.99.2':
     resolution: {integrity: sha512-TEF1d+RYO9l8oeCwgzmOHIgKwAzXQmw2s/ny2bW8qeg2OMkkLjALfVEivgCMR3OL/jVdMmeTPX56WrV+uvYJFg==}
@@ -2034,8 +2034,8 @@ packages:
       '@tanstack/react-query': ^5.99.2
       react: ^18 || ^19
 
-  '@tanstack/react-query@5.99.2':
-    resolution: {integrity: sha512-vM91UEe45QUS9ED6OklsVL15i8qKcRqNwpWzPTVWvRPRSEgDudDgHpvyTjcdlwHcrKNa80T+xXYcchT2noPnZA==}
+  '@tanstack/react-query@5.100.8':
+    resolution: {integrity: sha512-iNNEekixXU5vtAGKKZX2lx3jTooG5yNY+kv0wSgEdEYG0Mj0JM5bcuQtC35ZAP3nDopT6jciUK3xeX65U7AnfA==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -5427,10 +5427,12 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   v8-compile-cache-lib@3.0.1:
@@ -7814,19 +7816,19 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@tanstack/query-core@5.99.2': {}
+  '@tanstack/query-core@5.100.8': {}
 
   '@tanstack/query-devtools@5.99.2': {}
 
-  '@tanstack/react-query-devtools@5.99.2(@tanstack/react-query@5.99.2(react@19.2.5))(react@19.2.5)':
+  '@tanstack/react-query-devtools@5.99.2(@tanstack/react-query@5.100.8(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@tanstack/query-devtools': 5.99.2
-      '@tanstack/react-query': 5.99.2(react@19.2.5)
+      '@tanstack/react-query': 5.100.8(react@19.2.5)
       react: 19.2.5
 
-  '@tanstack/react-query@5.99.2(react@19.2.5)':
+  '@tanstack/react-query@5.100.8(react@19.2.5)':
     dependencies:
-      '@tanstack/query-core': 5.99.2
+      '@tanstack/query-core': 5.100.8
       react: 19.2.5
 
   '@tootallnate/once@3.0.1':
