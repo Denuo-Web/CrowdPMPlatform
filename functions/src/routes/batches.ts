@@ -1,5 +1,6 @@
 import type { BatchDetail, BatchSummary } from "@crowdpm/types";
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import { bucket } from "../lib/fire.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 import type { IngestBatch } from "../lib/validation.js";
@@ -19,6 +20,10 @@ import {
 } from "../lib/routeGuards.js";
 
 const OWNED_BATCH_LIST_LIMIT = 50;
+const OWNED_BATCH_LIST_MAX_LIMIT = 500;
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(OWNED_BATCH_LIST_MAX_LIMIT).optional(),
+});
 
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", {
@@ -28,16 +33,22 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard("batches:list:global", 1_000, 60_000),
     ],
   }, async (req) => {
+    const parsedQuery = listQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      throw httpError(400, "invalid_request", "invalid query", { details: parsedQuery.error.flatten() });
+    }
+
     const user = getRequestUser(req);
     const canViewQuarantined = hasPermission(user, "submissions.read_all");
     const { collection: devices, docs: seen } = await loadOwnedDeviceDocs(user.uid);
+    const limit = parsedQuery.data.limit ?? OWNED_BATCH_LIST_LIMIT;
 
     const summaries = await Promise.all(
       Array.from(seen.entries()).map(async ([deviceId, deviceData]) => {
         const deviceName = typeof deviceData?.name === "string" ? deviceData.name : null;
         const batchSnap = await devices.doc(deviceId).collection("batches")
           .orderBy("processedAt", "desc")
-          .limit(OWNED_BATCH_LIST_LIMIT)
+          .limit(limit)
           .get();
 
         return batchSnap.docs

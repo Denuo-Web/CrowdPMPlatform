@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
-import { Select, Switch } from "@radix-ui/themes";
+import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
   fetchPublicBatchDetail,
@@ -22,14 +22,18 @@ import {
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import type { Map3DCaptureSession, Map3DHandle } from "../components/Map3D";
+import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
 // Keys used to scope localStorage entries per user so shared browsers do not mix data.
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
+const DROPDOWN_BATCH_LIMIT = 20;
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
+const SEE_ALL_BATCHES_KEY = "__see_all_batches__";
 const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
 const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const EXPANDED_BATCH_FETCH_LIMIT = 500;
 const VIDEO_EXPORT_DURATION_MS = 12_000;
 const VIDEO_EXPORT_FPS = 30;
 const VIDEO_EXPORT_MIN_POINT_MS = 160;
@@ -98,6 +102,21 @@ function formatBatchLabel(batch: BatchSummary) {
   const name = batch.deviceName?.trim().length ? batch.deviceName : batch.deviceId;
   const countLabel = batch.count ? ` (${batch.count})` : "";
   return `${timeLabel} — ${name}${countLabel}`;
+}
+
+function sortBatchesByProcessedAtDesc(list: BatchSummary[]) {
+  return [...list].sort((a, b) => {
+    const timeA = timestampToMillis(a.processedAt) ?? 0;
+    const timeB = timestampToMillis(b.processedAt) ?? 0;
+    return timeB - timeA;
+  });
+}
+
+function mergeBatchLists(primaryBatches: BatchSummary[], publicBatches: BatchSummary[]) {
+  const byKey = new Map<string, BatchSummary>();
+  publicBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
+  primaryBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
+  return sortBatchesByProcessedAtDesc(Array.from(byKey.values()));
 }
 
 function pointsToMeasurementRecords(
@@ -212,6 +231,8 @@ export default function MapPage({
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
+  const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
+  const [batchBrowserPageIndex, setBatchBrowserPageIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
   const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
@@ -222,6 +243,7 @@ export default function MapPage({
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [renderedVideoName, setRenderedVideoName] = useState<string | null>(null);
+  const [, setRenderedVideoMimeType] = useState<string | null>(null);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
 
 
@@ -234,23 +256,21 @@ export default function MapPage({
     return parseStoredSmokeBatch(raw);
   }, [user?.uid, userScopedCacheKey]);
 
+  const loadBatchSummaries = useCallback(async (ownedLimit?: number, publicLimit?: number) => {
+    if (!user) {
+      return listPublicBatches(publicLimit);
+    }
+    const [owned, publicBatches] = await Promise.all([
+      listBatches(ownedLimit).catch(() => []),
+      listPublicBatches(publicLimit),
+    ]);
+    return mergeBatchLists(mergeCachedSummary(owned, getCachedBatch()), publicBatches);
+  }, [getCachedBatch, user]);
+
   // Query #1: list of batches visible to the user.
   const batchesQuery = useQuery<BatchSummary[]>({
     queryKey: BATCHES_QUERY_KEY(user?.uid ?? null),
-    queryFn: async () => {
-      if (!user) {
-        return listPublicBatches();
-      }
-      const [owned, publicBatches] = await Promise.all([
-        listBatches().catch(() => []),
-        listPublicBatches(),
-      ]);
-      const merged = mergeCachedSummary(owned, getCachedBatch());
-      const byKey = new Map<string, BatchSummary>();
-      publicBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
-      merged.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
-      return Array.from(byKey.values());
-    },
+    queryFn: () => loadBatchSummaries(),
     enabled: !isAuthLoading,
     placeholderData: (prev) => prev ?? [],
     staleTime: BATCH_LIST_STALE_MS,
@@ -259,18 +279,52 @@ export default function MapPage({
       return failureCount < 3;
     },
   });
-
   const visibleBatches = useMemo(
     () => batchesQuery.data ?? [],
     [batchesQuery.data]
+  );
+  const batchBrowserQuery = useQuery<BatchSummary[]>({
+    queryKey: ["batchesExpanded", user?.uid ?? "guest", EXPANDED_BATCH_FETCH_LIMIT],
+    queryFn: () => loadBatchSummaries(EXPANDED_BATCH_FETCH_LIMIT, EXPANDED_BATCH_FETCH_LIMIT),
+    enabled: isBatchBrowserOpen && !isAuthLoading,
+    placeholderData: () => visibleBatches,
+    staleTime: BATCH_LIST_STALE_MS,
+    retry: (failureCount, error) => {
+      if (error instanceof Error && error.message.toLowerCase().includes("unauthorized")) return false;
+      return failureCount < 3;
+    },
+  });
+  const batchBrowserBatches = useMemo(
+    () => batchBrowserQuery.data ?? visibleBatches,
+    [batchBrowserQuery.data, visibleBatches]
+  );
+  const batchBrowserPagination = useMemo(
+    () => getPaginationWindow(batchBrowserBatches.length, batchBrowserPageIndex),
+    [batchBrowserBatches.length, batchBrowserPageIndex]
+  );
+  const visibleBatchBrowserRows = useMemo(
+    () => batchBrowserBatches.slice(batchBrowserPagination.pageStart, batchBrowserPagination.pageEnd),
+    [batchBrowserBatches, batchBrowserPagination.pageEnd, batchBrowserPagination.pageStart]
   );
 
   const selectedSummary = useMemo(() => {
     if (!selectedBatchKey) return null;
     const parsed = decodeBatchKey(selectedBatchKey);
     if (!parsed) return null;
-    return visibleBatches.find((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId) ?? null;
-  }, [selectedBatchKey, visibleBatches]);
+    return batchBrowserBatches.find((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId) ?? null;
+  }, [batchBrowserBatches, selectedBatchKey]);
+  const dropdownBatches = useMemo(() => {
+    if (!selectedSummary) return visibleBatches;
+    const exists = visibleBatches.some((batch) => (
+      batch.deviceId === selectedSummary.deviceId && batch.batchId === selectedSummary.batchId
+    ));
+    if (exists) return visibleBatches;
+    return sortBatchesByProcessedAtDesc([selectedSummary, ...visibleBatches]);
+  }, [selectedSummary, visibleBatches]);
+  const visibleDropdownBatches = useMemo(
+    () => dropdownBatches.slice(0, DROPDOWN_BATCH_LIMIT),
+    [dropdownBatches]
+  );
 
   const batchDetailQueryKey = useMemo(
     () => (selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKey) : null),
@@ -365,6 +419,13 @@ export default function MapPage({
     });
   }, [selectedBatchKey]); // Remove rows.length from dependencies
 
+  useEffect(() => {
+    const nextPageIndex = clampPageIndex(batchBrowserBatches.length, batchBrowserPageIndex);
+    if (nextPageIndex !== batchBrowserPageIndex) {
+      setBatchBrowserPageIndex(nextPageIndex);
+    }
+  }, [batchBrowserBatches.length, batchBrowserPageIndex]);
+
   // // Reset override when data changes
   // useEffect(() => {
   //   setIndexOverride(null);
@@ -409,12 +470,28 @@ export default function MapPage({
   }, [user, userScopedSelectionKey]);
 
   const upsertBatchSummary = useCallback((summary: BatchSummary) => {
-    if (!user) return;
-    queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user.uid), (prev = []) => {
+    queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), (prev = []) => {
       const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
-      return [summary, ...filtered];
+      return sortBatchesByProcessedAtDesc([summary, ...filtered]);
     });
-  }, [queryClient, user]);
+  }, [queryClient, user?.uid]);
+
+  const openBatchBrowser = useCallback(() => {
+    setBatchBrowserPageIndex(0);
+    setBatchBrowserOpen(true);
+  }, []);
+
+  const handleBatchSelectValueChange = useCallback((value: string) => {
+    if (value === NO_BATCH_SELECTED_KEY) {
+      handleBatchSelect("");
+      return;
+    }
+    if (value === SEE_ALL_BATCHES_KEY) {
+      openBatchBrowser();
+      return;
+    }
+    handleBatchSelect(value);
+  }, [handleBatchSelect, openBatchBrowser]);
 
   // Process smoke test results delivered via props by priming the React Query cache.
   const processSmokeResult = useCallback((detail: IngestSmokeTestResponse) => {
@@ -578,6 +655,8 @@ export default function MapPage({
   );
   const batchSelectValue = selectedBatchKey || NO_BATCH_SELECTED_KEY;
   const batchSelectPlaceholder = user ? "Select batch" : "Select a public batch";
+  const batchBrowserActionLabel = user ? "See all batches..." : "See all public batches...";
+  const batchBrowserTitle = user ? "All measurement batches" : "All public measurement batches";
   const allModeBatchCount = useMemo(() => (
     new Set(
       rows
@@ -915,7 +994,7 @@ export default function MapPage({
           >
             <Select.Root
               value={batchSelectValue}
-              onValueChange={(value) => handleBatchSelect(value === NO_BATCH_SELECTED_KEY ? "" : value)}
+              onValueChange={handleBatchSelectValueChange}
               disabled={isAuthLoading}
             >
               <Select.Trigger
@@ -956,7 +1035,7 @@ export default function MapPage({
                     Show all public (last 24h)
                   </span>
                 </Select.Item>
-                {visibleBatches.map((batch) => {
+                {visibleDropdownBatches.map((batch) => {
                   const key = encodeBatchKey(batch.deviceId, batch.batchId);
                   return (
                     <Select.Item key={key} value={key}>
@@ -966,6 +1045,11 @@ export default function MapPage({
                     </Select.Item>
                   );
                 })}
+                <Select.Item value={SEE_ALL_BATCHES_KEY}>
+                  <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {batchBrowserActionLabel}
+                  </span>
+                </Select.Item>
               </Select.Content>
             </Select.Root>
           </div>
@@ -1220,6 +1304,107 @@ export default function MapPage({
             : "No data loaded"}
         </span>
       </div>
+      <Dialog.Root open={isBatchBrowserOpen} onOpenChange={setBatchBrowserOpen}>
+        <Dialog.Content
+          size="4"
+          style={{
+            width: "min(760px, 96vw)",
+            maxWidth: "760px",
+            maxHeight: "90vh",
+            overflowY: "auto",
+          }}
+        >
+          <Dialog.Title>{batchBrowserTitle}</Dialog.Title>
+          <Dialog.Description>
+            Complete measurement batch history.
+          </Dialog.Description>
+          <Flex direction="column" gap="3" mt="4">
+            {batchBrowserQuery.error ? (
+              <Text size="2" color="red">
+                {batchBrowserQuery.error instanceof Error
+                  ? batchBrowserQuery.error.message
+                  : "Unable to load more batches."}
+              </Text>
+            ) : null}
+            <Flex align="center" justify="between" gap="3" wrap="wrap">
+              <ResultCountControl
+                itemLabelSingular="batch"
+                itemLabelPlural="batches"
+                pageStart={batchBrowserPagination.pageStart}
+                pageEnd={batchBrowserPagination.pageEnd}
+                totalCount={batchBrowserBatches.length}
+                onShowLess={() => setBatchBrowserPageIndex((prev) => prev - 1)}
+                onShowMore={() => setBatchBrowserPageIndex((prev) => prev + 1)}
+              />
+              {batchBrowserQuery.isFetching ? (
+                <Text size="1" color="gray">Refreshing...</Text>
+              ) : null}
+            </Flex>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-2)",
+                maxHeight: "60vh",
+                overflowY: "auto",
+                paddingRight: "var(--space-1)",
+              }}
+            >
+              {!visibleBatchBrowserRows.length ? (
+                <Text size="2" color="gray">
+                  {batchBrowserQuery.isLoading ? "Loading batches..." : "No batches available."}
+                </Text>
+              ) : visibleBatchBrowserRows.map((batch) => {
+                const key = encodeBatchKey(batch.deviceId, batch.batchId);
+                const isSelected = key === selectedBatchKey;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      upsertBatchSummary(batch);
+                      handleBatchSelect(key);
+                      setBatchBrowserOpen(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-3)",
+                      border: isSelected ? "1px solid var(--accent-8)" : "1px solid var(--gray-a5)",
+                      background: isSelected ? "var(--accent-a3)" : "var(--color-surface)",
+                      color: "var(--gray-12)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "var(--space-3)",
+                      }}
+                    >
+                      <span style={{ fontWeight: 500 }}>{formatBatchLabel(batch)}</span>
+                      <span style={{ fontFamily: "monospace", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                        {batch.batchId}
+                      </span>
+                    </div>
+                    <span style={{ display: "block", marginTop: 4, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                      {batch.visibility === "public" ? "Public" : "Private"} batch on {batch.deviceName?.trim().length ? batch.deviceName : batch.deviceId}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <Flex justify="end">
+              <Button type="button" variant="soft" onClick={() => setBatchBrowserOpen(false)}>
+                Close
+              </Button>
+            </Flex>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
       <style>{`
         @keyframes pulse-dot {
           0%, 100% { opacity: 1; transform: scale(1); }
