@@ -10,8 +10,9 @@ import { normalizeModerationState } from "../lib/moderation.js";
 import { rateLimitGuard, requestParam } from "../lib/routeGuards.js";
 import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
 
+const PUBLIC_BATCH_LIST_MAX_LIMIT = 500;
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(PUBLIC_BATCH_LIST_MAX_LIMIT).optional(),
 });
 
 function requestIp(req: { headers: IncomingHttpHeaders; ip: string }): string {

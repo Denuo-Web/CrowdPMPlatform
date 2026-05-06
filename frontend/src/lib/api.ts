@@ -141,8 +141,13 @@ export async function fetchMeasurements(q: {
   return requestJson<MeasurementRecord[]>(`/v1/measurements?${qs}`);
 }
 
-export async function listBatches(): Promise<BatchSummary[]> {
-  return requestJson<BatchSummary[]>("/v1/batches");
+export async function listBatches(limit?: number): Promise<BatchSummary[]> {
+  const qs = new URLSearchParams();
+  if (typeof limit === "number" && Number.isFinite(limit)) {
+    qs.set("limit", String(Math.max(1, Math.floor(limit))));
+  }
+  const suffix = qs.toString();
+  return requestJson<BatchSummary[]>(suffix ? `/v1/batches?${suffix}` : "/v1/batches");
 }
 
 export async function updateBatchVisibility(

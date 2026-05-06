@@ -242,6 +242,25 @@ describe("GET /v1/batches", () => {
     await app.close();
   });
 
+  it("uses the requested list limit when provided", async () => {
+    const app = await buildApp();
+    const deviceQuery = makeBatchQuery([]);
+    mocks.loadOwnedDeviceDocs.mockResolvedValue({
+      collection: { doc: () => ({ collection: () => deviceQuery }) },
+      docs: new Map([["device-1", { name: "North" }]]),
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/batches?limit=125",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(deviceQuery.limit).toHaveBeenCalledWith(125);
+    await app.close();
+  });
+
   it("hides quarantined batches for non-moderators", async () => {
     const app = await buildApp();
     const deviceDocs = new Map<string, Record<string, unknown>>([
