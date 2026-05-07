@@ -27,6 +27,7 @@ import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../comp
 // Keys used to scope localStorage entries per user so shared browsers do not mix data.
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
+const LAST_MAP_ZOOM_KEY = "crowdpm:lastMapZoom";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
 const DROPDOWN_BATCH_LIMIT = 20;
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
@@ -38,6 +39,8 @@ const VIDEO_EXPORT_DURATION_MS = 12_000;
 const VIDEO_EXPORT_FPS = 30;
 const VIDEO_EXPORT_MIN_POINT_MS = 160;
 const VIDEO_EXPORT_FINAL_POINT_MS = 320;
+const MIN_PERSISTED_MAP_ZOOM = 0;
+const MAX_PERSISTED_MAP_ZOOM = 22;
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -210,6 +213,13 @@ function sanitizeFileSegment(value: string | null | undefined): string {
   return normalized || "batch";
 }
 
+function parseStoredMapZoom(raw: string | null): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(Math.max(parsed, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
+}
+
 export default function MapPage({
   pendingSmokeResult = null,
   onSmokeResultConsumed,
@@ -228,13 +238,20 @@ export default function MapPage({
     () => scopedStorageKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined),
     [user?.uid]
   );
+  const userScopedZoomKey = useMemo(
+    () => scopedStorageKey(LAST_MAP_ZOOM_KEY, user?.uid ?? undefined),
+    [user?.uid]
+  );
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
+  const [persistedMapZoom, setPersistedMapZoom] = useState<number | null>(null);
+  const [zoomHydrationKey, setZoomHydrationKey] = useState<string | null>(null);
   const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
   const [batchBrowserPageIndex, setBatchBrowserPageIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
   const selectionHydratedRef = useRef<string | null>(null);
+  const zoomHydratedRef = useRef<string | null>(null);
   const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
   const [captureAvailable, setCaptureAvailable] = useState(false);
@@ -467,6 +484,26 @@ export default function MapPage({
   }, [isAuthLoading, user?.uid, userScopedSelectionKey]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
+    if (zoomHydratedRef.current === userScopedZoomKey) return;
+    zoomHydratedRef.current = userScopedZoomKey;
+
+    const storedZoom = parseStoredMapZoom(safeLocalStorageGet(
+      userScopedZoomKey,
+      null,
+      { context: "map:zoom:hydrate", userId: user?.uid }
+    ));
+    setPersistedMapZoom(storedZoom);
+    setZoomHydrationKey(userScopedZoomKey);
+    if (storedZoom === null) {
+      safeLocalStorageRemove(
+        userScopedZoomKey,
+        { context: "map:zoom:clear-invalid", userId: user?.uid }
+      );
+    }
+  }, [isAuthLoading, user?.uid, userScopedZoomKey]);
+
+  useEffect(() => {
     if (
       isAuthLoading
       || !isBatchBrowserOpen
@@ -541,6 +578,16 @@ export default function MapPage({
       );
     }
   }, [user?.uid, userScopedSelectionKey]);
+
+  const handleMapZoomChange = useCallback((zoom: number) => {
+    const nextZoom = Math.min(Math.max(zoom, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
+    setPersistedMapZoom(nextZoom);
+    safeLocalStorageSet(
+      userScopedZoomKey,
+      String(nextZoom),
+      { context: "map:zoom:update", userId: user?.uid }
+    );
+  }, [user?.uid, userScopedZoomKey]);
 
   const upsertBatchSummary = useCallback((summary: BatchSummary) => {
     queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), (prev = []) => {
@@ -740,6 +787,7 @@ export default function MapPage({
 
   // Always render the map — use all-public mode by default when nothing is selected
   const effectiveShowAllMode = isShowingAllPublic24h || !selectedBatchKey;
+  const isMapZoomHydrated = !isAuthLoading && zoomHydrationKey === userScopedZoomKey;
   const isExportSectionVisible = Boolean(selectedBatchKey) && !isShowingAllPublic24h;
   const canExportSelection = useMemo(() => {
     if (!selectedBatchKey || isShowingAllPublic24h) return false;
@@ -912,17 +960,21 @@ export default function MapPage({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       {/* ---- Always-visible map ---- */}
       <Suspense fallback={<div style={{ width: "100%", height: "100%", background: "var(--color-surface)" }} />}>
-        <Map3D
-          ref={map3DRef}
-          data={data}
-          selectedIndex={selectedIndex}
-          onSelectIndex={effectiveShowAllMode ? undefined : setIndexOverride}
-          onSelectPoint={handleMapPointSelect}
-          autoCenterKey={autoCenterKey}
-          interleaved={settings.interleavedRendering}
-          showAllMode={effectiveShowAllMode}
-          forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
-        />
+        {isMapZoomHydrated ? (
+          <Map3D
+            ref={map3DRef}
+            data={data}
+            selectedIndex={selectedIndex}
+            onSelectIndex={effectiveShowAllMode ? undefined : setIndexOverride}
+            onSelectPoint={handleMapPointSelect}
+            onZoomChange={handleMapZoomChange}
+            autoCenterKey={autoCenterKey}
+            interleaved={settings.interleavedRendering}
+            showAllMode={effectiveShowAllMode}
+            defaultZoom={persistedMapZoom ?? undefined}
+            forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
+          />
+        ) : null}
       </Suspense>
 
       {/* ---- Welcome hero overlay (when no batch selected and no data) ---- */}

@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRoles([]);
         queryClient.clear();
         safeLocalStorageRemove(
-          ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache"],
+          ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache", "crowdpm:lastMapZoom"],
           { context: "auth:clear-storage" }
         );
         return;
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearCachesOnSignOut = useCallback(() => {
     queryClient.clear();
     safeLocalStorageRemove(
-      ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache"],
+      ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache", "crowdpm:lastMapZoom"],
       { context: "auth:sign-out-clear" }
     );
   }, [queryClient]);

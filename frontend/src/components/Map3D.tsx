@@ -40,6 +40,7 @@ type Map3DProps = {
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
   onSelectPoint?: (point: MeasurementPoint) => void;
+  onZoomChange?: (zoom: number) => void;
   autoCenterKey?: string;
   interleaved?: boolean;
   showAllMode?: boolean;
@@ -466,6 +467,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   selectedIndex,
   onSelectIndex,
   onSelectPoint,
+  onZoomChange,
   autoCenterKey,
   interleaved = false,
   showAllMode = false,
@@ -481,10 +483,12 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const selectedIndexRef = useRef<number>(selectedIndex);
   const onSelectRef = useRef<typeof onSelectIndex>(onSelectIndex);
   const onSelectPointRef = useRef<typeof onSelectPoint>(onSelectPoint);
+  const onZoomChangeRef = useRef<typeof onZoomChange>(onZoomChange);
   const showAllModeRef = useRef(showAllMode);
   const playbackPathModeRef = useRef(playbackPathMode);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
-  const hasUserControlRef = useRef(false);
+  const hasUserControlRef = useRef(typeof defaultZoom === "number");
+  const initialDefaultZoomRef = useRef(defaultZoom);
   const dataSignatureRef = useRef(signature(data));
   const defaultCenterLat = defaultCenter?.lat;
   const defaultCenterLng = defaultCenter?.lng;
@@ -494,6 +498,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => { onSelectRef.current = onSelectIndex; }, [onSelectIndex]);
   useEffect(() => { onSelectPointRef.current = onSelectPoint; }, [onSelectPoint]);
+  useEffect(() => { onZoomChangeRef.current = onZoomChange; }, [onZoomChange]);
   useEffect(() => { showAllModeRef.current = showAllMode; }, [showAllMode]);
   useEffect(() => { playbackPathModeRef.current = playbackPathMode; }, [playbackPathMode]);
   useEffect(() => {
@@ -608,9 +613,10 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       const resolvedCenter = (typeof defaultCenterLat === "number" && typeof defaultCenterLng === "number")
         ? { lat: defaultCenterLat, lng: defaultCenterLng }
         : FALLBACK_CENTER;
-      const resolvedZoom = defaultZoom ?? FALLBACK_ZOOM;
+      const initialDefaultZoom = initialDefaultZoomRef.current;
+      const resolvedZoom = initialDefaultZoom ?? FALLBACK_ZOOM;
       const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
-      const initialZoom = firstPoint ? 15 : resolvedZoom;
+      const initialZoom = firstPoint ? (initialDefaultZoom ?? 15) : resolvedZoom;
       const initialTilt = firstPoint ? 67.5 : 0;
 
       const MapCtor = mapsLib.Map as typeof google.maps.Map;
@@ -629,9 +635,16 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       mapRef.current = map;
 
       const markUserControl = () => { hasUserControlRef.current = true; };
+      const handleZoomChange = () => {
+        markUserControl();
+        const zoom = map.getZoom();
+        if (typeof zoom === "number" && Number.isFinite(zoom)) {
+          onZoomChangeRef.current?.(zoom);
+        }
+      };
       listeners = [
         map.addListener("dragstart", markUserControl),
-        map.addListener("zoom_changed", markUserControl),
+        map.addListener("zoom_changed", handleZoomChange),
         map.addListener("tilt_changed", markUserControl),
         map.addListener("heading_changed", markUserControl)
       ];
@@ -675,7 +688,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       }
 
       if (currentSeries.length && typeof map.moveCamera === "function") {
-        map.moveCamera({ tilt: 67.5, heading: 0, zoom: 18 });
+        map.moveCamera({ tilt: 67.5, heading: 0, zoom: initialDefaultZoom ?? 18 });
       }
       overlayRef.current = overlay;
       syncOverlayRef.current?.();
@@ -696,7 +709,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       if (overlayRef.current === localOverlay) overlayRef.current = null;
       if (mapRef.current === localMap) mapRef.current = null;
     };
-  }, [interleaved, defaultCenterLat, defaultCenterLng, defaultZoom]);
+  }, [interleaved, defaultCenterLat, defaultCenterLng]);
 
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
