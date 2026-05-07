@@ -234,6 +234,7 @@ export default function MapPage({
   const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
   const [batchBrowserPageIndex, setBatchBrowserPageIndex] = useState(0);
   const cacheHydratedRef = useRef<string | null>(null);
+  const selectionHydratedRef = useRef<string | null>(null);
   const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
   const [captureAvailable, setCaptureAvailable] = useState(false);
@@ -377,9 +378,21 @@ export default function MapPage({
       const parsed = decodeBatchKey(selectedBatchKey);
       if (!parsed) return [];
 
-      const shouldUsePrivateDetail = Boolean(user) && selectedSummary !== null && selectedSummary.visibility !== "public";
-      const fetchDetail = shouldUsePrivateDetail ? fetchBatchDetail : fetchPublicBatchDetail;
-      const detail = await fetchDetail(parsed.deviceId, parsed.batchId);
+      const detail = await (async () => {
+        if (!user) {
+          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+        }
+        if (selectedSummary?.visibility === "public") {
+          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+        }
+        try {
+          return await fetchBatchDetail(parsed.deviceId, parsed.batchId);
+        }
+        catch (err) {
+          if (selectedSummary) throw err;
+          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+        }
+      })();
       return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
     },
     retryOnMount: false,
@@ -426,6 +439,68 @@ export default function MapPage({
     }
   }, [batchBrowserBatches.length, batchBrowserPageIndex]);
 
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (selectionHydratedRef.current === userScopedSelectionKey) return;
+    selectionHydratedRef.current = userScopedSelectionKey;
+
+    const storedSelection = safeLocalStorageGet(
+      userScopedSelectionKey,
+      null,
+      { context: "map:selected-batch:hydrate", userId: user?.uid }
+    );
+    if (!storedSelection) {
+      setSelectedBatchKey("");
+      return;
+    }
+
+    if (storedSelection === SHOW_ALL_PUBLIC_24H_KEY || decodeBatchKey(storedSelection)) {
+      setSelectedBatchKey(storedSelection);
+      return;
+    }
+
+    setSelectedBatchKey("");
+    safeLocalStorageRemove(
+      userScopedSelectionKey,
+      { context: "map:selected-batch:clear-invalid", userId: user?.uid }
+    );
+  }, [isAuthLoading, user?.uid, userScopedSelectionKey]);
+
+  useEffect(() => {
+    if (
+      isAuthLoading
+      || !isBatchBrowserOpen
+      || !batchBrowserQuery.isSuccess
+      || batchBrowserQuery.isFetching
+    ) {
+      return;
+    }
+    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return;
+
+    const parsed = decodeBatchKey(selectedBatchKey);
+    const selectionExists = parsed
+      ? (batchBrowserQuery.data ?? []).some((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId)
+      : false;
+
+    if (selectionExists) return;
+
+    setSelectedBatchKey("");
+    setIndexOverride(0);
+    safeLocalStorageRemove(
+      userScopedSelectionKey,
+      { context: "map:selected-batch:clear-missing", userId: user?.uid }
+    );
+  }, [
+    batchBrowserQuery.data,
+    batchBrowserQuery.isFetching,
+    batchBrowserQuery.isSuccess,
+    isBatchBrowserOpen,
+    isAuthLoading,
+    selectedBatchKey,
+    user?.uid,
+    userScopedSelectionKey,
+  ]);
+
   // // Reset override when data changes
   // useEffect(() => {
   //   setIndexOverride(null);
@@ -452,22 +527,20 @@ export default function MapPage({
 
   const handleBatchSelect = useCallback((value: string) => {
     setSelectedBatchKey(value);
-    if (user) {
-      if (value) {
-        safeLocalStorageSet(
-          userScopedSelectionKey,
-          value,
-          { context: "map:selected-batch:update", userId: user.uid }
-        );
-      }
-      else {
-        safeLocalStorageRemove(
-          userScopedSelectionKey,
-          { context: "map:selected-batch:clear", userId: user.uid }
-        );
-      }
+    if (value) {
+      safeLocalStorageSet(
+        userScopedSelectionKey,
+        value,
+        { context: "map:selected-batch:update", userId: user?.uid }
+      );
     }
-  }, [user, userScopedSelectionKey]);
+    else {
+      safeLocalStorageRemove(
+        userScopedSelectionKey,
+        { context: "map:selected-batch:clear", userId: user?.uid }
+      );
+    }
+  }, [user?.uid, userScopedSelectionKey]);
 
   const upsertBatchSummary = useCallback((summary: BatchSummary) => {
     queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), (prev = []) => {
@@ -853,7 +926,7 @@ export default function MapPage({
       </Suspense>
 
       {/* ---- Welcome hero overlay (when no batch selected and no data) ---- */}
-      {!selectedBatchKey && !rows.length ? (
+      {!user && !selectedBatchKey && !rows.length ? (
         <div
           style={{
             position: "absolute",
