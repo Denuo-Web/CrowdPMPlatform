@@ -28,6 +28,7 @@ import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../comp
 const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
 const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
 const LAST_MAP_ZOOM_KEY = "crowdpm:lastMapZoom";
+const LAST_TIMELINE_INDEX_KEY = "crowdpm:lastTimelineIndex";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
 const DROPDOWN_BATCH_LIMIT = 20;
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
@@ -56,6 +57,8 @@ type MapMeasurementRecord = MeasurementRecord & {
   batchKey?: string;
   batchPointIndex?: number;
 };
+
+type StoredTimelineIndexes = Record<string, number>;
 
 // Safely parse a cached smoke batch so stale/invalid JSON never breaks the UI.
 function parseStoredSmokeBatch(raw: string | null): StoredSmokeBatch | null {
@@ -220,6 +223,32 @@ function parseStoredMapZoom(raw: string | null): number | null {
   return Math.min(Math.max(parsed, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
 }
 
+function parseStoredTimelineIndexes(raw: string | null): StoredTimelineIndexes {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]))
+    );
+  }
+  catch {
+    return {};
+  }
+}
+
+function getStoredTimelineIndex(storageKey: string, batchKey: string, maxIndex: number, userId?: string | null): number | null {
+  const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
+    storageKey,
+    null,
+    { context: "map:timeline:read", userId }
+  ));
+  const index = stored[batchKey];
+  if (typeof index !== "number" || !Number.isFinite(index)) return null;
+  return Math.min(Math.max(Math.round(index), 0), maxIndex);
+}
+
 export default function MapPage({
   pendingSmokeResult = null,
   onSmokeResultConsumed,
@@ -242,6 +271,10 @@ export default function MapPage({
     () => scopedStorageKey(LAST_MAP_ZOOM_KEY, user?.uid ?? undefined),
     [user?.uid]
   );
+  const userScopedTimelineKey = useMemo(
+    () => scopedStorageKey(LAST_TIMELINE_INDEX_KEY, user?.uid ?? undefined),
+    [user?.uid]
+  );
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
@@ -252,6 +285,7 @@ export default function MapPage({
   const cacheHydratedRef = useRef<string | null>(null);
   const selectionHydratedRef = useRef<string | null>(null);
   const zoomHydratedRef = useRef<string | null>(null);
+  const timelineHydratedRef = useRef<string | null>(null);
   const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
   const [captureAvailable, setCaptureAvailable] = useState(false);
@@ -438,16 +472,36 @@ export default function MapPage({
   const selectedIndex = indexOverride ?? (rows.length ? rows.length - 1 : 0);
   const [trackBall, setTrackBall] = useState(true);
 
-  // Only reset override when the BATCH changes, not when data changes
   useEffect(() => {
-    deferStateUpdate(() => {
-      if (skipIndexResetRef.current) {
-        skipIndexResetRef.current = false;
-        return;
-      }
+    if (skipIndexResetRef.current) {
+      skipIndexResetRef.current = false;
+      timelineHydratedRef.current = null;
+      return;
+    }
+    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
+      timelineHydratedRef.current = null;
       setIndexOverride(null);
-    });
-  }, [selectedBatchKey]); // Remove rows.length from dependencies
+      return;
+    }
+    if (!rows.length) return;
+
+    const hydrationKey = `${userScopedTimelineKey}:${selectedBatchKey}:${rows.length}`;
+    if (timelineHydratedRef.current === hydrationKey) return;
+    timelineHydratedRef.current = hydrationKey;
+
+    const storedIndex = getStoredTimelineIndex(
+      userScopedTimelineKey,
+      selectedBatchKey,
+      rows.length - 1,
+      user?.uid
+    );
+    if (storedIndex !== null) {
+      setIndexOverride(storedIndex);
+      return;
+    }
+
+    setIndexOverride(null);
+  }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
 
   useEffect(() => {
     const nextPageIndex = clampPageIndex(batchBrowserBatches.length, batchBrowserPageIndex);
@@ -588,6 +642,27 @@ export default function MapPage({
       { context: "map:zoom:update", userId: user?.uid }
     );
   }, [user?.uid, userScopedZoomKey]);
+
+  const handleTimelineIndexChange = useCallback((nextIndex: number) => {
+    const maxIndex = Math.max(rows.length - 1, 0);
+    const clampedIndex = Math.min(Math.max(Math.round(nextIndex), 0), maxIndex);
+    setIndexOverride(clampedIndex);
+
+    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY || !rows.length) return;
+    const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
+      userScopedTimelineKey,
+      null,
+      { context: "map:timeline:read", userId: user?.uid }
+    ));
+    safeLocalStorageSet(
+      userScopedTimelineKey,
+      JSON.stringify({
+        ...stored,
+        [selectedBatchKey]: clampedIndex,
+      }),
+      { context: "map:timeline:update", userId: user?.uid }
+    );
+  }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
 
   const upsertBatchSummary = useCallback((summary: BatchSummary) => {
     queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), (prev = []) => {
@@ -733,6 +808,21 @@ export default function MapPage({
     setSelectedBatchKey(point.batchKey);
     const pointIndex = typeof point.batchPointIndex === "number" ? point.batchPointIndex : null;
     setIndexOverride(pointIndex);
+    if (pointIndex !== null) {
+      const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
+        userScopedTimelineKey,
+        null,
+        { context: "map:timeline:read-from-all", userId: user?.uid }
+      ));
+      safeLocalStorageSet(
+        userScopedTimelineKey,
+        JSON.stringify({
+          ...stored,
+          [point.batchKey]: pointIndex,
+        }),
+        { context: "map:timeline:update-from-all", userId: user?.uid }
+      );
+    }
     if (user) {
       safeLocalStorageSet(
         userScopedSelectionKey,
@@ -740,7 +830,7 @@ export default function MapPage({
         { context: "map:selected-batch:from-all", userId: user.uid }
       );
     }
-  }, [isShowingAllPublic24h, user, userScopedSelectionKey]);
+  }, [isShowingAllPublic24h, user, userScopedSelectionKey, userScopedTimelineKey]);
 
   const data = useMemo(
     () => {
@@ -965,7 +1055,7 @@ export default function MapPage({
             ref={map3DRef}
             data={data}
             selectedIndex={selectedIndex}
-            onSelectIndex={effectiveShowAllMode ? undefined : setIndexOverride}
+            onSelectIndex={effectiveShowAllMode ? undefined : handleTimelineIndexChange}
             onSelectPoint={handleMapPointSelect}
             onZoomChange={handleMapZoomChange}
             autoCenterKey={autoCenterKey}
@@ -1332,7 +1422,7 @@ export default function MapPage({
                   max={rows.length - 1}
                   step={1}
                   value={selectedIndex}
-                  onChange={(e) => setIndexOverride(Number(e.target.value))}
+                  onChange={(e) => handleTimelineIndexChange(Number(e.target.value))}
                   style={{ width: "100%", marginTop: 4 }}
                 />
                 <div
