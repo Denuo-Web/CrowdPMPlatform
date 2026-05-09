@@ -16,6 +16,7 @@ import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
+import { ThemeSettingsControls } from "../components/ThemeSettingsControls";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
@@ -374,8 +375,14 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
       <Card id="user-settings">
         <Flex direction="column" gap="3">
           <Heading as="h3" size="4">User settings</Heading>
-          <Text color="gray">Choose the default visibility applied to new ingest batches.</Text>
+          <Text color="gray">Theme choices and rendering preferences are stored with your account.</Text>
           <Separator my="2" size="4" />
+          <ThemeSettingsControls
+            disabled={isSettingsBusy}
+            onMessage={setSettingsMessage}
+            onError={setSettingsLocalError}
+          />
+          <Separator my="3" size="4" />
           <Text size="2" color="gray">Default batch visibility</Text>
           <SegmentedControl.Root
             value={settings.defaultBatchVisibility}

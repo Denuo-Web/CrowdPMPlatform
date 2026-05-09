@@ -13,6 +13,15 @@ const mocks = vi.hoisted(() => ({
 let dbStore = new Map<string, Record<string, unknown>>();
 let nextGetError: Error | null = null;
 
+const defaultTheme = {
+  appearance: "dark",
+  accentColor: "iris",
+  grayColor: "auto",
+  panelBackground: "translucent",
+  radius: "full",
+  scaling: "100%",
+};
+
 function makeDocRef(path: string) {
   return {
     get: vi.fn(async () => {
@@ -94,7 +103,11 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ defaultBatchVisibility: "private", interleavedRendering: false });
+    expect(res.json()).toEqual({
+      defaultBatchVisibility: "private",
+      interleavedRendering: false,
+      theme: defaultTheme,
+    });
     await app.close();
   });
 
@@ -109,7 +122,65 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ defaultBatchVisibility: "public", interleavedRendering: true });
+    expect(res.json()).toEqual({
+      defaultBatchVisibility: "public",
+      interleavedRendering: true,
+      theme: defaultTheme,
+    });
+    await app.close();
+  });
+
+  it("PUT /v1/user/settings updates and merges theme preferences", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/user/settings",
+      payload: {
+        theme: {
+          appearance: "light",
+          accentColor: "blue",
+          grayColor: "slate",
+          panelBackground: "solid",
+          radius: "medium",
+          scaling: "105%",
+        },
+      },
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      defaultBatchVisibility: "private",
+      interleavedRendering: false,
+      theme: {
+        appearance: "light",
+        accentColor: "blue",
+        grayColor: "slate",
+        panelBackground: "solid",
+        radius: "medium",
+        scaling: "105%",
+      },
+    });
+
+    const partial = await app.inject({
+      method: "PUT",
+      url: "/v1/user/settings",
+      payload: { theme: { accentColor: "teal" } },
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(partial.statusCode).toBe(200);
+    expect(partial.json()).toMatchObject({
+      theme: {
+        appearance: "light",
+        accentColor: "teal",
+        grayColor: "slate",
+        panelBackground: "solid",
+        radius: "medium",
+        scaling: "105%",
+      },
+    });
     await app.close();
   });
 
@@ -126,8 +197,8 @@ describe("user settings routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({
       error: "missing_fields",
-      message: "Provide defaultBatchVisibility or interleavedRendering to update.",
-      error_description: "Provide defaultBatchVisibility or interleavedRendering to update.",
+      message: "Provide defaultBatchVisibility, interleavedRendering, or theme to update.",
+      error_description: "Provide defaultBatchVisibility, interleavedRendering, or theme to update.",
     });
     await app.close();
   });
@@ -166,6 +237,25 @@ describe("user settings routes", () => {
       error: "invalid_interleaved",
       message: "interleavedRendering must be boolean.",
       error_description: "interleavedRendering must be boolean.",
+    });
+    await app.close();
+  });
+
+  it("validation: invalid theme returns 400", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/user/settings",
+      payload: { theme: { accentColor: "neon" } },
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({
+      error: "invalid_theme",
+      message: "theme contains an unsupported value.",
+      error_description: "theme contains an unsupported value.",
     });
     await app.close();
   });
