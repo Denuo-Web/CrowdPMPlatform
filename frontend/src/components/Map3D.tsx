@@ -353,15 +353,29 @@ function createCompositeCaptureSession(root: HTMLDivElement | null): Map3DCaptur
   };
 }
 
-async function createStreamBackedCaptureSession(root: HTMLDivElement | null): Promise<Map3DCaptureSession | null> {
+function createDirectCanvasCaptureSession(root: HTMLDivElement | null): Map3DCaptureSession | null {
+  const canvas = pickLargestCaptureCanvas(root);
+  if (!canvas || !canCaptureCanvas(canvas)) return null;
+
+  return {
+    canvas,
+    stop: () => {},
+  };
+}
+
+async function createStreamBackedCaptureSession(
+  root: HTMLDivElement | null,
+  options?: { allowCompositeFallback?: boolean }
+): Promise<Map3DCaptureSession | null> {
   if (!root) return null;
+  const allowCompositeFallback = options?.allowCompositeFallback ?? true;
 
   const canvases = getVisibleCanvases(root).sort(compareCanvasOrder);
   if (!canvases.length) return null;
 
   const baseCanvas = pickLargestCaptureCanvas(root);
   if (!baseCanvas || !canCaptureCanvas(baseCanvas)) {
-    return createCompositeCaptureSession(root);
+    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
   }
 
   const rootRect = root.getBoundingClientRect();
@@ -385,7 +399,7 @@ async function createStreamBackedCaptureSession(root: HTMLDivElement | null): Pr
     baseStream = baseCanvas.captureStream(30);
   }
   catch {
-    return createCompositeCaptureSession(root);
+    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
   }
 
   const baseVideo = document.createElement("video");
@@ -399,7 +413,7 @@ async function createStreamBackedCaptureSession(root: HTMLDivElement | null): Pr
   }
   catch {
     baseStream.getTracks().forEach((track) => track.stop());
-    return createCompositeCaptureSession(root);
+    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
   }
 
   let disposed = false;
@@ -454,10 +468,13 @@ async function createStreamBackedCaptureSession(root: HTMLDivElement | null): Pr
 
 async function createCaptureSession(
   root: HTMLDivElement | null,
-  options?: { preferComposite?: boolean }
+  options?: { preferDirectCanvas?: boolean }
 ): Promise<Map3DCaptureSession | null> {
-  if (options?.preferComposite) {
-    return createCompositeCaptureSession(root);
+  if (options?.preferDirectCanvas) {
+    // Interleaved Google Maps renders deck.gl into the Maps WebGL canvas. Redrawing
+    // that canvas through 2D drawImage can produce black frames, so record it directly.
+    return createDirectCanvasCaptureSession(root)
+      ?? createStreamBackedCaptureSession(root, { allowCompositeFallback: false });
   }
   return createStreamBackedCaptureSession(root);
 }
@@ -576,7 +593,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
   useImperativeHandle(ref, () => ({
     getCaptureCanvas,
-    startCaptureSession: () => createCaptureSession(divRef.current, { preferComposite: interleaved }),
+    startCaptureSession: () => createCaptureSession(divRef.current, { preferDirectCanvas: interleaved }),
     waitForVisualReady: async () => {
       syncOverlayRef.current?.();
       requestOverlayRedraw(overlayRef.current);
