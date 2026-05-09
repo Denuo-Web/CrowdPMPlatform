@@ -728,7 +728,7 @@ paths:
     get:
       operationId: getUserSettings
       summary: Retrieve user settings
-      description: Returns the ingest preferences configured for the authenticated user.
+      description: Returns account preferences configured for the authenticated user.
       security:
         - BearerAuth: []
       responses:
@@ -743,7 +743,7 @@ paths:
     put:
       operationId: updateUserSettings
       summary: Update user settings
-      description: Sets the preferences applied to new batches created by the authenticated user.
+      description: Sets account preferences for batches, map rendering, and theme.
       security:
         - BearerAuth: []
       requestBody:
@@ -751,7 +751,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserSettings'
+              $ref: '#/components/schemas/UserSettingsUpdate'
       responses:
         '200':
           description: Updated settings returned.
@@ -1274,6 +1274,69 @@ components:
         interleavedRendering:
           type: boolean
           description: Whether the map should render deck.gl interleaved with Google Maps (may be less stable on some GPUs).
+        theme:
+          $ref: '#/components/schemas/UserThemeSettings'
       required:
         - defaultBatchVisibility
         - interleavedRendering
+        - theme
+    UserThemeSettings:
+      type: object
+      properties:
+        appearance:
+          type: string
+          enum: [light, dark]
+        accentColor:
+          type: string
+          enum: [gray, gold, bronze, brown, yellow, amber, orange, tomato, red, ruby, crimson, pink, plum, purple, violet, iris, indigo, blue, cyan, teal, jade, green, grass, lime, mint, sky]
+        grayColor:
+          type: string
+          enum: [auto, gray, mauve, slate, sage, olive, sand]
+        panelBackground:
+          type: string
+          enum: [solid, translucent]
+        radius:
+          type: string
+          enum: [none, small, medium, large, full]
+        scaling:
+          type: string
+          enum: [90%, 95%, 100%, 105%, 110%]
+      required:
+        - appearance
+        - accentColor
+        - grayColor
+        - panelBackground
+        - radius
+        - scaling
+    UserSettingsUpdate:
+      type: object
+      properties:
+        defaultBatchVisibility:
+          $ref: '#/components/schemas/BatchVisibility'
+        interleavedRendering:
+          type: boolean
+        theme:
+          $ref: '#/components/schemas/UserThemeSettingsUpdate'
+      additionalProperties: false
+    UserThemeSettingsUpdate:
+      type: object
+      properties:
+        appearance:
+          type: string
+          enum: [light, dark]
+        accentColor:
+          type: string
+          enum: [gray, gold, bronze, brown, yellow, amber, orange, tomato, red, ruby, crimson, pink, plum, purple, violet, iris, indigo, blue, cyan, teal, jade, green, grass, lime, mint, sky]
+        grayColor:
+          type: string
+          enum: [auto, gray, mauve, slate, sage, olive, sand]
+        panelBackground:
+          type: string
+          enum: [solid, translucent]
+        radius:
+          type: string
+          enum: [none, small, medium, large, full]
+        scaling:
+          type: string
+          enum: [90%, 95%, 100%, 105%, 110%]
+      additionalProperties: false

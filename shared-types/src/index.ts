@@ -164,9 +164,57 @@ export type AdminSubmissionUpdateRequest = {
   reason?: string | null;
 };
 
+export type UserThemeAppearance = "light" | "dark";
+
+export type UserThemeAccentColor =
+  | "gray"
+  | "gold"
+  | "bronze"
+  | "brown"
+  | "yellow"
+  | "amber"
+  | "orange"
+  | "tomato"
+  | "red"
+  | "ruby"
+  | "crimson"
+  | "pink"
+  | "plum"
+  | "purple"
+  | "violet"
+  | "iris"
+  | "indigo"
+  | "blue"
+  | "cyan"
+  | "teal"
+  | "jade"
+  | "green"
+  | "grass"
+  | "lime"
+  | "mint"
+  | "sky";
+
+export type UserThemeGrayColor = "auto" | "gray" | "mauve" | "slate" | "sage" | "olive" | "sand";
+
+export type UserThemePanelBackground = "solid" | "translucent";
+
+export type UserThemeRadius = "none" | "small" | "medium" | "large" | "full";
+
+export type UserThemeScaling = "90%" | "95%" | "100%" | "105%" | "110%";
+
+export type UserThemeSettings = {
+  appearance: UserThemeAppearance;
+  accentColor: UserThemeAccentColor;
+  grayColor: UserThemeGrayColor;
+  panelBackground: UserThemePanelBackground;
+  radius: UserThemeRadius;
+  scaling: UserThemeScaling;
+};
+
 export type UserSettings = {
   defaultBatchVisibility: BatchVisibility;
   interleavedRendering: boolean;
+  theme: UserThemeSettings;
 };
 
 export type SmokeTestRequestBody = {

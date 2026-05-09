@@ -14,7 +14,26 @@ type UserSettingsContextValue = {
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   defaultBatchVisibility: "private",
   interleavedRendering: false,
+  theme: {
+    appearance: "dark",
+    accentColor: "iris",
+    grayColor: "auto",
+    panelBackground: "translucent",
+    radius: "full",
+    scaling: "100%",
+  },
 };
+
+function applyUserSettingsDefaults(next: Partial<UserSettings>): UserSettings {
+  return {
+    ...DEFAULT_USER_SETTINGS,
+    ...next,
+    theme: {
+      ...DEFAULT_USER_SETTINGS.theme,
+      ...(next.theme ?? {}),
+    },
+  };
+}
 
 const UserSettingsContext = createContext<UserSettingsContextValue | undefined>(undefined);
 
@@ -36,7 +55,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const next = await fetchUserSettings();
-      setSettings(next);
+      setSettings(applyUserSettingsDefaults(next));
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load user settings";
@@ -58,8 +77,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const updated = await updateUserSettings(next);
-      setSettings(updated);
-      return updated;
+      const normalized = applyUserSettingsDefaults(updated);
+      setSettings(normalized);
+      return normalized;
     }
     catch (err) {
       const message = err instanceof Error ? err.message : "Unable to update settings";

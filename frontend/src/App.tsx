@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
+import { ThemeSettingsControls } from "./components/ThemeSettingsControls";
 import { useAuth } from "./providers/AuthProvider";
+import { useUserSettings } from "./providers/UserSettingsProvider";
 import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
 import {
   Theme,
-  ThemePanel,
   Box,
   DropdownMenu,
   Flex,
@@ -93,6 +94,16 @@ const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
   },
 ];
 
+const THEME_SHORTCUT_IGNORED_SELECTOR = [
+  "[contenteditable]",
+  '[role="combobox"]',
+  '[role="listbox"]',
+  '[role="menu"]',
+  'input:not([type="radio"], [type="checkbox"])',
+  "select",
+  "textarea",
+].join(",");
+
 const MapPage = lazy(() => import("./pages/MapPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
@@ -107,6 +118,7 @@ const NodePage = lazy(() => import("./pages/NodePage"));
 
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
+  const { settings } = useUserSettings();
   const userScopedKey = user?.uid ?? "anon";
   const initialPairingGuidePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/pairing-guide");
   const initialAboutPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/about");
@@ -117,6 +129,7 @@ export default function App() {
   const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
+  const [isThemeModalOpen, setThemeModalOpen] = useState(false);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
@@ -139,6 +152,10 @@ export default function App() {
     setAuthDialogOpen(true);
   };
 
+  const toggleThemeModal = useCallback(() => {
+    setThemeModalOpen((open) => !open);
+  }, []);
+
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
       if (target === "smoke" && !canUseSmokeTests) return;
@@ -158,6 +175,25 @@ export default function App() {
       console.warn("Sign out failed", err);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleThemeShortcut = (event: KeyboardEvent) => {
+      const isModifierActive = event.altKey || event.ctrlKey || event.shiftKey || event.metaKey;
+      if (event.key?.toUpperCase() !== "T" || isModifierActive) return;
+
+      const activeElement = document.activeElement;
+      if (activeElement instanceof Element && activeElement.closest(THEME_SHORTCUT_IGNORED_SELECTOR)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      toggleThemeModal();
+    };
+
+    window.addEventListener("keydown", handleThemeShortcut, true);
+    return () => window.removeEventListener("keydown", handleThemeShortcut, true);
+  }, [toggleThemeModal]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -266,14 +302,21 @@ export default function App() {
   );
 
   return (
-    <Theme appearance="dark" accentColor="iris" radius="full" panelBackground="translucent" scaling="100%">
-      {import.meta.env.DEV ? <ThemePanel defaultOpen={false} /> : null}
+    <Theme
+      appearance={settings.theme.appearance}
+      accentColor={settings.theme.accentColor}
+      grayColor={settings.theme.grayColor}
+      radius={settings.theme.radius}
+      panelBackground={settings.theme.panelBackground}
+      scaling={settings.theme.scaling}
+    >
       <ActivationModal
         open={isActivationModalOpen}
         onOpenChange={setActivationModalOpen}
         onActivationComplete={handleActivationComplete}
       />
       <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
+      <ThemePreferencesModal open={isThemeModalOpen} onOpenChange={setThemeModalOpen} />
 
       {/* ---- Branded top bar (fixed across all pages) ---- */}
       <div
@@ -585,6 +628,49 @@ function ActivationModal({ open, onOpenChange, onActivationComplete }: Activatio
         <Suspense fallback={<Text size="2" color="gray">Loading activation...</Text>}>
           <ActivationPage layout="dialog" onActivationComplete={onActivationComplete} />
         </Suspense>
+      </Dialog.Content>
+    </Dialog.Root>
+  );
+}
+
+type ThemePreferencesModalProps = {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+};
+
+function ThemePreferencesModal({ open, onOpenChange }: ThemePreferencesModalProps) {
+  const { user } = useAuth();
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage(null);
+    setError(null);
+  }, [open]);
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Content
+        size="3"
+        style={{
+          width: "min(460px, 96vw)",
+          maxWidth: "460px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        <Dialog.Title>Theme</Dialog.Title>
+        {!user ? (
+          <Dialog.Description>Sign in to save theme preferences.</Dialog.Description>
+        ) : null}
+        <ThemeSettingsControls onMessage={setMessage} onError={setError} />
+        {error ? (
+          <Text color="tomato" size="2" mt="3">{error}</Text>
+        ) : null}
+        {message ? (
+          <Text color="green" size="2" mt="3">{message}</Text>
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   );
