@@ -347,9 +347,10 @@ export default function App() {
             gap: 10,
             padding: "var(--space-3) var(--space-4)",
             paddingLeft: "calc(var(--space-4) + 2.5px)",
+            color: "var(--gray-12)",
             background: activeTab === "map"
-              ? "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)"
-              : "rgba(0, 0, 0, 0.75)",
+              ? "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 82%, transparent) 0%, transparent 100%)"
+              : "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)",
             backdropFilter: activeTab === "map" ? "none" : "blur(12px)",
             WebkitBackdropFilter: activeTab === "map" ? "none" : "blur(12px)",
             pointerEvents: "auto",
@@ -375,7 +376,7 @@ export default function App() {
               <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
               <path
                 d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
-                stroke="white"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 fill="none"
@@ -388,9 +389,9 @@ export default function App() {
               style={{
                 fontSize: "var(--font-size-4)",
                 fontWeight: 700,
-                color: "white",
-                letterSpacing: "-0.02em",
-                textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                color: "var(--gray-12)",
+                letterSpacing: 0,
+                textShadow: "0 1px 4px var(--gray-a6)",
               }}
             >
               CrowdPM
@@ -398,9 +399,9 @@ export default function App() {
             <span
               style={{
                 fontSize: "var(--font-size-1)",
-                color: "rgba(255,255,255,0.6)",
+                color: "var(--gray-11)",
                 fontWeight: 400,
-                letterSpacing: "0.04em",
+                letterSpacing: 0,
                 textTransform: "uppercase",
               }}
             >
@@ -420,10 +421,10 @@ export default function App() {
               aria-label="Navigation menu"
               style={{
                 backdropFilter: "blur(12px)",
-                backgroundColor: "rgba(0, 0, 0, 0.75)",
-                color: "white",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                backgroundColor: "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)",
+                color: "var(--gray-12)",
+                boxShadow: "var(--shadow-4)",
+                border: "1px solid var(--gray-a6)",
               }}
             >
               <HamburgerMenuIcon width={18} height={18} />

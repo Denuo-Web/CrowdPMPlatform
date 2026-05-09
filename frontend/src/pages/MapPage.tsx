@@ -42,6 +42,9 @@ const VIDEO_EXPORT_MIN_POINT_MS = 160;
 const VIDEO_EXPORT_FINAL_POINT_MS = 320;
 const MIN_PERSISTED_MAP_ZOOM = 0;
 const MAX_PERSISTED_MAP_ZOOM = 22;
+const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
+const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
+const MAP_PANEL_BLUR = "blur(12px)";
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -1086,9 +1089,10 @@ export default function MapPage({
           <div
             style={{
               pointerEvents: "auto",
-              background: "rgba(0, 0, 0, 0.7)",
+              background: MAP_PANEL_BACKGROUND,
               backdropFilter: "blur(16px)",
               WebkitBackdropFilter: "blur(16px)",
+              border: MAP_PANEL_BORDER,
               borderRadius: "var(--radius-4)",
               padding: "var(--space-6)",
               maxWidth: 460,
@@ -1102,7 +1106,7 @@ export default function MapPage({
               <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
               <path
                 d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
-                stroke="white"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 fill="none"
@@ -1126,7 +1130,7 @@ export default function MapPage({
                   borderRadius: "var(--radius-3)",
                   border: "none",
                   background: "var(--accent-9)",
-                  color: "white",
+                  color: "var(--accent-contrast)",
                   fontWeight: 600,
                   fontSize: "var(--font-size-2)",
                   cursor: "pointer",
@@ -1191,9 +1195,10 @@ export default function MapPage({
           style={{
             padding: "var(--space-4)",
             borderRadius: "var(--radius-3)",
-            background: "rgba(0, 0, 0, 0.7)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
+            background: MAP_PANEL_BACKGROUND,
+            backdropFilter: MAP_PANEL_BLUR,
+            WebkitBackdropFilter: MAP_PANEL_BLUR,
+            border: MAP_PANEL_BORDER,
             boxShadow: "var(--shadow-3)",
           }}
         >
@@ -1276,9 +1281,10 @@ export default function MapPage({
             style={{
               padding: "var(--space-4)",
               borderRadius: "var(--radius-3)",
-              background: "rgba(0, 0, 0, 0.7)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
+              background: MAP_PANEL_BACKGROUND,
+              backdropFilter: MAP_PANEL_BLUR,
+              WebkitBackdropFilter: MAP_PANEL_BLUR,
+              border: MAP_PANEL_BORDER,
               boxShadow: "var(--shadow-3)",
               color: "var(--gray-12)",
             }}
@@ -1329,7 +1335,7 @@ export default function MapPage({
                       padding: "var(--space-1) var(--space-3)",
                       borderRadius: "var(--radius-2)",
                       background: "var(--accent-9)",
-                      color: "white",
+                      color: "var(--accent-contrast)",
                       fontWeight: 600,
                       fontSize: "var(--font-size-1)",
                       textDecoration: "none",
@@ -1369,7 +1375,7 @@ export default function MapPage({
                     borderRadius: "var(--radius-2)",
                     border: "none",
                     background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
-                    color: canStartExport ? "white" : "var(--gray-11)",
+                    color: canStartExport ? "var(--accent-contrast)" : "var(--gray-11)",
                     fontWeight: 600,
                     fontSize: "var(--font-size-1)",
                     cursor: canStartExport ? "pointer" : "not-allowed",
@@ -1393,9 +1399,10 @@ export default function MapPage({
             style={{
               padding: "var(--space-3)",
               borderRadius: "var(--radius-3)",
-              background: "rgba(0, 0, 0, 0.7)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
+              background: MAP_PANEL_BACKGROUND,
+              backdropFilter: MAP_PANEL_BLUR,
+              WebkitBackdropFilter: MAP_PANEL_BLUR,
+              border: MAP_PANEL_BORDER,
               boxShadow: "var(--shadow-3)",
               color: "var(--gray-12)",
             }}
@@ -1467,9 +1474,10 @@ export default function MapPage({
             style={{
               padding: "var(--space-3)",
               borderRadius: "var(--radius-3)",
-              background: "rgba(0, 0, 0, 0.7)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
+              background: MAP_PANEL_BACKGROUND,
+              backdropFilter: MAP_PANEL_BLUR,
+              WebkitBackdropFilter: MAP_PANEL_BLUR,
+              border: MAP_PANEL_BORDER,
               color: "var(--gray-11)",
               fontSize: "var(--font-size-2)",
             }}
@@ -1492,9 +1500,10 @@ export default function MapPage({
           gap: "var(--space-3)",
           padding: "var(--space-2) var(--space-4)",
           borderRadius: "var(--radius-3)",
-          background: "rgba(0, 0, 0, 0.6)",
+          background: MAP_PANEL_BACKGROUND,
           backdropFilter: "blur(8px)",
           WebkitBackdropFilter: "blur(8px)",
+          border: MAP_PANEL_BORDER,
           color: "var(--gray-11)",
           fontSize: "var(--font-size-1)",
         }}
