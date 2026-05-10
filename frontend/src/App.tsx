@@ -439,13 +439,6 @@ export default function App() {
               Map
             </DropdownMenu.Item>
             <DropdownMenu.Item
-              onSelect={() => setTab("pairing-info")}
-              style={activeTab === "pairing-info" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              Pairing Guide
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
               onSelect={() => setTab("node")}
               style={activeTab === "node" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
