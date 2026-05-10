@@ -868,6 +868,13 @@ export default function MapPage({
   );
   const batchSelectValue = selectedBatchKey || NO_BATCH_SELECTED_KEY;
   const batchSelectPlaceholder = user ? "Select batch" : "Select a public batch";
+  const batchTriggerText = useMemo(() => {
+    if (!selectedBatchKey) return undefined;
+    if (selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return "Show all public (last 24h)";
+    if (selectedSummary) return formatBatchLabel(selectedSummary);
+    if (!selectedBatchParsed) return undefined;
+    return `${selectedBatchParsed.batchId} — ${selectedBatchParsed.deviceId}`;
+  }, [selectedBatchKey, selectedBatchParsed, selectedSummary]);
   const batchBrowserActionLabel = user ? "See all batches..." : "See all public batches...";
   const batchBrowserTitle = user ? "All measurement batches" : "All public measurement batches";
   const allModeBatchCount = useMemo(() => (
@@ -1231,7 +1238,9 @@ export default function MapPage({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                 }}
-              />
+              >
+                {batchTriggerText}
+              </Select.Trigger>
               <Select.Content
                 position="popper"
                 style={{
@@ -1290,7 +1299,7 @@ export default function MapPage({
             }}
           >
             <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-              Create a movie of this pollution data
+              Create a video of this pollution data
             </p>
             {exportDisabledReason ? (
               <p style={{ margin: "6px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
@@ -1419,9 +1428,21 @@ export default function MapPage({
               </>
             ) : (
               <>
-                <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  Timeline
-                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "var(--space-3)",
+                  }}
+                >
+                  <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                    Timeline
+                  </label>
+                  <span style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)", whiteSpace: "nowrap" }}>
+                    {rows.length} measurements
+                  </span>
+                </div>
                 <input
                   id="measurement-slider"
                   type="range"
@@ -1485,48 +1506,6 @@ export default function MapPage({
             Loading measurements…
           </div>
         ) : null}
-      </div>
-
-      {/* ---- Stats strip (bottom-left) ---- */}
-      {/* ---- Stats strip (bottom-left) ---- */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: "var(--space-4)",
-          left: "var(--space-4)",
-          zIndex: 3,
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-3)",
-          padding: "var(--space-2) var(--space-4)",
-          borderRadius: "var(--radius-3)",
-          background: MAP_PANEL_BACKGROUND,
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-          border: MAP_PANEL_BORDER,
-          color: "var(--gray-11)",
-          fontSize: "var(--font-size-1)",
-        }}
-      >
-        {/* Live dot indicator */}
-        <span
-          style={{
-            display: "inline-block",
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            backgroundColor: "var(--accent-9)",
-            boxShadow: "0 0 6px var(--accent-9)",
-            animation: rows.length > 0 ? "pulse-dot 2s ease-in-out infinite" : "none",
-          }}
-        />
-        <span>
-          {rows.length > 0
-            ? isShowingAllPublic24h
-              ? `${allModeBatchCount} active batches · ${rows.length} measurements`
-              : `${rows.length} measurements in batch`
-            : "No data loaded"}
-        </span>
       </div>
       <Dialog.Root open={isBatchBrowserOpen} onOpenChange={setBatchBrowserOpen}>
         <Dialog.Content

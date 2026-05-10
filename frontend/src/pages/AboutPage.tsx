@@ -8,7 +8,11 @@ import {
   Link,
 } from "@radix-ui/themes";
 
-export default function AboutPage() {
+type AboutPageProps = {
+  onOpenTeamModal: () => void;
+};
+
+export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
   return (
     <Flex direction="column" gap="5">
       {/* ---- Hero ---- */}
@@ -109,6 +113,20 @@ export default function AboutPage() {
               highContrast
             >
               GitHub
+            </Link>.
+          </Text>
+          <Text size="2" as="p">
+            Meet the people behind the project in the{" "}
+            <Link
+              href="#team"
+              color="iris"
+              highContrast
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenTeamModal();
+              }}
+            >
+              team overview
             </Link>.
           </Text>
         </Flex>

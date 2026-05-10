@@ -115,6 +115,7 @@ const ActivationPage = lazy(async () => {
 const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
 const NodePage = lazy(() => import("./pages/NodePage"));
+const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
@@ -154,6 +155,14 @@ export default function App() {
 
   const toggleThemeModal = useCallback(() => {
     setThemeModalOpen((open) => !open);
+  }, []);
+
+  const openThemeModal = useCallback(() => {
+    setThemeModalOpen(true);
+  }, []);
+
+  const openTeamModal = useCallback(() => {
+    setTeamModalOpen(true);
   }, []);
 
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
@@ -439,21 +448,11 @@ export default function App() {
               Map
             </DropdownMenu.Item>
             <DropdownMenu.Item
-              onSelect={() => setTab("pairing-info")}
-              style={activeTab === "pairing-info" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              Pairing Guide
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
               onSelect={() => setTab("node")}
               style={activeTab === "node" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
               Node
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)} disabled={isLoading}>
-              Team
             </DropdownMenu.Item>
             <DropdownMenu.Item
               onSelect={() => setTab("about")}
@@ -513,7 +512,14 @@ export default function App() {
       <main id="main-content" style={{ minHeight: "100vh" }}>
         {activeTab === "map" ? (
           /* Full-bleed map — fills the entire viewport */
-          <Box style={{ width: "100%", height: "100vh" }}>
+          <Box
+            style={{
+              width: "100%",
+              height: "100dvh",
+              paddingBottom: MAP_VIEWPORT_BOTTOM_INSET,
+              boxSizing: "border-box",
+            }}
+          >
             <Suspense fallback={tabPanelFallback}>
               <MapPage
                 key={`map:${userScopedKey}`}
@@ -549,6 +555,7 @@ export default function App() {
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
+                      onOpenThemeModal={openThemeModal}
                       refreshToken={dashboardRefreshToken}
                     />
                   ) : activeTab === "smoke" && user && canUseSmokeTests ? (
@@ -562,7 +569,7 @@ export default function App() {
                   ) : activeTab === "pairing-info" ? (
                     <PairingInfoPage onOpenActivation={openActivationModal} />
                   ) : activeTab === "about" ? (
-                    <AboutPage />
+                    <AboutPage onOpenTeamModal={openTeamModal} />
                   ) : activeTab === "node" ? (
                     <NodePage />
                   ) : (
