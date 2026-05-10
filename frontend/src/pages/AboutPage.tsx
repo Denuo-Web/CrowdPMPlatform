@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Box,
   Flex,
@@ -7,104 +8,177 @@ import {
   Card,
   Link,
 } from "@radix-ui/themes";
+import {
+  LegalDocumentDialog,
+  LegalDocumentLink,
+  type LegalDocumentId,
+} from "../components/LegalDocumentDialog";
 
 type AboutPageProps = {
   onOpenTeamModal: () => void;
 };
 
 export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
+  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
+
   return (
-    <Flex direction="column" gap="5">
-      {/* ---- Hero ---- */}
-      <Box>
-        <Heading as="h1" size="5">About CrowdPM</Heading>
-        <Text size="3" color="gray" mt="2" as="p">
-          CrowdPM is an open-source, crowd-sourced air quality monitoring platform
-          that visualizes real-time PM2.5 data on an interactive 3D map.
-        </Text>
-      </Box>
-
-      <Separator size="4" />
-
-      {/* ---- Mission ---- */}
-      <Card>
-        <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">Our Mission</Heading>
-          <Text size="2" as="p">
-            Air quality affects everyone, but monitoring data is often sparse, expensive to access,
-            or locked behind proprietary systems. CrowdPM aims to democratize air quality awareness
-            by making it easy for anyone with a low-cost sensor node to contribute measurements to
-            a shared, publicly accessible dataset.
+    <>
+      <Flex direction="column" gap="5">
+        {/* ---- Hero ---- */}
+        <Box>
+          <Heading as="h1" size="5">About CrowdPM</Heading>
+          <Text size="3" color="gray" mt="2" as="p">
+            CrowdPM is an open-source, crowd-sourced air quality monitoring platform
+            that visualizes real-time PM2.5 data on an interactive 3D map.
           </Text>
-          <Text size="2" as="p">
-            By combining crowd-sourced hardware with modern web visualization, we provide
-            communities with the granular, real-time data they need to make informed decisions
-            about the air they breathe.
-          </Text>
-        </Flex>
-      </Card>
+        </Box>
 
-      {/* ---- How It Works ---- */}
-      <Card>
-        <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">How It Works</Heading>
-          <Flex direction="column" gap="2" pl="2">
+        <Separator size="4" />
+
+        {/* ---- Mission ---- */}
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h2" size="4">Our Mission</Heading>
             <Text size="2" as="p">
-              <strong>1. Pair a sensor node</strong>&ensp;— Connect a CrowdPM-compatible air quality
-              sensor to your account using our secure device pairing flow.
+              Air quality affects everyone, but monitoring data is often sparse, expensive to access,
+              or locked behind proprietary systems. CrowdPM aims to democratize air quality awareness
+              by making it easy for anyone with a low-cost sensor node to contribute measurements to
+              a shared, publicly accessible dataset.
             </Text>
             <Text size="2" as="p">
-              <strong>2. Stream measurements</strong>&ensp;— Your node automatically collects PM2.5
-              readings along with GPS coordinates and streams them to the CrowdPM backend.
-            </Text>
-            <Text size="2" as="p">
-              <strong>3. Visualize on the map</strong>&ensp;— All public measurements appear on the
-              interactive 3D map in near real-time, color-coded by air quality level.
-            </Text>
-            <Text size="2" as="p">
-              <strong>4. Export &amp; share</strong>&ensp;— Render flythrough videos of batch data or
-              browse historical measurements from the dashboard.
+              By combining crowd-sourced hardware with modern web visualization, we provide
+              communities with the granular, real-time data they need to make informed decisions
+              about the air they breathe.
             </Text>
           </Flex>
-        </Flex>
-      </Card>
+        </Card>
 
-      {/* ---- Technology ---- */}
-      <Card>
-        <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">Technology</Heading>
-          <Text size="2" as="p">
-            CrowdPM is built with a modern, open-source stack:
-          </Text>
-          <Flex direction="column" gap="1" pl="2">
-            <Text size="2" as="p">• <strong>Frontend</strong> — React, Vite, Radix UI, deck.gl with Google Maps</Text>
-            <Text size="2" as="p">• <strong>Backend</strong> — Firebase Cloud Functions (Node.js / TypeScript)</Text>
-            <Text size="2" as="p">• <strong>Database</strong> — Cloud Firestore</Text>
-            <Text size="2" as="p">• <strong>Auth</strong> — Firebase Authentication + OAuth 2.0 Device Authorization Grant with DPoP</Text>
-            <Text size="2" as="p">• <strong>Hardware</strong> — ESP32-based sensor nodes with PM2.5 sensors and GPS modules</Text>
+        {/* ---- How It Works ---- */}
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h2" size="4">How It Works</Heading>
+            <Flex direction="column" gap="2" pl="2">
+              <Text size="2" as="p">
+                <strong>1. Pair a sensor node</strong>&ensp;— Connect a CrowdPM-compatible air quality
+                sensor to your account using our secure device pairing flow.
+              </Text>
+              <Text size="2" as="p">
+                <strong>2. Stream measurements</strong>&ensp;— Your node automatically collects PM2.5
+                readings along with GPS coordinates and streams them to the CrowdPM backend.
+              </Text>
+              <Text size="2" as="p">
+                <strong>3. Visualize on the map</strong>&ensp;— All public measurements appear on the
+                interactive 3D map in near real-time, color-coded by air quality level.
+              </Text>
+              <Text size="2" as="p">
+                <strong>4. Export &amp; share</strong>&ensp;— Render flythrough videos of batch data or
+                browse historical measurements from the dashboard.
+              </Text>
+            </Flex>
           </Flex>
-        </Flex>
-      </Card>
+        </Card>
 
-      {/* ---- Origin ---- */}
-      <Card>
-        <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">Origin</Heading>
-          <Text size="2" as="p">
-            CrowdPM began as an{" "}
+        {/* ---- Technology ---- */}
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h2" size="4">Technology</Heading>
+            <Text size="2" as="p">
+              CrowdPM is built with a modern, open-source stack:
+            </Text>
+            <Flex direction="column" gap="1" pl="2">
+              <Text size="2" as="p">• <strong>Frontend</strong> — React, Vite, Radix UI, deck.gl with Google Maps</Text>
+              <Text size="2" as="p">• <strong>Backend</strong> — Firebase Cloud Functions (Node.js / TypeScript)</Text>
+              <Text size="2" as="p">• <strong>Database</strong> — Cloud Firestore</Text>
+              <Text size="2" as="p">• <strong>Auth</strong> — Firebase Authentication + OAuth 2.0 Device Authorization Grant with DPoP</Text>
+              <Text size="2" as="p">• <strong>Hardware</strong> — ESP32-based sensor nodes with PM2.5 sensors and GPS modules</Text>
+            </Flex>
+          </Flex>
+        </Card>
+
+        {/* ---- Origin ---- */}
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h2" size="4">Origin</Heading>
+            <Text size="2" as="p">
+              CrowdPM began as an{" "}
+              <Link
+                href="https://eecs.engineering.oregonstate.edu/capstone/submission/pages/viewSingleProject.php?id=WHBsGlAFvH7HrCiH"
+                target="_blank"
+                rel="noreferrer"
+                color="iris"
+                highContrast
+              >
+                Oregon State University EECS Capstone
+              </Link>{" "}
+              project. The platform is actively developed and maintained as an open-source effort.
+            </Text>
+            <Text size="2" as="p">
+              The source code is available on{" "}
+              <Link
+                href="https://github.com/Denuo-Web/CrowdPMPlatform/"
+                target="_blank"
+                rel="noreferrer"
+                color="iris"
+                highContrast
+              >
+                GitHub
+              </Link>.
+            </Text>
+            <Text size="2" as="p">
+              Meet the people behind the project in the{" "}
+              <Link
+                href="#team"
+                color="iris"
+                highContrast
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenTeamModal();
+                }}
+              >
+                team overview
+              </Link>.
+            </Text>
+          </Flex>
+        </Card>
+
+        {/* ---- Legal ---- */}
+        <Card>
+          <Flex direction="column" gap="3">
+            <Heading as="h2" size="4">Legal</Heading>
+            <Text size="2" as="p">
+              Review the hosted service terms, project license, and data practices:
+            </Text>
+            <Flex gap="3" wrap="wrap">
+              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                Terms of Service
+              </LegalDocumentLink>
+              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                License
+              </LegalDocumentLink>
+              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                Privacy Policy
+              </LegalDocumentLink>
+            </Flex>
+          </Flex>
+        </Card>
+
+        <Separator size="4" />
+
+        {/* ---- Contact ---- */}
+        <Box mb="4">
+          <Heading as="h2" size="4" mb="2">Get Involved</Heading>
+          <Text size="2" color="gray" as="p">
+            Interested in contributing, deploying your own node, or just learning more? Join the{" "}
             <Link
-              href="https://eecs.engineering.oregonstate.edu/capstone/submission/pages/viewSingleProject.php?id=WHBsGlAFvH7HrCiH"
+              href="https://discord.gg/cEbGw8HAUQ"
               target="_blank"
               rel="noreferrer"
               color="iris"
               highContrast
             >
-              Oregon State University EECS Capstone
+              CrowdPM Discord
             </Link>{" "}
-            project. The platform is actively developed and maintained as an open-source effort.
-          </Text>
-          <Text size="2" as="p">
-            The source code is available on{" "}
+            or check out the project on{" "}
             <Link
               href="https://github.com/Denuo-Web/CrowdPMPlatform/"
               target="_blank"
@@ -115,51 +189,14 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
               GitHub
             </Link>.
           </Text>
-          <Text size="2" as="p">
-            Meet the people behind the project in the{" "}
-            <Link
-              href="#team"
-              color="iris"
-              highContrast
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenTeamModal();
-              }}
-            >
-              team overview
-            </Link>.
-          </Text>
-        </Flex>
-      </Card>
-
-      <Separator size="4" />
-
-      {/* ---- Contact ---- */}
-      <Box mb="4">
-        <Heading as="h2" size="4" mb="2">Get Involved</Heading>
-        <Text size="2" color="gray" as="p">
-          Interested in contributing, deploying your own node, or just learning more? Join the{" "}
-          <Link
-            href="https://discord.gg/cEbGw8HAUQ"
-            target="_blank"
-            rel="noreferrer"
-            color="iris"
-            highContrast
-          >
-            CrowdPM Discord
-          </Link>{" "}
-          or check out the project on{" "}
-          <Link
-            href="https://github.com/Denuo-Web/CrowdPMPlatform/"
-            target="_blank"
-            rel="noreferrer"
-            color="iris"
-            highContrast
-          >
-            GitHub
-          </Link>.
-        </Text>
-      </Box>
-    </Flex>
+        </Box>
+      </Flex>
+      <LegalDocumentDialog
+        documentId={openLegalDocument}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setOpenLegalDocument(null);
+        }}
+      />
+    </>
   );
 }

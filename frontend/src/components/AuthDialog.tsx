@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { FirebaseError } from "firebase/app";
 import { Button, Dialog, Flex, Text, TextField } from "@radix-ui/themes";
 import { useAuth } from "../providers/AuthProvider";
+import {
+  LegalDocumentDialog,
+  LegalDocumentLink,
+  type LegalDocumentId,
+} from "./LegalDocumentDialog";
 
 export type AuthMode = "login" | "signup";
 
@@ -43,6 +48,7 @@ export function AuthDialog({ open, mode, onModeChange, onOpenChange, onAuthentic
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -51,6 +57,7 @@ export function AuthDialog({ open, mode, onModeChange, onOpenChange, onAuthentic
       setConfirmPassword("");
       setError(null);
       setIsSubmitting(false);
+      setOpenLegalDocument(null);
     }
   }, [open]);
 
@@ -93,88 +100,113 @@ export function AuthDialog({ open, mode, onModeChange, onOpenChange, onAuthentic
       : "Enter your email and password to access the user dashboard.";
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Content size="3" style={{ maxWidth: 420 }}>
-        <Dialog.Title>{title}</Dialog.Title>
-        <Dialog.Description>{description}</Dialog.Description>
-        <form onSubmit={handleSubmit}>
-          <Flex direction="column" gap="3" mt="4">
-            <div>
-              <Text as="label" htmlFor="auth-email" size="2" color="gray">
-                Email
-              </Text>
-              <TextField.Root
-                id="auth-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                mt="1"
-              />
-            </div>
-            <div>
-              <Text as="label" htmlFor="auth-password" size="2" color="gray">
-                Password
-              </Text>
-              <TextField.Root
-                id="auth-password"
-                type="password"
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                minLength={6}
-                mt="1"
-              />
-            </div>
-            {mode === "signup" ? (
+    <>
+      <Dialog.Root open={open} onOpenChange={onOpenChange}>
+        <Dialog.Content size="3" style={{ maxWidth: 420 }}>
+          <Dialog.Title>{title}</Dialog.Title>
+          <Dialog.Description>{description}</Dialog.Description>
+          <form onSubmit={handleSubmit}>
+            <Flex direction="column" gap="3" mt="4">
               <div>
-                <Text as="label" htmlFor="auth-confirm-password" size="2" color="gray">
-                  Confirm password
+                <Text as="label" htmlFor="auth-email" size="2" color="gray">
+                  Email
                 </Text>
                 <TextField.Root
-                  id="auth-confirm-password"
-                  type="password"
-                  autoComplete="new-password"
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
                   required
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  mt="1"
+                />
+              </div>
+              <div>
+                <Text as="label" htmlFor="auth-password" size="2" color="gray">
+                  Password
+                </Text>
+                <TextField.Root
+                  id="auth-password"
+                  type="password"
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   minLength={6}
                   mt="1"
                 />
               </div>
-            ) : null}
-            {error ? (
-              <Text color="red" size="2">
-                {error}
-              </Text>
-            ) : null}
-            <Flex align="center" justify="between" mt="2">
-              <Text size="2" color="gray">
-                {mode === "signup" ? "Already have an account?" : "Need an account?"}
-              </Text>
-              <Button
-                type="button"
-                onClick={() => onModeChange(mode === "signup" ? "login" : "signup")}
-                variant="ghost"
-                size="2"
-              >
-                {mode === "signup" ? "Log in" : "Sign up"}
-              </Button>
+              {mode === "signup" ? (
+                <>
+                  <div>
+                    <Text as="label" htmlFor="auth-confirm-password" size="2" color="gray">
+                      Confirm password
+                    </Text>
+                    <TextField.Root
+                      id="auth-confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      minLength={6}
+                      mt="1"
+                    />
+                  </div>
+                  <Text size="1" color="gray" as="p">
+                    By creating an account, you agree to the{" "}
+                    <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                      Terms of Service
+                    </LegalDocumentLink>
+                    ,{" "}
+                    <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                      License
+                    </LegalDocumentLink>
+                    , and{" "}
+                    <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                      Privacy Policy
+                    </LegalDocumentLink>
+                    .
+                  </Text>
+                </>
+              ) : null}
+              {error ? (
+                <Text color="red" size="2">
+                  {error}
+                </Text>
+              ) : null}
+              <Flex align="center" justify="between" mt="2">
+                <Text size="2" color="gray">
+                  {mode === "signup" ? "Already have an account?" : "Need an account?"}
+                </Text>
+                <Button
+                  type="button"
+                  onClick={() => onModeChange(mode === "signup" ? "login" : "signup")}
+                  variant="ghost"
+                  size="2"
+                >
+                  {mode === "signup" ? "Log in" : "Sign up"}
+                </Button>
+              </Flex>
+              <Flex gap="3" justify="end">
+                <Button type="button" variant="soft" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {mode === "signup" ? (isSubmitting ? "Creating..." : "Create account") : isSubmitting ? "Signing in..." : "Log in"}
+                </Button>
+              </Flex>
             </Flex>
-            <Flex gap="3" justify="end">
-              <Button type="button" variant="soft" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {mode === "signup" ? (isSubmitting ? "Creating..." : "Create account") : isSubmitting ? "Signing in..." : "Log in"}
-              </Button>
-            </Flex>
-          </Flex>
-        </form>
-      </Dialog.Content>
-    </Dialog.Root>
+          </form>
+        </Dialog.Content>
+      </Dialog.Root>
+      <LegalDocumentDialog
+        documentId={openLegalDocument}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setOpenLegalDocument(null);
+        }}
+      />
+    </>
   );
 }
