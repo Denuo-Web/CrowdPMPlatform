@@ -16,10 +16,10 @@ import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
-import { ThemeSettingsControls } from "../components/ThemeSettingsControls";
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
+  onOpenThemeModal: () => void;
   refreshToken?: number;
 };
 
@@ -31,7 +31,7 @@ function describeStatus(status?: string | null): { label: string; tone: "green" 
   return { label: status ?? "Unknown", tone: "red" };
 }
 
-export default function UserDashboard({ onRequestActivation, refreshToken = 0 }: UserDashboardProps) {
+export default function UserDashboard({ onRequestActivation, onOpenThemeModal, refreshToken = 0 }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -375,14 +375,14 @@ export default function UserDashboard({ onRequestActivation, refreshToken = 0 }:
       <Card id="user-settings">
         <Flex direction="column" gap="3">
           <Heading as="h3" size="4">User settings</Heading>
-          <Text color="gray">Theme choices and rendering preferences are stored with your account.</Text>
+          <Text color="gray">Open the theme modal here on mobile, or press T on desktop.</Text>
+          <Flex direction={{ initial: "column", sm: "row" }} align={{ initial: "stretch", sm: "center" }} gap="3">
+            <Button variant="soft" onClick={onOpenThemeModal}>Open theme preferences</Button>
+            <Text size="1" color="gray">
+              Theme choices are still saved to your account when updated in the modal.
+            </Text>
+          </Flex>
           <Separator my="2" size="4" />
-          <ThemeSettingsControls
-            disabled={isSettingsBusy}
-            onMessage={setSettingsMessage}
-            onError={setSettingsLocalError}
-          />
-          <Separator my="3" size="4" />
           <Text size="2" color="gray">Default batch visibility</Text>
           <SegmentedControl.Root
             value={settings.defaultBatchVisibility}

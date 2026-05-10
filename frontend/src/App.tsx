@@ -156,6 +156,10 @@ export default function App() {
     setThemeModalOpen((open) => !open);
   }, []);
 
+  const openThemeModal = useCallback(() => {
+    setThemeModalOpen(true);
+  }, []);
+
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
       if (target === "smoke" && !canUseSmokeTests) return;
@@ -542,6 +546,7 @@ export default function App() {
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
+                      onOpenThemeModal={openThemeModal}
                       refreshToken={dashboardRefreshToken}
                     />
                   ) : activeTab === "smoke" && user && canUseSmokeTests ? (
