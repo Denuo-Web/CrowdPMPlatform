@@ -160,6 +160,10 @@ export default function App() {
     setThemeModalOpen(true);
   }, []);
 
+  const openTeamModal = useCallback(() => {
+    setTeamModalOpen(true);
+  }, []);
+
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
       if (target === "smoke" && !canUseSmokeTests) return;
@@ -449,9 +453,6 @@ export default function App() {
             >
               Node
             </DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => setTeamModalOpen(true)} disabled={isLoading}>
-              Team
-            </DropdownMenu.Item>
             <DropdownMenu.Item
               onSelect={() => setTab("about")}
               style={activeTab === "about" ? { fontWeight: 600 } : undefined}
@@ -560,7 +561,7 @@ export default function App() {
                   ) : activeTab === "pairing-info" ? (
                     <PairingInfoPage onOpenActivation={openActivationModal} />
                   ) : activeTab === "about" ? (
-                    <AboutPage />
+                    <AboutPage onOpenTeamModal={openTeamModal} />
                   ) : activeTab === "node" ? (
                     <NodePage />
                   ) : (
