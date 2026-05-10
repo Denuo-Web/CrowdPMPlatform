@@ -1419,9 +1419,21 @@ export default function MapPage({
               </>
             ) : (
               <>
-                <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  Timeline
-                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "var(--space-3)",
+                  }}
+                >
+                  <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                    Timeline
+                  </label>
+                  <span style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)", whiteSpace: "nowrap" }}>
+                    {rows.length} measurements
+                  </span>
+                </div>
                 <input
                   id="measurement-slider"
                   type="range"
@@ -1485,48 +1497,6 @@ export default function MapPage({
             Loading measurements…
           </div>
         ) : null}
-      </div>
-
-      {/* ---- Stats strip (bottom-left) ---- */}
-      {/* ---- Stats strip (bottom-left) ---- */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: "var(--space-4)",
-          left: "var(--space-4)",
-          zIndex: 3,
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-3)",
-          padding: "var(--space-2) var(--space-4)",
-          borderRadius: "var(--radius-3)",
-          background: MAP_PANEL_BACKGROUND,
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-          border: MAP_PANEL_BORDER,
-          color: "var(--gray-11)",
-          fontSize: "var(--font-size-1)",
-        }}
-      >
-        {/* Live dot indicator */}
-        <span
-          style={{
-            display: "inline-block",
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            backgroundColor: "var(--accent-9)",
-            boxShadow: "0 0 6px var(--accent-9)",
-            animation: rows.length > 0 ? "pulse-dot 2s ease-in-out infinite" : "none",
-          }}
-        />
-        <span>
-          {rows.length > 0
-            ? isShowingAllPublic24h
-              ? `${allModeBatchCount} active batches · ${rows.length} measurements`
-              : `${rows.length} measurements in batch`
-            : "No data loaded"}
-        </span>
       </div>
       <Dialog.Root open={isBatchBrowserOpen} onOpenChange={setBatchBrowserOpen}>
         <Dialog.Content
