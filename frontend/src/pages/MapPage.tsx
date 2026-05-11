@@ -58,6 +58,12 @@ const MAP_EMPTY_STATE_DESCRIPTION = "Explore public sensor data below, or pair y
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
 const Map3D = lazy(() => import("../components/Map3D"));
+const TERMINAL_BATCH_ERROR_MESSAGES = ["unauthorized", "authentication required", "not_found", "batch not found"] as const;
+
+type VisibleBatchAccess = "owned" | "public" | "both";
+type VisibleBatchSummary = BatchSummary & {
+  access: VisibleBatchAccess;
+};
 
 type StoredSmokeBatch = {
   summary: BatchSummary;
@@ -121,7 +127,7 @@ function formatBatchLabel(batch: BatchSummary) {
   return `${timeLabel} — ${name}${countLabel}`;
 }
 
-function sortBatchesByProcessedAtDesc(list: BatchSummary[]) {
+function sortBatchesByProcessedAtDesc<T extends BatchSummary>(list: T[]): T[] {
   return [...list].sort((a, b) => {
     const timeA = timestampToMillis(a.processedAt) ?? 0;
     const timeB = timestampToMillis(b.processedAt) ?? 0;
@@ -129,11 +135,30 @@ function sortBatchesByProcessedAtDesc(list: BatchSummary[]) {
   });
 }
 
-function mergeBatchLists(primaryBatches: BatchSummary[], publicBatches: BatchSummary[]) {
-  const byKey = new Map<string, BatchSummary>();
-  publicBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
-  primaryBatches.forEach((batch) => byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch));
+function toPublicVisibleBatches(publicBatches: BatchSummary[]): VisibleBatchSummary[] {
+  return publicBatches.map((batch) => ({ ...batch, access: "public" }));
+}
+
+function mergeBatchLists(primaryBatches: BatchSummary[], publicBatches: BatchSummary[]): VisibleBatchSummary[] {
+  const byKey = new Map<string, VisibleBatchSummary>();
+  toPublicVisibleBatches(publicBatches).forEach((batch) => {
+    byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch);
+  });
+  primaryBatches.forEach((batch) => {
+    const key = encodeBatchKey(batch.deviceId, batch.batchId);
+    const existing = byKey.get(key);
+    byKey.set(key, {
+      ...batch,
+      access: existing ? "both" : "owned",
+    });
+  });
   return sortBatchesByProcessedAtDesc(Array.from(byKey.values()));
+}
+
+function isTerminalBatchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return TERMINAL_BATCH_ERROR_MESSAGES.some((fragment) => message.includes(fragment));
 }
 
 function pointsToMeasurementRecords(
@@ -322,7 +347,7 @@ export default function MapPage({
 
   const loadBatchSummaries = useCallback(async (ownedLimit?: number, publicLimit?: number) => {
     if (!user) {
-      return listPublicBatches(publicLimit);
+      return toPublicVisibleBatches(await listPublicBatches(publicLimit));
     }
     const [owned, publicBatches] = await Promise.all([
       listBatches(ownedLimit).catch(() => []),
@@ -332,7 +357,7 @@ export default function MapPage({
   }, [getCachedBatch, user]);
 
   // Query #1: list of batches visible to the user.
-  const batchesQuery = useQuery<BatchSummary[]>({
+  const batchesQuery = useQuery<VisibleBatchSummary[]>({
     queryKey: BATCHES_QUERY_KEY(user?.uid ?? null),
     queryFn: () => loadBatchSummaries(),
     enabled: !isAuthLoading,
@@ -347,7 +372,7 @@ export default function MapPage({
     () => batchesQuery.data ?? [],
     [batchesQuery.data]
   );
-  const batchBrowserQuery = useQuery<BatchSummary[]>({
+  const batchBrowserQuery = useQuery<VisibleBatchSummary[]>({
     queryKey: ["batchesExpanded", user?.uid ?? "guest", EXPANDED_BATCH_FETCH_LIMIT],
     queryFn: () => loadBatchSummaries(EXPANDED_BATCH_FETCH_LIMIT, EXPANDED_BATCH_FETCH_LIMIT),
     enabled: isBatchBrowserOpen && !isAuthLoading,
@@ -401,12 +426,16 @@ export default function MapPage({
     [selectedBatchKey, user]
   );
   const isShowingAllPublic24h = selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY;
+  const selectedBatchAccess = selectedSummary?.access ?? "unknown";
 
   // Query #2: measurement detail for the currently selected batch.
   const measurementQuery = useQuery<MapMeasurementRecord[]>({
     queryKey: batchDetailQueryKey ?? ["batchDetail", "idle", "none"],
     enabled: Boolean(batchDetailQueryKey) && !isAuthLoading,
-    retry: 5,
+    retry: (failureCount, error) => {
+      if (isTerminalBatchError(error)) return false;
+      return failureCount < 5;
+    },
     retryDelay: 1_500,
     queryFn: async () => {
       if (!batchDetailQueryKey || !selectedBatchKey) return [];
@@ -450,20 +479,29 @@ export default function MapPage({
       const parsed = decodeBatchKey(selectedBatchKey);
       if (!parsed) return [];
 
+      const loadPublicDetail = () => fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+      const loadOwnedDetail = () => fetchBatchDetail(parsed.deviceId, parsed.batchId);
       const detail = await (async () => {
         if (!user) {
-          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+          return loadPublicDetail();
         }
-        if (selectedSummary?.visibility === "public") {
-          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+        if (selectedBatchAccess === "public" || selectedBatchAccess === "both") {
+          return loadPublicDetail();
         }
+        if (selectedBatchAccess === "owned") {
+          return loadOwnedDetail();
+        }
+
+        // Unknown selections happen when a public batch is chosen from a broader query
+        // (for example the last-24-hours map) and is not present in the smaller summary list.
         try {
-          return await fetchBatchDetail(parsed.deviceId, parsed.batchId);
+          return await loadPublicDetail();
         }
-        catch (err) {
-          if (selectedSummary) throw err;
-          return fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
+        catch {
+          // Fall through so cached/stale private selections can still resolve via the owned endpoint.
         }
+
+        return loadOwnedDetail();
       })();
       return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
     },
