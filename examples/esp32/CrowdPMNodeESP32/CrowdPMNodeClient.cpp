@@ -16,7 +16,7 @@ namespace {
 const char* kDefaultApiBase = "https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi";
 const char* kDefaultActivationUrl = "https://crowdpmplatform.web.app/activate";
 const char* kDefaultIngestUrl = "https://us-central1-crowdpmplatform.cloudfunctions.net/ingestGateway";
-const char* kDefaultModel = "esp32-live-node";
+const char* kDefaultModel = "esp32-deployed-node";
 const char* kDefaultVersion = "0.0.1";
 const char* kDefaultPm25Unit = "\xC2\xB5g/m\xC2\xB3";
 
@@ -44,7 +44,7 @@ bool stringContainsAny(const String& haystack, const char* const* needles, size_
 
 /*
   Google Trust Services Root R1
-  Verified against the live CrowdPM deployment on March 4, 2026.
+  Verified against the deployed CrowdPM environment on March 4, 2026.
 */
 const char GtsRootR1[] PROGMEM = R"PEM(
 -----BEGIN CERTIFICATE-----

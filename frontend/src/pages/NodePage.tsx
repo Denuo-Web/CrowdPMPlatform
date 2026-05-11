@@ -450,16 +450,16 @@ nvm use 24
 mkdir -p ~/crowdpm-node
 cd ~/crowdpm-node
 
-curl -fsSLo live-device-registration.sh \\
-  https://raw.githubusercontent.com/Denuo-Web/CrowdPMPlatform/main/scripts/live-device-registration.sh
+curl -fsSLo deployed-device-registration.sh \\
+  https://raw.githubusercontent.com/Denuo-Web/CrowdPMPlatform/main/scripts/deployed-device-registration.sh
 
-chmod +x live-device-registration.sh`}</CodeBlock>
+chmod +x deployed-device-registration.sh`}</CodeBlock>
         </Subsection>
 
         <Subsection title="Register the Device">
           <CodeBlock>{`cd ~/crowdpm-node
 
-./live-device-registration.sh`}</CodeBlock>
+./deployed-device-registration.sh`}</CodeBlock>
 
           <Text size="2" color="gray" as="p">
             The script prints a user code and activation URL. Open the URL in a
@@ -775,7 +775,7 @@ PY`}</CodeBlock>
         <Text size="2" color="gray" as="p">
           The best product target is not merely a Raspberry Pi script that
           uploads when everything works. The better target is a self-contained
-          field node that can be configured by a normal user, run without live
+          field node that can be configured by a normal user, run without constant
           internet, survive network interruptions, store data locally, upload
           later, and explain its status without requiring SSH.
         </Text>

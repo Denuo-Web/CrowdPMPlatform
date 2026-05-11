@@ -1,5 +1,7 @@
 .env
+.env.*
 .env.local
+!.env.example
 .firebase/
 node_modules/
 pnpm-debug.log
@@ -21,6 +23,6 @@ pubsub-debug.log
 functions/.secret.local
 .device-id
 .device-key.json
-.crowdpm-live-device-key.json
-.crowdpm-live-device-id
-.crowdpm-live-access-token
+.crowdpm-*-device-key.json
+.crowdpm-*-device-id
+.crowdpm-*-access-token

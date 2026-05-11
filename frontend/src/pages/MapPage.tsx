@@ -922,7 +922,7 @@ export default function MapPage({
     }
     if (rows.length < 2) return "Video export requires at least 2 measurements in the selected batch.";
     if (!recordingSupport.supported) return recordingSupport.reason;
-    if (!captureAvailable) return "The live 3D map canvas is not ready for capture in this browser.";
+    if (!captureAvailable) return "The active 3D map canvas is not ready for capture in this browser.";
     return null;
   }, [
     canExportSelection,
@@ -974,7 +974,7 @@ export default function MapPage({
 
     const initialCanvas = map3DRef.current?.getCaptureCanvas() ?? null;
     if (!initialCanvas) {
-      setExportError("The live 3D map canvas is not ready for capture in this browser.");
+      setExportError("The active 3D map canvas is not ready for capture in this browser.");
       setExportStatus(null);
       return;
     }
@@ -995,7 +995,7 @@ export default function MapPage({
     setRenderedVideoMimeType(null);
     setExportError(null);
     setExportProgress(0);
-    setExportStatus("Preparing live map capture...");
+    setExportStatus("Preparing active map capture...");
     setIsExporting(true);
     setIndexOverride(0);
 
@@ -1005,7 +1005,7 @@ export default function MapPage({
       captureSession = await (map3DRef.current?.startCaptureSession() ?? Promise.resolve(null));
       const captureCanvas = captureSession?.canvas ?? null;
       if (!captureCanvas) {
-        throw new Error("Unable to prepare the live map and overlay for video export.");
+        throw new Error("Unable to prepare the active map and overlay for video export.");
       }
 
       const targetPointDurationMs = Math.max(

@@ -1,18 +1,16 @@
 # Functions Tests
 
-## Methodology by folder
-- `lib/` — Pure unit tests for small helpers (time, formatting, validation). No Fastify, no Firebase; deterministic inputs/outputs.
-- `services/` — Unit tests for business logic classes/functions. Mock Firestore, auth, or other deps; avoid emulator.
-- `routes/` — Route-level tests using Fastify `inject()` with mocked guards/services. Assert status codes, payload shapes, and error mapping.
+Use Vitest for functions tests.
 
-## How to run
 ```bash
-# Use Node 24 for this repo
 source ~/.nvm/nvm.sh && nvm use 24
-
-# All functions tests
 pnpm --filter crowdpm-functions test
-
-# All workspace tests
-pnpm -r test
 ```
+
+Test scope:
+
+- `lib/`: pure helper tests with deterministic inputs and outputs.
+- `services/`: business logic with mocked Firestore, Auth, Storage, or token dependencies.
+- `routes/`: Fastify `inject()` tests for status codes, payload shape, auth guards, and error mapping.
+
+Prefer unit tests over emulator tests. Add emulator-backed tests only when the Firebase runtime behavior is the subject under test.

@@ -16,12 +16,12 @@ API_BASE="${CROWDPM_API_BASE:-https://us-central1-crowdpmplatform.cloudfunctions
 ACTIVATION_URL="${CROWDPM_ACTIVATION_URL:-https://crowdpmplatform.web.app/activate}"
 FIREBASE_API_KEY="${CROWDPM_FIREBASE_API_KEY:-AIzaSyCy1MRJVmBCHQoIoSNXTpaMzjmKE3ME_2I}"
 AUTH_URL="${CROWDPM_AUTH_URL:-https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}}"
-KEY_FILE="${CROWDPM_KEY_FILE:-.crowdpm-live-device-key.json}"
-DEVICE_ID_FILE="${CROWDPM_DEVICE_ID_FILE:-.crowdpm-live-device-id}"
-ACCESS_TOKEN_FILE="${CROWDPM_ACCESS_TOKEN_FILE:-.crowdpm-live-access-token}"
-MODEL="${CROWDPM_MODEL:-curl-live-node}"
+KEY_FILE="${CROWDPM_KEY_FILE:-.crowdpm-deployed-device-key.json}"
+DEVICE_ID_FILE="${CROWDPM_DEVICE_ID_FILE:-.crowdpm-deployed-device-id}"
+ACCESS_TOKEN_FILE="${CROWDPM_ACCESS_TOKEN_FILE:-.crowdpm-deployed-access-token}"
+MODEL="${CROWDPM_MODEL:-curl-deployed-node}"
 VERSION="${CROWDPM_VERSION:-0.0.1}"
-NONCE="${CROWDPM_NONCE:-curl-live-$(date +%s)}"
+NONCE="${CROWDPM_NONCE:-curl-deployed-$(date +%s)}"
 AUTO_AUTHORIZE="${CROWDPM_AUTO_AUTHORIZE:-0}"
 OPEN_BROWSER="${CROWDPM_OPEN_BROWSER:-0}"
 SEND_INGEST="${CROWDPM_SEND_INGEST:-0}"
@@ -30,20 +30,20 @@ PASSWORD="${CROWDPM_PASSWORD:-}"
 SCOPE="${CROWDPM_SCOPE:-ingest.write}"
 PAIR_TIMEOUT_SECONDS="${CROWDPM_PAIR_TIMEOUT_SECONDS:-900}"
 
-TMP_DIR="$(mktemp -d -t crowdpm-live-device.XXXXXX)"
+TMP_DIR="$(mktemp -d -t crowdpm-deployed-device.XXXXXX)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/live-device-registration.sh
+  scripts/deployed-device-registration.sh
 
-Defaults target the live CrowdPM deployment:
+Defaults target the deployed CrowdPM environment:
   API base: https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi
   Activation UI: https://crowdpmplatform.web.app/activate
 
 Environment variables:
-  CROWDPM_API_BASE             Override the live API base.
+  CROWDPM_API_BASE             Override the deployed API base.
   CROWDPM_ACTIVATION_URL       Override the activation UI URL.
   CROWDPM_FIREBASE_API_KEY     Override the Firebase Web API key used for auth.
   CROWDPM_AUTH_URL             Override the Firebase email/password sign-in endpoint.
@@ -54,8 +54,8 @@ Environment variables:
   CROWDPM_VERSION              Firmware version sent to /device/start.
   CROWDPM_NONCE                Optional pairing nonce/serial.
   CROWDPM_AUTO_AUTHORIZE=1     Use the activation API directly instead of browser/manual approval.
-  CROWDPM_EMAIL                Live CrowdPM account email for auto-authorization.
-  CROWDPM_PASSWORD             Live CrowdPM account password for auto-authorization.
+  CROWDPM_EMAIL                Deployed CrowdPM account email for auto-authorization.
+  CROWDPM_PASSWORD             Deployed CrowdPM account password for auto-authorization.
   CROWDPM_OPEN_BROWSER=1       Open the activation URL automatically when possible.
   CROWDPM_SEND_INGEST=1        Push one sample ingest batch after registration.
   CROWDPM_SCOPE                Scope requested from /device/access-token. Default: ingest.write
@@ -381,7 +381,7 @@ ensure_keypair "${KEY_FILE}"
 PUB_KE="$(key_field "${KEY_FILE}" "publicJwk.x")"
 PUB_KL_JSON="$(key_field "${KEY_FILE}" "publicJwk")"
 
-print_section "Live Target"
+print_section "Deployed Target"
 echo "API base: ${API_BASE}"
 echo "Activation UI: ${ACTIVATION_URL}"
 echo "Ingest URL: ${INGEST_URL}"
@@ -431,7 +431,7 @@ if [[ "${AUTO_AUTHORIZE}" == "1" ]]; then
     "content-type: application/json")"
 
   if [[ "${AUTH_STATUS}" != "200" ]]; then
-    echo "Live sign-in failed with HTTP ${AUTH_STATUS}" >&2
+    echo "Deployed sign-in failed with HTTP ${AUTH_STATUS}" >&2
     pretty_print_file "${AUTH_OUT}" >&2
     echo "If this account requires MFA, switch to browser approval instead." >&2
     exit 1

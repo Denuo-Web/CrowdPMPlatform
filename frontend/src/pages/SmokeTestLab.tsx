@@ -122,7 +122,7 @@ const CITY_PRESETS: CityPreset[] = [
 
 const PRECISION_PRESETS = [
   { value: "high", label: "High", range: [1, 4] as const, hint: "Lab grade sensor", gradient: "linear-gradient(90deg, var(--green-8), var(--grass-9))" },
-  { value: "medium", label: "Medium", range: [5, 14] as const, hint: "Mobile demo sensor", gradient: "linear-gradient(90deg, var(--iris-8), var(--violet-9))" },
+  { value: "medium", label: "Medium", range: [5, 14] as const, hint: "Mobile sample sensor", gradient: "linear-gradient(90deg, var(--iris-8), var(--violet-9))" },
   { value: "low", label: "Low", range: [15, 32] as const, hint: "Conceptual or noisy input", gradient: "linear-gradient(90deg, var(--orange-8), var(--amber-9))" },
 ] as const;
 
@@ -301,7 +301,7 @@ function generateCityPayload(options: {
     const ts = new Date(baseTimestamp.getTime() - (pointsCount - idx - 1) * 1000);
     const value = 10 + Math.sin(progress * Math.PI * 3) * 6 + Math.random() * 2;
     return {
-      device_id: deviceId || "demo-device",
+      device_id: deviceId || "sample-device",
       pollutant: pollutant || "pm25",
       value: Math.round(value * 10) / 10,
       unit: UNIT_LABEL,
@@ -657,7 +657,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
                   <Pencil2Icon /> Apply
                 </Button>
               </Flex>
-              <Text size="1" color="gray">Unit is locked to {UNIT_LABEL} for demo parity.</Text>
+              <Text size="1" color="gray">Unit is locked to {UNIT_LABEL} for sample-data parity.</Text>
             </Flex>
 
             <Flex direction="column" gap="3">

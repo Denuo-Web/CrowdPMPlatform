@@ -1,100 +1,102 @@
-# Device Emulator Scripts
+# Scripts
 
-Utilities that mimic a hardware device pairing against the local/emulated API.
-
-## Prerequisites
-
-- Run the Firebase Functions emulator (`pnpm dev` from repo root starts everything).
-- Ensure `functions/.env.local` and `functions/.secret.local` are populated per the root README.
-- Node 24+ installed.
-
-### Local emulator configuration (required)
-
-Create the secret file with a real Ed25519 PKCS8 private key (note the real newlines, not `\n` escapes):
+Scripts in this directory emulate sensor devices, seed local smoke data, and support deployed-device checks. Run them from the repository root after selecting Node 24.
 
 ```bash
-tmp_key="$(mktemp -t crowdpm-device-key.XXXXXX)"
-openssl genpkey -algorithm ED25519 -out "$tmp_key"
-printf 'DEVICE_TOKEN_PRIVATE_KEY="%s"\n' "$(cat "$tmp_key")" > functions/.secret.local
-rm -f "$tmp_key"
+source ~/.nvm/nvm.sh && nvm use 24
 ```
 
-Copy the same `DEVICE_TOKEN_PRIVATE_KEY="..."` line into `functions/.env.local`.
+## Local Device Emulator
 
-Set activation URLs in `functions/.env.local` so pairing links stay local:
+The main emulator is exposed through the root script:
 
 ```bash
-DEVICE_VERIFICATION_URI=http://localhost:5173/activate
-DEVICE_ACTIVATION_URL=http://localhost:5173/activate
+pnpm device:pair -- --help
 ```
 
-## Start a Pairing Session (auto-poll + register)
+Default local targets:
+
+- API: `http://localhost:5001/crowdpm-local/us-central1/crowdpmApi`
+- Ingest: `http://localhost:5001/crowdpm-local/us-central1/ingestGateway`
+- Device ID file: `.device-id`
+
+Start the local stack first:
+
+```bash
+pnpm dev
+```
+
+Pair a device:
 
 ```bash
 pnpm device:pair -- --key .device-key.json --interval 3
 ```
 
-- Saves/reuses the Ed25519 keypair at `.device-key.json`.
-- Calls `/device/start`, prints `device_code` and `user_code`, then polls `/device/token` and auto-posts `jwk_pub_kl` to `/device/register` when a `registration_token` arrives.
-- Persists the registered `device_id` to `.device-id` (override with `--device-id-file`).
-- Default API: `http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi`. Override with `--api <url>`.
-- Other flags:
-  - `--model <name>` (default `CLI-EMU`)
-  - `--version <ver>` (default `0.0.1`)
-  - `--nonce <value>` (optional idempotency)
-  - `--device-code <code>` (poll an existing session)
+The script starts `/device/start`, prints the user code, polls `/device/token`, registers the key after approval, and writes the registered device ID to `.device-id`.
 
-## Send ingest batches without a device code
-
-After pairing once, you can send batches without re-pairing or pasting a device id:
+Send ingest with the saved key and device ID:
 
 ```bash
-pnpm device:pair -- --mode ingest --key .device-key.json --minutes 5
+pnpm device:pair -- --mode ingest --key .device-key.json
 ```
 
-- Uses the `device_id` saved in `.device-id` (or whatever you passed to `--device-id-file`).
-- Add `--device-id <id>` if you want to override the stored value.
+Useful options:
 
-## Advanced
+- `--api <url>`: override the API base.
+- `--ingest-url <url>`: override the ingest gateway URL.
+- `--device-id <id>`: override the saved device ID.
+- `--device-id-file <path>`: change where the registered ID is read or written.
+- `--batches <n>`: send multiple batches.
+- `--minutes <n>`: points per batch, one point per minute.
+- `--start-value <n>` and `--value-step <n>`: shape PM2.5 values.
+- `--lat <n>`, `--lon <n>`, `--altitude <n>`, `--precision <n>`: shape location metadata.
 
-### Poll Token Only (for an existing code)
+## Local OSU Bike Simulation
 
-```bash
-pnpm device:poll-token -- --device-code <code> --key .device-key.json --interval 3
-```
-
-- Uses the same keypair to generate DPoP proofs.
-- Stops on success or hard error; respects `authorization_pending`/`slow_down`.
-
-## Run OSU Bike Simulation (multi-device ingest)
+Seeds multiple public smoke-test batches through `/v1/admin/ingest-smoke-test`.
 
 ```bash
 pnpm device:simulate:osu -- --count 20 --minutes 36
 ```
 
-- Signs in with the local Auth emulator (`smoke-tester@crowdpm.dev` / `crowdpm-dev` by default).
-- Sends one smoke-test ingest per device through `/v1/admin/ingest-smoke-test`.
-- Default device IDs are `osu-bike-01..osu-bike-20`.
-- Useful overrides:
-  - `--prefix <text>`
-  - `--start-index <n>`
-  - `--delay-ms <n>`
-  - `--visibility <public|private>`
-  - `--api <url>`
-  - `--auth-url <url>`
+Defaults sign in to the Auth emulator as `smoke-tester@crowdpm.dev` with password `crowdpm-dev`.
 
-## Notes
+Useful options:
 
-- Keep the private key file out of git.
-- If you see HTML responses, your `--api` is pointing at Hosting; switch to the Functions base.
+- `--prefix <text>`
+- `--start-index <n>`
+- `--delay-ms <n>`
+- `--visibility <public|private>`
+- `--api <url>`
+- `--auth-url <url>`
 
-## Live Deployment Helper
+## Deployed Device Helpers
 
-If you already registered a live device with `scripts/live-device-registration.sh`, send one batch with:
+Register or refresh a deployed test device:
 
 ```bash
-scripts/live-device-send-batch.sh [batch.json]
+scripts/deployed-device-registration.sh
 ```
 
-- Reuses `.crowdpm-live-device-key.json` and `.crowdpm-live-device-id` by default.
-- Accepts a payload file, `CROWDPM_BATCH_JSON`, stdin (`-`), or falls back to a one-point sample batch.
+Send one deployed ingest batch with the saved device artifacts:
+
+```bash
+scripts/deployed-device-send-batch.sh [batch.json]
+```
+
+Common environment overrides:
+
+- `CROWDPM_API_BASE`
+- `CROWDPM_INGEST_URL`
+- `CROWDPM_KEY_FILE`
+- `CROWDPM_DEVICE_ID_FILE`
+- `CROWDPM_ACCESS_TOKEN_FILE`
+- `CROWDPM_BATCH_VISIBILITY`
+
+Keep generated key, device ID, and access-token files out of git. They are already ignored by `.gitignore`.
+
+## Troubleshooting
+
+- HTML response from an API call usually means the API base points at Firebase Hosting instead of the Functions URL.
+- `invalid_token` during ingest usually means the saved key does not match the registered device.
+- `authorization_pending` during pairing means the owner has not approved the user code yet.

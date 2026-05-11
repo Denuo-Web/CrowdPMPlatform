@@ -1,25 +1,22 @@
-# 🧭 Viewing the OpenAPI Spec in Swagger UI
+# OpenAPI In Swagger UI
 
-This guide explains how to view your local `openapi.yaml` API specification using **Swagger UI** via Docker.  
-You’ll get a fully interactive API documentation page that runs locally in your browser.
+Use Swagger UI locally to inspect `functions/src/openapi.yaml`.
 
----
+## Prerequisite
 
-## 🐳 Prerequisites
+- Docker installed and running.
 
-- [Docker](https://docs.docker.com/get-docker/) installed and running  
-- A valid `openapi.yaml` file in your project.
+## Run
 
----
-
-## 🚀 Run Swagger UI with Docker
-
-From the root of your project, run:
+From the repository root:
 
 ```bash
-docker pull swaggerapi/swagger-ui
-
 docker run --rm -p 8080:8080 \
   -e SWAGGER_JSON=/openapi.yaml \
   -v ./functions/src/openapi.yaml:/openapi.yaml:ro \
   swaggerapi/swagger-ui
+```
+
+Open `http://localhost:8080`.
+
+The OpenAPI document covers the Fastify API exported as `crowdpmApi`. The separate `ingestGateway` function is documented in `hardware-builder.md`.
