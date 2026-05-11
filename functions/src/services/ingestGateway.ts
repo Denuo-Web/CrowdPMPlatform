@@ -111,6 +111,6 @@ export async function ingestGatewayHandler(
   }
 }
 
-export const ingestGateway = onRequest({ cors: true }, async (req, res) => {
+export const ingestGateway = onRequest({ cors: true, secrets: ["DEVICE_TOKEN_PRIVATE_KEY"] }, async (req, res) => {
   await ingestGatewayHandler(req as RequestWithRawBody, res as unknown as GatewayResponse);
 });
