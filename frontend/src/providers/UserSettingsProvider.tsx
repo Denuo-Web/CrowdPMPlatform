@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { fetchUserSettings, updateUserSettings, type UserSettings } from "../lib/api";
+import type { UserSettings } from "../lib/api";
 import { useAuth } from "./AuthProvider";
 
 type UserSettingsContextValue = {
@@ -37,6 +37,11 @@ function applyUserSettingsDefaults(next: Partial<UserSettings>): UserSettings {
 
 const UserSettingsContext = createContext<UserSettingsContextValue | undefined>(undefined);
 
+async function loadUserSettingsApi() {
+  const { fetchUserSettings, updateUserSettings } = await import("../lib/api");
+  return { fetchUserSettings, updateUserSettings };
+}
+
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
@@ -54,6 +59,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
+      const { fetchUserSettings } = await loadUserSettingsApi();
       const next = await fetchUserSettings();
       setSettings(applyUserSettingsDefaults(next));
     }
@@ -76,6 +82,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     setIsSaving(true);
     setError(null);
     try {
+      const { updateUserSettings } = await loadUserSettingsApi();
       const updated = await updateUserSettings(next);
       const normalized = applyUserSettingsDefaults(updated);
       setSettings(normalized);

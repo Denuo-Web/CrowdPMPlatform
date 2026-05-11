@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { AuthDialog, type AuthMode } from "./components/AuthDialog";
+import type { AuthMode } from "./components/AuthDialog";
 import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
 import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
-import { ThemeSettingsControls } from "./components/ThemeSettingsControls";
 import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
@@ -80,6 +79,10 @@ const MapPage = lazy(() => import("./pages/MapPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
 const AdminModerationPage = lazy(() => import("./pages/AdminModerationPage"));
+const AuthDialog = lazy(async () => {
+  const module = await import("./components/AuthDialog");
+  return { default: module.AuthDialog };
+});
 const ActivationPage = lazy(async () => {
   const module = await import("./pages/ActivationPage");
   return { default: module.ActivationPage };
@@ -87,6 +90,10 @@ const ActivationPage = lazy(async () => {
 const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
 const NodePage = lazy(() => import("./pages/NodePage"));
+const ThemeSettingsControls = lazy(async () => {
+  const module = await import("./components/ThemeSettingsControls");
+  return { default: module.ThemeSettingsControls };
+});
 const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
 type AppTab = "map" | "dashboard" | "smoke" | "admin" | DeepLinkedAppTab;
@@ -557,13 +564,17 @@ export default function App() {
           </Box>
         )}
       </main>
-      <AuthDialog
-        open={isAuthDialogOpen}
-        mode={authMode}
-        onModeChange={setAuthMode}
-        onOpenChange={setAuthDialogOpen}
-        onAuthenticated={() => setTab("dashboard")}
-      />
+      <Suspense fallback={null}>
+        {isAuthDialogOpen ? (
+          <AuthDialog
+            open={isAuthDialogOpen}
+            mode={authMode}
+            onModeChange={setAuthMode}
+            onOpenChange={setAuthDialogOpen}
+            onAuthenticated={() => setTab("dashboard")}
+          />
+        ) : null}
+      </Suspense>
     </Theme>
   );
 }
@@ -636,7 +647,11 @@ function ThemePreferencesModal({ open, onOpenChange }: ThemePreferencesModalProp
         {!user ? (
           <Dialog.Description>Sign in to save theme preferences.</Dialog.Description>
         ) : null}
-        <ThemeSettingsControls onMessage={setMessage} onError={setError} />
+        {open ? (
+          <Suspense fallback={<Text size="2" color="gray">Loading theme settings...</Text>}>
+            <ThemeSettingsControls onMessage={setMessage} onError={setError} />
+          </Suspense>
+        ) : null}
         {error ? (
           <Text color="tomato" size="2" mt="3">{error}</Text>
         ) : null}

@@ -1,17 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, useCallback } from "react";
-import {
-  onIdTokenChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  type User,
-  type UserCredential,
-  type IdTokenResult,
-} from "firebase/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { auth } from "../lib/firebase";
 import { safeLocalStorageRemove } from "../lib/storage";
 import type { AdminRole } from "@crowdpm/types";
+import type { IdTokenResult, User, UserCredential } from "firebase/auth";
 
 type AuthContextValue = {
   user: User | null;
@@ -25,6 +16,15 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+async function loadFirebaseAuth() {
+  const [{ auth }, firebaseAuth] = await Promise.all([
+    import("../lib/firebase"),
+    import("firebase/auth"),
+  ]);
+
+  return { auth, ...firebaseAuth };
+}
 
 function normalizeRole(value: unknown): AdminRole | null {
   if (typeof value !== "string") return null;
@@ -62,33 +62,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isActive = true;
-    const unsubscribe = onIdTokenChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      if (!nextUser) {
+    let unsubscribe = () => {};
+
+    void loadFirebaseAuth()
+      .then(({ auth, onIdTokenChanged }) => {
+        if (!isActive) return;
+        unsubscribe = onIdTokenChanged(auth, (nextUser) => {
+          setUser(nextUser);
+          if (!nextUser) {
+            setIsLoading(false);
+            setRoles([]);
+            queryClient.clear();
+            safeLocalStorageRemove(
+              ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache", "crowdpm:lastMapZoom", "crowdpm:lastTimelineIndex"],
+              { context: "auth:clear-storage" }
+            );
+            return;
+          }
+          setIsLoading(true);
+          void nextUser.getIdTokenResult()
+            .then((tokenResult) => {
+              if (!isActive) return;
+              setRoles(extractRoles(tokenResult));
+            })
+            .catch(() => {
+              if (!isActive) return;
+              setRoles([]);
+            })
+            .finally(() => {
+              if (!isActive) return;
+              setIsLoading(false);
+            });
+        });
+      })
+      .catch((error) => {
+        console.error("Unable to initialize Firebase Auth.", error);
+        if (!isActive) return;
+        setUser(null);
         setIsLoading(false);
         setRoles([]);
-        queryClient.clear();
-        safeLocalStorageRemove(
-          ["crowdpm:lastSmokeSelection", "crowdpm:lastSmokeBatchCache", "crowdpm:lastMapZoom", "crowdpm:lastTimelineIndex"],
-          { context: "auth:clear-storage" }
-        );
-        return;
-      }
-      setIsLoading(true);
-      void nextUser.getIdTokenResult()
-        .then((tokenResult) => {
-          if (!isActive) return;
-          setRoles(extractRoles(tokenResult));
-        })
-        .catch(() => {
-          if (!isActive) return;
-          setRoles([]);
-        })
-        .finally(() => {
-          if (!isActive) return;
-          setIsLoading(false);
-        });
-    });
+      });
+
     return () => {
       isActive = false;
       unsubscribe();
@@ -103,6 +117,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }, [queryClient]);
 
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { auth, signInWithEmailAndPassword } = await loadFirebaseAuth();
+    return signInWithEmailAndPassword(auth, email.trim(), password);
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    const { auth, createUserWithEmailAndPassword } = await loadFirebaseAuth();
+    return createUserWithEmailAndPassword(auth, email.trim(), password);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const { auth, signOut: firebaseSignOut } = await loadFirebaseAuth();
+    clearCachesOnSignOut();
+    setRoles([]);
+    await firebaseSignOut(auth);
+  }, [clearCachesOnSignOut]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -110,15 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       isModerator: roles.includes("moderator") || roles.includes("super_admin"),
       isSuperAdmin: roles.includes("super_admin"),
-      signIn: (email, password) => signInWithEmailAndPassword(auth, email.trim(), password),
-      signUp: (email, password) => createUserWithEmailAndPassword(auth, email.trim(), password),
-      signOut: async () => {
-        clearCachesOnSignOut();
-        setRoles([]);
-        await firebaseSignOut(auth);
-      },
+      signIn,
+      signUp,
+      signOut,
     }),
-    [user, isLoading, roles, clearCachesOnSignOut],
+    [user, isLoading, roles, signIn, signOut, signUp],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
