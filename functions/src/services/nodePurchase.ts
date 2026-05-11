@@ -4,17 +4,14 @@ import { httpError } from "../lib/httpError.js";
 import { getPublicAppBaseUrl, getStripeSecretKey, getStripeWebhookSecret } from "../lib/runtimeConfig.js";
 
 const CATALOG_COLLECTION = "paymentCatalog";
-const CATALOG_DOC_ID = "nodeHardware";
 const SESSION_COLLECTION = "nodePurchaseSessions";
-const NODE_HARDWARE_PRODUCT_NAME = "CrowdPM Node Hardware";
-const NODE_HARDWARE_CURRENCY = "usd";
-const NODE_HARDWARE_UNIT_AMOUNT = 35000;
 const NODE_HARDWARE_PRODUCT_TAX_CODE = "txcd_99999999";
 const NODE_HARDWARE_PRICE_TAX_BEHAVIOR: Stripe.Price.TaxBehavior = "exclusive";
 const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
 const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "Price includes US shipping. Applicable sales tax is calculated at checkout.";
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
+const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
 
 type NodeHardwareCatalog = {
   productId: string;
@@ -28,6 +25,47 @@ type NodeHardwareCatalog = {
 export type NodePurchaseCheckoutSession = {
   sessionId: string;
   url: string;
+};
+
+export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
+type NodeHardwareVariantConfig = {
+  catalogDocId: string;
+  productName: string;
+  description: string;
+  unitAmount: number;
+  label: string;
+};
+
+const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantConfig> = {
+  standard: {
+    catalogDocId: "nodeHardware",
+    productName: "CrowdPM Node Hardware",
+    description: "Node hardware purchase with US shipping included.",
+    unitAmount: 35_000,
+    label: "PM2.5 standard node",
+  },
+  no2: {
+    catalogDocId: "nodeHardwareNo2",
+    productName: "CrowdPM Node Hardware - PM2.5 + NO2",
+    description: "PM2.5 node with MiCS-6814 NO2 sensor and ADS1115 interface hardware, with US shipping included.",
+    unitAmount: 38_394,
+    label: "PM2.5 + NO2 node",
+  },
+  co2: {
+    catalogDocId: "nodeHardwareCo2",
+    productName: "CrowdPM Node Hardware - PM2.5 + CO2",
+    description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
+    unitAmount: 37_899,
+    label: "PM2.5 + CO2 node",
+  },
+  co2_no2: {
+    catalogDocId: "nodeHardwareCo2No2",
+    productName: "CrowdPM Node Hardware - PM2.5 + CO2 + NO2",
+    description: "PM2.5 node with SCD41 CO2 sensor, MiCS-6814 NO2 sensor, and ADS1115 interface hardware, with US shipping included.",
+    unitAmount: 41_293,
+    label: "PM2.5 + CO2 + NO2 node",
+  },
 };
 
 let stripeClient: Stripe | null = null;
@@ -97,9 +135,9 @@ function readStoredCatalog(data: Record<string, unknown> | undefined): NodeHardw
   };
 }
 
-function isCurrentCatalog(catalog: NodeHardwareCatalog): boolean {
-  return catalog.currency === NODE_HARDWARE_CURRENCY
-    && catalog.unitAmount === NODE_HARDWARE_UNIT_AMOUNT
+function isCurrentCatalog(catalog: NodeHardwareCatalog, variant: NodeHardwareVariantConfig): boolean {
+  return catalog.currency === "usd"
+    && catalog.unitAmount === variant.unitAmount
     && catalog.taxCode === NODE_HARDWARE_PRODUCT_TAX_CODE
     && catalog.taxBehavior === NODE_HARDWARE_PRICE_TAX_BEHAVIOR;
 }
@@ -126,23 +164,24 @@ function normalizeStripeAddress(address: Stripe.Address | null | undefined): Rec
   };
 }
 
-async function ensureNodeHardwareCatalog(): Promise<NodeHardwareCatalog> {
-  const ref = db().collection(CATALOG_COLLECTION).doc(CATALOG_DOC_ID);
+async function ensureNodeHardwareCatalog(variantId: NodePurchaseVariantId): Promise<NodeHardwareCatalog> {
+  const variant = NODE_HARDWARE_VARIANTS[variantId];
+  const ref = db().collection(CATALOG_COLLECTION).doc(variant.catalogDocId);
   const snap = await ref.get();
   const stored = readStoredCatalog(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
-  if (stored && isCurrentCatalog(stored)) {
+  if (stored && isCurrentCatalog(stored, variant)) {
     return stored;
   }
 
   let product: Stripe.Product;
   try {
     product = await getStripeClient().products.create({
-      name: NODE_HARDWARE_PRODUCT_NAME,
-      description: "Node hardware purchase with US shipping included.",
+      name: variant.productName,
+      description: variant.description,
       tax_code: NODE_HARDWARE_PRODUCT_TAX_CODE,
       default_price_data: {
-        currency: NODE_HARDWARE_CURRENCY,
-        unit_amount: NODE_HARDWARE_UNIT_AMOUNT,
+        currency: "usd",
+        unit_amount: variant.unitAmount,
         tax_behavior: NODE_HARDWARE_PRICE_TAX_BEHAVIOR,
       },
     });
@@ -150,20 +189,20 @@ async function ensureNodeHardwareCatalog(): Promise<NodeHardwareCatalog> {
   catch (err) {
     const message = err instanceof Error && err.message.trim().length > 0
       ? err.message
-      : "Unable to create the Stripe node product.";
+      : `Unable to create the Stripe product for ${variant.productName}.`;
     throw httpError(502, "stripe_error", message);
   }
 
   const defaultPriceId = extractExpandableId(product.default_price as string | { id: string } | null | undefined);
   if (!defaultPriceId) {
-    throw httpError(502, "stripe_error", "Stripe did not return a default price for the node product.");
+    throw httpError(502, "stripe_error", `Stripe did not return a default price for ${variant.productName}.`);
   }
 
   const catalog: NodeHardwareCatalog = {
     productId: product.id,
     defaultPriceId,
-    currency: NODE_HARDWARE_CURRENCY,
-    unitAmount: NODE_HARDWARE_UNIT_AMOUNT,
+    currency: "usd",
+    unitAmount: variant.unitAmount,
     taxCode: NODE_HARDWARE_PRODUCT_TAX_CODE,
     taxBehavior: NODE_HARDWARE_PRICE_TAX_BEHAVIOR,
   };
@@ -176,9 +215,18 @@ async function ensureNodeHardwareCatalog(): Promise<NodeHardwareCatalog> {
   return catalog;
 }
 
-export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseCheckoutSession> {
-  const catalog = await ensureNodeHardwareCatalog();
+export async function createNodePurchaseCheckoutSession(args: {
+  variantId?: NodePurchaseVariantId;
+} = {}): Promise<NodePurchaseCheckoutSession> {
+  const variantId = args.variantId ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
+  const variant = NODE_HARDWARE_VARIANTS[variantId];
+  const catalog = await ensureNodeHardwareCatalog(variantId);
   const { successUrl, cancelUrl } = checkoutRedirectUrls();
+  const metadata = {
+    purchaseType: "node_hardware",
+    variantId,
+    variantLabel: variant.label,
+  } satisfies Record<string, string>;
 
   let session: Stripe.Checkout.Session;
   try {
@@ -205,6 +253,7 @@ export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseC
           message: NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE,
         },
       },
+      metadata,
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
@@ -223,6 +272,9 @@ export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseC
   await db().collection(SESSION_COLLECTION).doc(session.id).set({
     sessionId: session.id,
     status: "created",
+    purchaseType: "node_hardware",
+    variantId,
+    variantLabel: variant.label,
     productId: catalog.productId,
     priceId: catalog.defaultPriceId,
     mode: session.mode,
@@ -266,6 +318,9 @@ export async function handleStripeWebhook({ signature, rawBody }: StripeWebhookA
     await db().collection(SESSION_COLLECTION).doc(session.id).set({
       sessionId: session.id,
       status: "completed",
+      purchaseType: typeof session.metadata?.purchaseType === "string" ? session.metadata.purchaseType : "node_hardware",
+      variantId: typeof session.metadata?.variantId === "string" ? session.metadata.variantId : null,
+      variantLabel: typeof session.metadata?.variantLabel === "string" ? session.metadata.variantLabel : null,
       eventId: event.id,
       eventCreatedAt: new Date(event.created * 1000).toISOString(),
       completedAt: new Date().toISOString(),

@@ -135,13 +135,21 @@ export type CheckoutRedirectSession = {
   url: string;
 };
 
+export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
 
-export async function createNodePurchaseCheckoutSession(): Promise<CheckoutRedirectSession> {
+export async function createNodePurchaseCheckoutSession(
+  variantId: NodePurchaseVariantId = "standard",
+): Promise<CheckoutRedirectSession> {
   return requestJson<CheckoutRedirectSession>("/v1/node-purchase/checkout-session", {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ variantId }),
   });
 }
 

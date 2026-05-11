@@ -161,6 +161,11 @@ describe("POST /v1/node-purchase/checkout-session", () => {
           message: "Price includes US shipping. Applicable sales tax is calculated at checkout.",
         },
       },
+      metadata: {
+        purchaseType: "node_hardware",
+        variantId: "standard",
+        variantLabel: "PM2.5 standard node",
+      },
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
     });
@@ -184,6 +189,79 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       automaticTaxEnabled: true,
       amountSubtotal: 35000,
       amountTotal: 35000,
+      purchaseType: "node_hardware",
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
+    });
+    await app.close();
+  });
+
+  it("creates the CO2-expanded node variant at the matching Stripe price", async () => {
+    mocks.productsCreate.mockResolvedValueOnce({
+      id: "prod_node_co2_123",
+      default_price: "price_node_co2_123",
+    });
+    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
+      id: "cs_node_co2_123",
+      url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
+      mode: "payment",
+      currency: "usd",
+      amount_subtotal: 37899,
+      amount_total: 37899,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "co2",
+      },
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.productsCreate).toHaveBeenCalledWith({
+      name: "CrowdPM Node Hardware - PM2.5 + CO2",
+      description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
+      tax_code: "txcd_99999999",
+      default_price_data: {
+        currency: "usd",
+        unit_amount: 37899,
+        tax_behavior: "exclusive",
+      },
+    });
+    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith(expect.objectContaining({
+      line_items: [
+        {
+          price: "price_node_co2_123",
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        purchaseType: "node_hardware",
+        variantId: "co2",
+        variantLabel: "PM2.5 + CO2 node",
+      },
+    }));
+    expect(dbStore.get("paymentCatalog/nodeHardwareCo2")).toMatchObject({
+      productId: "prod_node_co2_123",
+      defaultPriceId: "price_node_co2_123",
+      currency: "usd",
+      unitAmount: 37899,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
+    });
+    expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
+      sessionId: "cs_node_co2_123",
+      purchaseType: "node_hardware",
+      unitAmount: 37899,
+      amountSubtotal: 37899,
+      amountTotal: 37899,
+      variantId: "co2",
+      variantLabel: "PM2.5 + CO2 node",
     });
     await app.close();
   });
@@ -280,6 +358,29 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     });
     await app.close();
   });
+
+  it("rejects an unknown node purchase variant", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "bogus",
+      },
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "invalid_request",
+      message: "invalid request",
+    });
+    expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
 
 describe("POST /v1/payments/stripe/webhook", () => {
@@ -295,6 +396,11 @@ describe("POST /v1/payments/stripe/webhook", () => {
       data: {
         object: {
           id: "cs_test_123",
+          metadata: {
+            purchaseType: "node_hardware",
+            variantId: "standard",
+            variantLabel: "PM2.5 standard node",
+          },
           mode: "payment",
           payment_status: "paid",
           customer: "cus_123",
@@ -363,6 +469,9 @@ describe("POST /v1/payments/stripe/webhook", () => {
       currency: "usd",
       amountSubtotal: 35000,
       amountTotal: 38150,
+      purchaseType: "node_hardware",
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
       amountDiscount: 0,
       amountShipping: 0,
       amountTax: 3150,
