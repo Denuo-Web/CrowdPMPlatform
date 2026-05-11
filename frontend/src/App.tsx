@@ -1,15 +1,19 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import type { UserThemeSettings } from "@crowdpm/types";
 import type { AuthMode } from "./components/AuthDialog";
 import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
+import { LegalDocumentDialog, LegalDocumentLink, type LegalDocumentId } from "./components/LegalDocumentDialog";
 import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
 import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { logWarning } from "./lib/logger";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
-import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
+import { createThemeSaveCheckoutSession, type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
 import {
   Theme,
   Box,
+  Button,
+  Callout,
   DropdownMenu,
   Flex,
   Heading,
@@ -91,9 +95,23 @@ const ThemeSettingsControls = lazy(async () => {
 const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
 type AppTab = "map" | "dashboard" | "smoke" | "admin" | DeepLinkedAppTab;
+type ThemeCheckoutNotice = "success" | "cancelled" | null;
 
 function isDeepLinkedTab(tab: AppTab): tab is DeepLinkedAppTab {
   return tab === "pairing-info" || tab === "about" || tab === "node";
+}
+
+function readThemeCheckoutNotice(): ThemeCheckoutNotice {
+  if (typeof window === "undefined") return null;
+  const status = new URLSearchParams(window.location.search).get("themeCheckout");
+  return status === "success" || status === "cancelled" ? status : null;
+}
+
+function clearThemeCheckoutNoticeFromUrl() {
+  if (typeof window === "undefined") return;
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete("themeCheckout");
+  window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
 }
 
 export default function App() {
@@ -103,13 +121,16 @@ export default function App() {
   const initialDeepLinkedTab = typeof window !== "undefined"
     ? getDeepLinkedAppTab(window.location.pathname)
     : null;
+  const initialThemeCheckoutNotice = readThemeCheckoutNotice();
   const [tab, setTab] = useState<AppTab>(initialDeepLinkedTab ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const initialActivationPath = typeof window !== "undefined" && isActivationRoute(window.location.pathname);
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
-  const [isThemeModalOpen, setThemeModalOpen] = useState(false);
+  const [isThemeModalOpen, setThemeModalOpen] = useState(Boolean(initialThemeCheckoutNotice));
+  const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(initialThemeCheckoutNotice);
+  const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
@@ -122,7 +143,8 @@ export default function App() {
     : (tab === "smoke" && (!user || !canUseSmokeTests)
       ? "map"
       : (tab === "admin" && !canUseAdmin ? "map" : tab));
-  const isDarkTheme = settings.theme.appearance === "dark";
+  const activeTheme = themeDraft ?? settings.theme;
+  const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
     ? isDarkTheme
       ? "linear-gradient(180deg, color-mix(in srgb, white 84%, transparent) 0%, color-mix(in srgb, white 72%, transparent) 58%, color-mix(in srgb, white 42%, transparent) 100%)"
@@ -136,9 +158,30 @@ export default function App() {
     setAuthDialogOpen(true);
   };
 
+  const closeThemeModal = useCallback(() => {
+    setThemeModalOpen(false);
+    setThemeDraft(null);
+    if (themeCheckoutNotice) {
+      setThemeCheckoutNotice(null);
+      clearThemeCheckoutNoticeFromUrl();
+    }
+  }, [themeCheckoutNotice]);
+
+  const handleThemeModalOpenChange = useCallback((next: boolean) => {
+    if (next) {
+      setThemeModalOpen(true);
+      return;
+    }
+    closeThemeModal();
+  }, [closeThemeModal]);
+
   const toggleThemeModal = useCallback(() => {
-    setThemeModalOpen((open) => !open);
-  }, []);
+    if (isThemeModalOpen) {
+      closeThemeModal();
+      return;
+    }
+    setThemeModalOpen(true);
+  }, [closeThemeModal, isThemeModalOpen]);
 
   const openThemeModal = useCallback(() => {
     setThemeModalOpen(true);
@@ -147,6 +190,11 @@ export default function App() {
   const openTeamModal = useCallback(() => {
     setTeamModalOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (user) return;
+    setThemeDraft(null);
+  }, [user]);
 
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
@@ -281,12 +329,12 @@ export default function App() {
 
   return (
     <Theme
-      appearance={settings.theme.appearance}
-      accentColor={settings.theme.accentColor}
-      grayColor={settings.theme.grayColor}
-      radius={settings.theme.radius}
-      panelBackground={settings.theme.panelBackground}
-      scaling={settings.theme.scaling}
+      appearance={activeTheme.appearance}
+      accentColor={activeTheme.accentColor}
+      grayColor={activeTheme.grayColor}
+      radius={activeTheme.radius}
+      panelBackground={activeTheme.panelBackground}
+      scaling={activeTheme.scaling}
     >
       <ActivationModal
         open={isActivationModalOpen}
@@ -294,7 +342,14 @@ export default function App() {
         onActivationComplete={handleActivationComplete}
       />
       <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
-      <ThemePreferencesModal open={isThemeModalOpen} onOpenChange={setThemeModalOpen} />
+      <ThemePreferencesModal
+        open={isThemeModalOpen}
+        onOpenChange={handleThemeModalOpenChange}
+        checkoutNotice={themeCheckoutNotice}
+        theme={activeTheme}
+        onThemeChange={setThemeDraft}
+        onThemeSaved={() => setThemeDraft(null)}
+      />
 
       {/* ---- Branded top bar (fixed across all pages) ---- */}
       <div
@@ -603,18 +658,103 @@ function ActivationModal({ open, onOpenChange, onActivationComplete }: Activatio
 type ThemePreferencesModalProps = {
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  checkoutNotice: ThemeCheckoutNotice;
+  theme: UserThemeSettings;
+  onThemeChange: (next: UserThemeSettings) => void;
+  onThemeSaved: () => void;
 };
 
-function ThemePreferencesModal({ open, onOpenChange }: ThemePreferencesModalProps) {
+function ThemePreferencesModal({
+  open,
+  onOpenChange,
+  checkoutNotice,
+  theme,
+  onThemeChange,
+  onThemeSaved,
+}: ThemePreferencesModalProps) {
   const { user } = useAuth();
+  const { settings, refresh, isLoading, isSaving, updateSettings } = useUserSettings();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
+  const controlsDisabled = isLoading || isSaving || isStartingCheckout;
+  const hasUnsavedChanges = JSON.stringify(theme) !== JSON.stringify(settings.theme);
+  const saveDisabled = controlsDisabled || !user || !settings.themeSaveUnlocked || !hasUnsavedChanges;
+  const unlockDisabled = controlsDisabled || !user || settings.themeSaveUnlocked;
 
   useEffect(() => {
     if (!open) return;
+    setError(null);
+    if (checkoutNotice === "success") {
+      setMessage(settings.themeSaveUnlocked
+        ? "Theme saving is now unlocked for this account."
+        : "Theme purchase completed. If saving is still locked, give the account a moment to refresh.");
+      return;
+    }
+    if (checkoutNotice === "cancelled") {
+      setMessage("Theme save unlock checkout was cancelled before payment completed.");
+      return;
+    }
+    setMessage(null);
+  }, [checkoutNotice, open, settings.themeSaveUnlocked]);
+
+  useEffect(() => {
+    if (!open || checkoutNotice !== "success" || !user) return;
+    void refresh().catch((err) => {
+      setError(err instanceof Error ? err.message : "Unable to refresh theme entitlements.");
+    });
+  }, [checkoutNotice, open, refresh, user]);
+
+  const handleSave = async () => {
+    if (!user) {
+      setMessage(null);
+      setError("Sign in to save theme preferences.");
+      return;
+    }
+    if (!settings.themeSaveUnlocked) {
+      setMessage(null);
+      setError("Purchase the theme save unlock to persist theme preferences.");
+      return;
+    }
+    if (!hasUnsavedChanges) {
+      setMessage("No theme changes to save.");
+      setError(null);
+      return;
+    }
+
     setMessage(null);
     setError(null);
-  }, [open]);
+    try {
+      await updateSettings({ theme });
+      onThemeSaved();
+      setMessage("Theme preferences saved.");
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update theme preferences.");
+    }
+  };
+
+  const handlePurchaseThemeSave = async () => {
+    if (!user) {
+      setMessage(null);
+      setError("Sign in to purchase and save theme preferences.");
+      return;
+    }
+
+    setMessage(null);
+    setError(null);
+    setIsStartingCheckout(true);
+    try {
+      const session = await createThemeSaveCheckoutSession();
+      window.location.assign(session.url);
+      return;
+    }
+    catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to open theme checkout right now.");
+      setIsStartingCheckout(false);
+    }
+  };
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -628,14 +768,80 @@ function ThemePreferencesModal({ open, onOpenChange }: ThemePreferencesModalProp
         }}
       >
         <Dialog.Title>Theme</Dialog.Title>
-        {!user ? (
-          <Dialog.Description>Sign in to save theme preferences.</Dialog.Description>
-        ) : null}
-        {open ? (
-          <Suspense fallback={<Text size="2" color="gray">Loading theme settings...</Text>}>
-            <ThemeSettingsControls onMessage={setMessage} onError={setError} />
-          </Suspense>
-        ) : null}
+        <Dialog.Description>
+          Preview changes live, then save them when you are ready.
+        </Dialog.Description>
+        <Flex direction="column" gap="3" mt="4">
+          {!user ? (
+            <Callout.Root color="amber" variant="surface">
+              <Callout.Text>
+                Sign in to purchase the theme save unlock and save theme preferences to your account.
+              </Callout.Text>
+            </Callout.Root>
+          ) : !settings.themeSaveUnlocked ? (
+            <Callout.Root color="amber" variant="surface">
+              <Callout.Text>
+                Theme saving is locked for this account. Live preview stays available, but saving
+                requires a one-time $3 theme save unlock.
+              </Callout.Text>
+            </Callout.Root>
+          ) : (
+            <Callout.Root color="green" variant="surface">
+              <Callout.Text>
+                Theme saving is unlocked for this account.
+              </Callout.Text>
+            </Callout.Root>
+          )}
+
+          {open ? (
+            <Suspense fallback={<Text size="2" color="gray">Loading theme settings...</Text>}>
+              <ThemeSettingsControls
+                value={theme}
+                onChange={onThemeChange}
+                disabled={controlsDisabled}
+              />
+            </Suspense>
+          ) : null}
+
+          {!settings.themeSaveUnlocked ? (
+            <Flex direction="column" gap="2">
+              <Button
+                size="3"
+                variant="solid"
+                onClick={() => { void handlePurchaseThemeSave(); }}
+                disabled={unlockDisabled}
+              >
+                {isStartingCheckout ? "Opening Checkout..." : "Unlock Theme Saving - $3"}
+              </Button>
+              <Text size="1" color="gray">
+                Sold by Denuo Web, LLC as a one-time digital expansion purchase. No shipping applies,
+                applicable sales tax is calculated in Stripe Checkout, and theme save unlock purchases
+                are subject to the{" "}
+                <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                  Terms
+                </LegalDocumentLink>
+                ,{" "}
+                <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                  License
+                </LegalDocumentLink>
+                , and{" "}
+                <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                  Privacy Policy
+                </LegalDocumentLink>
+                .
+              </Text>
+            </Flex>
+          ) : null}
+
+          <Flex justify="end" gap="3" mt="2">
+            <Button variant="soft" color="gray" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button onClick={() => { void handleSave(); }} disabled={saveDisabled}>
+              Save
+            </Button>
+          </Flex>
+        </Flex>
         {error ? (
           <Text color="tomato" size="2" mt="3">{error}</Text>
         ) : null}
@@ -643,6 +849,12 @@ function ThemePreferencesModal({ open, onOpenChange }: ThemePreferencesModalProp
           <Text color="green" size="2" mt="3">{message}</Text>
         ) : null}
       </Dialog.Content>
+      <LegalDocumentDialog
+        documentId={openLegalDocument}
+        onOpenChange={(next) => {
+          if (!next) setOpenLegalDocument(null);
+        }}
+      />
     </Dialog.Root>
   );
 }

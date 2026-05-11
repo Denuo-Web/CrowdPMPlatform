@@ -22,6 +22,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
     radius: "full",
     scaling: "100%",
   },
+  themeSaveUnlocked: false,
 };
 
 function applyUserSettingsDefaults(next: Partial<UserSettings>): UserSettings {

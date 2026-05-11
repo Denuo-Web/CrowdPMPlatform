@@ -8,8 +8,6 @@ import type {
   UserThemeScaling,
   UserThemeSettings,
 } from "@crowdpm/types";
-import { useAuth } from "../providers/AuthProvider";
-import { useUserSettings } from "../providers/UserSettingsProvider";
 
 const APPEARANCES = ["light", "dark"] as const satisfies readonly UserThemeAppearance[];
 const ACCENT_COLORS = [
@@ -47,52 +45,29 @@ const SCALINGS = ["90%", "95%", "100%", "105%", "110%"] as const satisfies reado
 
 type ThemeSettingsControlsProps = {
   disabled?: boolean;
-  onError?: (message: string | null) => void;
-  onMessage?: (message: string | null) => void;
+  value: UserThemeSettings;
+  onChange: (next: UserThemeSettings) => void;
 };
 
 function labelFor(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function ThemeSettingsControls({ disabled = false, onError, onMessage }: ThemeSettingsControlsProps) {
-  const { user } = useAuth();
-  const { settings, isLoading, isSaving, updateSettings } = useUserSettings();
-  const controlsDisabled = disabled || isLoading || isSaving || !user;
-
-  const saveTheme = async (nextTheme: UserThemeSettings) => {
-    if (!user) {
-      onMessage?.(null);
-      onError?.("Sign in to save theme preferences.");
-      return;
-    }
-    if (JSON.stringify(nextTheme) === JSON.stringify(settings.theme)) return;
-
-    onMessage?.(null);
-    onError?.(null);
-    try {
-      await updateSettings({ theme: nextTheme });
-      onMessage?.("Theme preferences saved.");
-    }
-    catch (err) {
-      onError?.(err instanceof Error ? err.message : "Unable to update theme preferences.");
-    }
-  };
-
+export function ThemeSettingsControls({ disabled = false, value, onChange }: ThemeSettingsControlsProps) {
   const updateTheme = (patch: Partial<UserThemeSettings>) => {
-    void saveTheme({ ...settings.theme, ...patch });
+    onChange({ ...value, ...patch });
   };
 
   return (
     <Flex direction="column" gap="3">
       <Text size="2" color="gray">Theme appearance</Text>
       <SegmentedControl.Root
-        value={settings.theme.appearance}
-        onValueChange={(value) => updateTheme({ appearance: value as UserThemeAppearance })}
-        disabled={controlsDisabled}
+        value={value.appearance}
+        onValueChange={(next) => updateTheme({ appearance: next as UserThemeAppearance })}
+        disabled={disabled}
       >
-        {APPEARANCES.map((value) => (
-          <SegmentedControl.Item key={value} value={value}>{labelFor(value)}</SegmentedControl.Item>
+        {APPEARANCES.map((entry) => (
+          <SegmentedControl.Item key={entry} value={entry}>{labelFor(entry)}</SegmentedControl.Item>
         ))}
       </SegmentedControl.Root>
 
@@ -100,14 +75,14 @@ export function ThemeSettingsControls({ disabled = false, onError, onMessage }: 
         <Flex direction="column" gap="2" flexGrow="1">
           <Text size="2" color="gray">Accent color</Text>
           <Select.Root
-            value={settings.theme.accentColor}
-            onValueChange={(value) => updateTheme({ accentColor: value as UserThemeAccentColor })}
-            disabled={controlsDisabled}
+            value={value.accentColor}
+            onValueChange={(next) => updateTheme({ accentColor: next as UserThemeAccentColor })}
+            disabled={disabled}
           >
             <Select.Trigger />
             <Select.Content>
-              {ACCENT_COLORS.map((value) => (
-                <Select.Item key={value} value={value}>{labelFor(value)}</Select.Item>
+              {ACCENT_COLORS.map((entry) => (
+                <Select.Item key={entry} value={entry}>{labelFor(entry)}</Select.Item>
               ))}
             </Select.Content>
           </Select.Root>
@@ -115,14 +90,14 @@ export function ThemeSettingsControls({ disabled = false, onError, onMessage }: 
         <Flex direction="column" gap="2" flexGrow="1">
           <Text size="2" color="gray">Gray color</Text>
           <Select.Root
-            value={settings.theme.grayColor}
-            onValueChange={(value) => updateTheme({ grayColor: value as UserThemeGrayColor })}
-            disabled={controlsDisabled}
+            value={value.grayColor}
+            onValueChange={(next) => updateTheme({ grayColor: next as UserThemeGrayColor })}
+            disabled={disabled}
           >
             <Select.Trigger />
             <Select.Content>
-              {GRAY_COLORS.map((value) => (
-                <Select.Item key={value} value={value}>{labelFor(value)}</Select.Item>
+              {GRAY_COLORS.map((entry) => (
+                <Select.Item key={entry} value={entry}>{labelFor(entry)}</Select.Item>
               ))}
             </Select.Content>
           </Select.Root>
@@ -133,14 +108,14 @@ export function ThemeSettingsControls({ disabled = false, onError, onMessage }: 
         <Flex direction="column" gap="2" flexGrow="1">
           <Text size="2" color="gray">Radius</Text>
           <Select.Root
-            value={settings.theme.radius}
-            onValueChange={(value) => updateTheme({ radius: value as UserThemeRadius })}
-            disabled={controlsDisabled}
+            value={value.radius}
+            onValueChange={(next) => updateTheme({ radius: next as UserThemeRadius })}
+            disabled={disabled}
           >
             <Select.Trigger />
             <Select.Content>
-              {RADII.map((value) => (
-                <Select.Item key={value} value={value}>{labelFor(value)}</Select.Item>
+              {RADII.map((entry) => (
+                <Select.Item key={entry} value={entry}>{labelFor(entry)}</Select.Item>
               ))}
             </Select.Content>
           </Select.Root>
@@ -148,14 +123,14 @@ export function ThemeSettingsControls({ disabled = false, onError, onMessage }: 
         <Flex direction="column" gap="2" flexGrow="1">
           <Text size="2" color="gray">Scaling</Text>
           <Select.Root
-            value={settings.theme.scaling}
-            onValueChange={(value) => updateTheme({ scaling: value as UserThemeScaling })}
-            disabled={controlsDisabled}
+            value={value.scaling}
+            onValueChange={(next) => updateTheme({ scaling: next as UserThemeScaling })}
+            disabled={disabled}
           >
             <Select.Trigger />
             <Select.Content>
-              {SCALINGS.map((value) => (
-                <Select.Item key={value} value={value}>{value}</Select.Item>
+              {SCALINGS.map((entry) => (
+                <Select.Item key={entry} value={entry}>{entry}</Select.Item>
               ))}
             </Select.Content>
           </Select.Root>
@@ -164,12 +139,12 @@ export function ThemeSettingsControls({ disabled = false, onError, onMessage }: 
 
       <Text size="2" color="gray">Panel background</Text>
       <SegmentedControl.Root
-        value={settings.theme.panelBackground}
-        onValueChange={(value) => updateTheme({ panelBackground: value as UserThemePanelBackground })}
-        disabled={controlsDisabled}
+        value={value.panelBackground}
+        onValueChange={(next) => updateTheme({ panelBackground: next as UserThemePanelBackground })}
+        disabled={disabled}
       >
-        {PANEL_BACKGROUNDS.map((value) => (
-          <SegmentedControl.Item key={value} value={value}>{labelFor(value)}</SegmentedControl.Item>
+        {PANEL_BACKGROUNDS.map((entry) => (
+          <SegmentedControl.Item key={entry} value={entry}>{labelFor(entry)}</SegmentedControl.Item>
         ))}
       </SegmentedControl.Root>
     </Flex>

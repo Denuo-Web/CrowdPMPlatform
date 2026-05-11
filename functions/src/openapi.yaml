@@ -52,14 +52,43 @@ paths:
           description: Stripe or application configuration is missing.
         '502':
           description: Stripe returned an upstream error.
+  /v1/theme-purchase/checkout-session:
+    post:
+      operationId: createThemeSaveCheckoutSession
+      summary: Create a Stripe Checkout session for the theme save unlock
+      description: >
+        Creates an authenticated Stripe Checkout session for the one-time CrowdPM
+        theme save unlock purchase. The unlock is tied to the signed-in account,
+        applies Stripe Tax during checkout, and permanently enables saving theme
+        preferences for that account after successful payment.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutRedirectSession'
+        '401':
+          description: Missing or invalid bearer token.
+        '409':
+          description: Theme saving is already unlocked for the account.
+        '429':
+          description: Rate limited.
+        '500':
+          description: Stripe or application configuration is missing.
+        '502':
+          description: Stripe returned an upstream error.
   /v1/payments/stripe/webhook:
     post:
       operationId: handleStripeWebhook
       summary: Receive Stripe webhook events
       description: >
-        Accepts Stripe webhook callbacks and records successful node purchase
-        sessions, including shipping details and calculated tax, after verifying
-        the `Stripe-Signature` header against the raw request body.
+        Accepts Stripe webhook callbacks and records successful node hardware or
+        theme save unlock sessions, including shipping details where applicable,
+        calculated tax, and account entitlements after verifying the
+        `Stripe-Signature` header against the raw request body.
       security: []
       parameters:
         - in: header
@@ -799,7 +828,9 @@ paths:
     put:
       operationId: updateUserSettings
       summary: Update user settings
-      description: Sets account preferences for batches, map rendering, and theme.
+      description: >
+        Sets account preferences for batches, map rendering, and theme. Theme
+        persistence requires the theme save unlock entitlement.
       security:
         - BearerAuth: []
       requestBody:
@@ -817,6 +848,8 @@ paths:
                 $ref: '#/components/schemas/UserSettings'
         '400':
           description: Invalid settings payload.
+        '403':
+          description: Theme saving is not unlocked for the account.
         '401':
           description: Missing or invalid bearer token.
 components:
@@ -1339,10 +1372,14 @@ components:
           description: Whether the map should render deck.gl interleaved with Google Maps (may be less stable on some GPUs).
         theme:
           $ref: '#/components/schemas/UserThemeSettings'
+        themeSaveUnlocked:
+          type: boolean
+          description: Whether the account has purchased the one-time entitlement that allows saving theme preferences.
       required:
         - defaultBatchVisibility
         - interleavedRendering
         - theme
+        - themeSaveUnlocked
     UserThemeSettings:
       type: object
       properties:

@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { extractClientIp } from "../lib/http.js";
 import { httpError } from "../lib/httpError.js";
-import { rateLimitGuard } from "../lib/routeGuards.js";
-import { createNodePurchaseCheckoutSession, handleStripeWebhook } from "../services/nodePurchase.js";
+import { getRequestUser, rateLimitGuard, requestUserId, requireUserGuard } from "../lib/routeGuards.js";
+import { createNodePurchaseCheckoutSession, createThemeSaveCheckoutSession, handleStripeWebhook } from "../services/nodePurchase.js";
 
 type RequestWithRawBody = {
   rawBody?: Buffer | string;
@@ -26,6 +26,18 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard("node-purchase:checkout:global", 1_000, 60_000),
     ],
   }, async () => createNodePurchaseCheckoutSession());
+
+  app.post("/v1/theme-purchase/checkout-session", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `theme-purchase:checkout:user:${requestUserId(req)}`, 10, 60_000),
+      rateLimitGuard((req) => `theme-purchase:checkout:ip:${requestIp(req)}`, 20, 60_000),
+      rateLimitGuard("theme-purchase:checkout:global", 500, 60_000),
+    ],
+  }, async (req) => createThemeSaveCheckoutSession({
+    userId: requestUserId(req),
+    customerEmail: getRequestUser(req).email ?? null,
+  }));
 
   app.post("/v1/payments/stripe/webhook", {
     preHandler: [

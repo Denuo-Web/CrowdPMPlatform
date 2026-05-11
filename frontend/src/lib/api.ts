@@ -145,6 +145,12 @@ export async function createNodePurchaseCheckoutSession(): Promise<CheckoutRedir
   });
 }
 
+export async function createThemeSaveCheckoutSession(): Promise<CheckoutRedirectSession> {
+  return requestJson<CheckoutRedirectSession>("/v1/theme-purchase/checkout-session", {
+    method: "POST",
+  });
+}
+
 export async function fetchMeasurements(q: {
   device_id: string; pollutant?: "pm25"; t0: string; t1: string; limit?: number;
 }): Promise<MeasurementRecord[]> {
