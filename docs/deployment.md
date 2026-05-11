@@ -9,7 +9,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Clean `main` checkout at the commit being released.
 - CI green or equivalent local checks passing.
 - Frontend environment values ready for the deployed Firebase project.
-- Functions runtime configuration ready, especially the `DEVICE_TOKEN_PRIVATE_KEY` Firebase secret.
+- Functions runtime configuration ready, especially the Firebase secrets used by deployed functions.
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
 
 ```bash
@@ -45,9 +45,11 @@ For a new deployed Firebase project, verify these services before the first rele
 
 The functions code reads runtime values from `process.env`.
 
-Required deployed secret:
+Required deployed Firebase secrets:
 
 - `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign device registration and access tokens.
+- `STRIPE_SECRET_KEY`: Stripe secret key for creating node checkout sessions.
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
 
 Common optional values:
 
@@ -57,12 +59,11 @@ Common optional values:
 - `DEVICE_TOKEN_AUDIENCE`
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
+- `SMOKE_TEST_USER_EMAIL`
 - `SMOKE_TEST_USER_EMAILS`
 - `PUBLIC_APP_BASE_URL`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
 
-Keep secrets out of git. `DEVICE_TOKEN_PRIVATE_KEY` is deployed as a Firebase Secret Manager secret and bound directly to the HTTP functions. The CI workflow writes only non-secret runtime env vars and the Stripe values into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
+Keep secrets out of git. Deployed functions use Firebase Secret Manager for `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. The CI workflow syncs those three secrets from GitHub Actions into Firebase, then writes only non-secret runtime env vars into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
 
 ## Build And Deploy
 
@@ -70,6 +71,9 @@ Keep secrets out of git. `DEVICE_TOKEN_PRIVATE_KEY` is deployed as a Firebase Se
 pnpm install --frozen-lockfile
 pnpm lint
 pnpm build
+printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
+printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
+printf '%s' "$STRIPE_WEBHOOK_SECRET" | firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project "$FIREBASE_PROJECT_ID" --data-file=-
 firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
 ```
 
@@ -85,7 +89,14 @@ The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from 
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `FIREBASE_WORKLOAD_IDENTITY_PROVIDER` plus `FIREBASE_SERVICE_ACCOUNT_EMAIL`
 
-For functions runtime config, the workflow now writes `functions/.env.$FIREBASE_PROJECT_ID` during CI from GitHub secrets plus `FRONTEND_URL`. That file should provide:
+For functions runtime config, the workflow now follows one model:
+
+- GitHub Actions secrets are the source of truth for Firebase function secrets.
+- CI syncs `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into Firebase Secret Manager.
+- CI writes `functions/.env.$FIREBASE_PROJECT_ID` only for non-secret function env vars.
+- Frontend build config is resolved from GitHub secrets or variables.
+
+The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 
 - `DEVICE_ACTIVATION_URL`
 - `DEVICE_VERIFICATION_URI`
@@ -95,10 +106,8 @@ For functions runtime config, the workflow now writes `functions/.env.$FIREBASE_
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
 - `SMOKE_TEST_USER_EMAIL` or `SMOKE_TEST_USER_EMAILS`
 - `PUBLIC_APP_BASE_URL`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
 
-The `DEVICE_TOKEN_PRIVATE_KEY` secret must exist in Firebase Secret Manager and is referenced by the `secrets` option on `crowdpmApi` and `ingestGateway`.
+The three function secrets must exist in Firebase Secret Manager and are referenced by deployed functions through the `secrets` option.
 
 ## Post-Deploy Validation
 
