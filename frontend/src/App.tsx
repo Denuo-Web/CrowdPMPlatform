@@ -421,13 +421,6 @@ export default function App() {
             >
               Node
             </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onSelect={() => setTab("about")}
-              style={activeTab === "about" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              About
-            </DropdownMenu.Item>
             {isSignedIn ? (
               <>
                 <DropdownMenu.Item
@@ -446,8 +439,23 @@ export default function App() {
                     Admin
                   </DropdownMenu.Item>
                 ) : null}
+                <DropdownMenu.Item
+                  onSelect={() => setTab("about")}
+                  style={activeTab === "about" ? { fontWeight: 600 } : undefined}
+                  disabled={isLoading}
+                >
+                  About
+                </DropdownMenu.Item>
               </>
-            ) : null}
+            ) : (
+              <DropdownMenu.Item
+                onSelect={() => setTab("about")}
+                style={activeTab === "about" ? { fontWeight: 600 } : undefined}
+                disabled={isLoading}
+              >
+                About
+              </DropdownMenu.Item>
+            )}
             <DropdownMenu.Separator />
             {user ? (
               <DropdownMenu.Item color="red" onSelect={handleSignOut}>
