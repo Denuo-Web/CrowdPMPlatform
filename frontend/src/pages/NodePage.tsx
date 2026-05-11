@@ -10,6 +10,11 @@ import {
   Text,
 } from "@radix-ui/themes";
 import { ExternalLink } from "../components/ExternalLink";
+import {
+  LegalDocumentDialog,
+  LegalDocumentLink,
+  type LegalDocumentId,
+} from "../components/LegalDocumentDialog";
 import { createNodePurchaseCheckoutSession } from "../lib/api";
 
 type SectionProps = {
@@ -200,6 +205,7 @@ export default function NodePage() {
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(readCheckoutNotice);
+  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
 
   useEffect(() => {
     setCheckoutNotice(readCheckoutNotice());
@@ -223,7 +229,8 @@ export default function NodePage() {
   };
 
   return (
-    <Flex direction="column" gap="5">
+    <>
+      <Flex direction="column" gap="5">
       {/* ---- Hero ---- */}
       <Box>
         <Flex
@@ -247,13 +254,32 @@ export default function NodePage() {
             </Text>
           </Box>
 
-          <Button
-            size="3"
-            onClick={() => { void handlePurchaseNode(); }}
-            disabled={isStartingCheckout}
-          >
-            {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - $350"}
-          </Button>
+          <Flex direction="column" gap="2" style={{ maxWidth: "19rem" }}>
+            <Button
+              size="3"
+              onClick={() => { void handlePurchaseNode(); }}
+              disabled={isStartingCheckout}
+            >
+              {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - $350"}
+            </Button>
+            <Text size="1" color="gray" as="p">
+              Sold by Denuo Web, LLC as a one-time hardware purchase. US shipping is
+              included, sales tax is calculated in Stripe Checkout, and node orders
+              are subject to the{" "}
+              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                Terms
+              </LegalDocumentLink>
+              ,{" "}
+              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                License
+              </LegalDocumentLink>
+              , and{" "}
+              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                Privacy Policy
+              </LegalDocumentLink>
+              .
+            </Text>
+          </Flex>
         </Flex>
 
         {checkoutNotice === "success" ? (
@@ -871,6 +897,13 @@ PY`}</CodeBlock>
   - show useful status with LEDs or a local page
   - avoid data loss unless storage is exhausted`}</CodeBlock>
       </Section>
-    </Flex>
+      </Flex>
+      <LegalDocumentDialog
+        documentId={openLegalDocument}
+        onOpenChange={(open) => {
+          if (!open) setOpenLegalDocument(null);
+        }}
+      />
+    </>
   );
 }
