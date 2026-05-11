@@ -1,7 +1,7 @@
 {
   "projects": {
-    "default": "crowdpmplatform",
-    "demo": "crowdpmplatform",
-    "local": "demo-crowdpm"
+    "default": "crowdpm-local",
+    "deployed": "crowdpmplatform",
+    "local": "crowdpm-local"
   }
 }

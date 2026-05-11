@@ -1,180 +1,113 @@
+# CrowdPM Platform
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Denuo-Web/CrowdPMPlatform)
 
-[![Deploy Demo Firebase](https://github.com/Denuo-Web/CrowdPMPlatform/actions/workflows/demo-deploy.yml/badge.svg?branch=main)](https://github.com/Denuo-Web/CrowdPMPlatform/actions/workflows/demo-deploy.yml)
-# CrowdPM Platform
-Crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
-## Highlights
-- DPoP-bound ingest gateway validates short-lived device tokens, persists raw payloads in Cloud Storage, and processes batches through a shared ingest pipeline.
-- The shared batch processor normalises and calibrates measurements before writing device hourly buckets in Firestore for fast queries.
-- Fastify-based HTTPS API (`crowdpmApi`) exposes device, measurement, and admin endpoints consumed by the frontend and integration partners.
-- React + Vite client renders Google Maps WebGL overlays via deck.gl to visualise particulate data and provides a basic admin table for device management.
-- pnpm-managed TypeScript monorepo keeps frontend and backend code in sync, with shared tooling for linting, builds, and testing.
+CrowdPM is a TypeScript/Firebase platform for crowd-sourced PM2.5 measurements. It pairs sensor nodes with Firebase users, accepts DPoP-bound ingest batches, stores raw payloads for audit, processes measurements into Firestore, and renders public or owned batches on a React/WebGL map.
 
-## System Architecture
-- **Ingest** (`functions/src/services/ingestGateway.ts` + `functions/src/services/ingestService.ts`): Firebase HTTPS Function path that validates DPoP proofs plus device access tokens, persists raw JSON to `ingest/{deviceId}/{batchId}.json` in Cloud Storage, and runs the shared processor.
-- **Processing** (`functions/src/services/ingestBatchProcessor.ts`): Shared processing module that applies calibration data from `devices/{deviceId}` (if present), writes measurements to `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`, and updates batch status.
-- **Pairing API** (`functions/src/routes/pairing.ts` + `functions/src/routes/activation.ts`): Implements the device authorization grant (device start/token/register/access-token) using Ed25519 keys, DPoP, and the `/activate` UI for human approval with MFA enforcement.
-- **API** (`functions/src/index.ts`): Fastify server packaged as an HTTPS Function with CORS + rate limiting, mounting `/health`, `/v1/devices`, `/v1/measurements`, pairing endpoints, and `/v1/device-activation`. OpenAPI scaffold lives in `functions/src/openapi.yaml`.
-- **Frontend** (`frontend/`): React 19 app built with Vite 8 that toggles between a Google Maps 3D visualisation (`MapPage`) and a user dashboard (`UserDashboard`). Uses the Maps JavaScript API with a deck.gl overlay for rendering.
+The project has two supported environments:
 
-## Tech Stack
-- [Firebase Cloud Functions](https://firebase.google.com/docs/functions) with [Fastify](https://fastify.dev/)
-- [Cloud Storage](https://cloud.google.com/storage/docs) backend for raw ingest payload retention
-- [Cloud Firestore](https://firebase.google.com/docs/firestore) for device + measurement persistence
-- [React 19](https://react.dev/), [Vite 8](https://vitejs.dev/), [deck.gl 9](https://deck.gl), and [Google Maps Platform](https://developers.google.com/maps/documentation) on the client
-- [pnpm 10](https://pnpm.io/), [TypeScript 6](https://www.typescriptlang.org/), [ESLint 9](https://eslint.org/), and [Vitest 4](https://vitest.dev/) for tooling
-- [GitHub Actions](https://github.com/features/actions) workflow (`infra/github-ci.yml`) running workspace builds on push and PR
+- `local development`: Vite plus the Firebase Emulator Suite using the local project ID `crowdpm-local`.
+- `deployed`: Firebase Hosting, Cloud Functions, Firestore, Storage, and Auth in the configured Firebase project.
 
-## Repository Layout
-- `frontend/` – Vite + React client, Google Maps visualisation, admin UI
-- `functions/` – Firebase Functions (REST API and ingest processing), shared auth/lib utilities, Vitest suites
-- `docs/` – Developer guides (`development.md` and supporting installation notes)
-- `infra/` – CI configuration and automation assets
-- `firestore.rules`, `storage.rules`, `firebase.json` – Emulator and deployment rules + targets
+## Architecture
 
-## Prerequisites
-Install these once per workstation:
-- [Node.js 24.x](https://nodejs.org/) and [pnpm 10.x](https://pnpm.io/installation)
-- [Firebase CLI](https://firebase.google.com/docs/cli) (`npm install -g firebase-tools`) with `firebase login`
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) (optional, used for broader Google Cloud tooling)
-- [Python 3.12](https://www.python.org/), [Java 25 JDK](https://adoptium.net/temurin/releases/), and [Git 2.34+](https://git-scm.com/)
-
-Verify installations:
-```bash
-node -v
-pnpm -v
-firebase --version
-gcloud -v
-java --version
-```
-
-## Local Setup
-1. Clone the repository and enter the workspace.
-   ```bash
-   git clone git@github.com:denuoweb/CrowdPMPlatform.git
-   cd CrowdPMPlatform
-   ```
-2. Install dependencies for all workspaces.
-   ```bash
-   pnpm install
-   ```
-3. Seed local configuration files (never commit the `.env.local` outputs).
-   ```bash
-   cp .firebaserc.example .firebaserc
-   cp frontend/.env.example frontend/.env.local
-   cp functions/.env.example functions/.env.local
-   ```
-4. Supply real secrets:
-   - `frontend/.env.local`: Google Maps API key + vector map ID, API base URL (emulator or deployed).
-   - `functions/.env.local`: device token signing key and activation URL overrides.
-   - `functions/.secret.local` (not committed): secrets declared via `defineSecret`, e.g. `DEVICE_TOKEN_PRIVATE_KEY`. The Firebase Functions emulator refuses to start without local overrides, so copy the private key from `.env.local` into this file as `DEVICE_TOKEN_PRIVATE_KEY=...`.
-
-### Environment Variables
-
-`frontend/.env.local`
-
-| Name | Purpose | Example |
+| Area | Path | Responsibility |
 | --- | --- | --- |
-| `VITE_API_BASE` | Base URL for the Firebase HTTPS API. | `http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi` |
-| `VITE_GOOGLE_MAPS_API_KEY` | Maps JavaScript API key with WebGL overlay access. | `AIza...` |
-| `VITE_GOOGLE_MAP_ID` | Vector map style ID for WebGL overlay (required). | `test-map-id` |
+| Frontend | `frontend/` | React 19 + Vite app, Google Maps/deck.gl map, activation UI, dashboards, moderation UI. |
+| Functions | `functions/` | Firebase HTTPS Functions, Fastify REST API, pairing, DPoP validation, ingest processing, admin routes. |
+| Shared types | `shared-types/` | Workspace package consumed by the frontend and functions for API/data contracts. |
+| Scripts | `scripts/` | Local device emulator, deployed-device helpers, and workspace packaging utilities. |
+| Firebase config | `firebase.json`, `firestore.rules`, `storage.rules` | Emulator ports, Hosting rewrites, deploy targets, and security rules. |
 
-`functions/.env.local`
+## Quick Start
 
-| Name | Purpose | Example |
-| --- | --- | --- |
-| `DEVICE_TOKEN_PRIVATE_KEY` | PEM-encoded Ed25519 private key for signing registration + access tokens. | `-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIP...\n-----END PRIVATE KEY-----` |
-| `DEVICE_ACTIVATION_URL` | Base URL surfaced to users during pairing. | `https://crowdpmplatform.web.app/activate` |
-| `DEVICE_VERIFICATION_URI` | Optional override for the verification URI sent to devices. | `https://example.com/activate` |
-| `DEVICE_TOKEN_ISSUER` | JWT issuer claim for device tokens. | `crowdpm` |
-| `DEVICE_TOKEN_AUDIENCE` | JWT audience for runtime access tokens. | `crowdpm_device_api` |
-| `DEVICE_ACCESS_TOKEN_TTL_SECONDS` | Access token lifetime (default 600). | `600` |
-| `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS` | Registration token lifetime (default 60). | `60` |
-
-### Firebase Secret Overrides
-
-Functions that declare secrets with `defineSecret` must be supplied locally through `functions/.secret.local`. Without this file the emulator attempts to read Secret Manager and fails with 403 errors (`Unable to access secret environment variables...`). Populate the file with shell-style assignments; multiline PEM values can stay escaped exactly like `.env.local`.
+Use Node 24 before running project commands:
 
 ```bash
-cat > functions/.secret.local <<'EOF'
-DEVICE_TOKEN_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\\nMC4CAQAwBQYDK2VwBCIEIPreplace-me-with-a-real-key\\n-----END PRIVATE KEY-----
-EOF
+source ~/.nvm/nvm.sh && nvm use 24
+corepack enable
+corepack prepare pnpm@10.18.1 --activate
+pnpm install
 ```
 
-The file is ignored via `.gitignore`, so it is safe to keep real credentials there for local testing.
+Create local environment files:
 
-## Running Locally
-Launch the entire stack from the repo root:
+```bash
+cp frontend/.env.example frontend/.env.local
+cp functions/.env.example functions/.env.local
+```
+
+Edit `frontend/.env.local` with a Google Maps JavaScript API key, vector map ID, Firebase web app config, and the local API base:
+
+```bash
+VITE_API_BASE=http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi
+VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+```
+
+Edit `functions/.env.local` with a real Ed25519 PKCS8 private key for `DEVICE_TOKEN_PRIVATE_KEY`. The local emulator also supports generated ephemeral keys, but a stable key is required when testing device registration and repeat ingest.
+
+Start the full local stack:
+
 ```bash
 pnpm dev
 ```
-- `crowdpm-frontend`: Vite dev server at `http://localhost:5173`
-- `crowdpm-functions emulate`: Firebase Emulator Suite (Functions, Firestore, Storage, Auth, Emulator UI at `http://localhost:4000`)
-- `crowdpm-functions build:watch`: TypeScript compiler emitting to `functions/lib/`
 
-Keep this terminal open; rebuilds stream into the emulator automatically.
+Local URLs:
 
-### Send an ingest batch without re-pairing
-Use the device emulator in ingest-only mode with the key you registered:
+- Frontend: `http://localhost:5173`
+- API health: `http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi/health`
+- Firebase Emulator UI: `http://localhost:4000`
+
+## Common Commands
+
 ```bash
-pnpm device:pair -- --mode ingest --device-id <device-id> --key ./emu-key.json --api http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi
+pnpm dev                                  # frontend, functions emulator, TS watch
+pnpm lint                                 # workspace ESLint
+pnpm --filter crowdpm-functions test      # functions Vitest suite
+pnpm build                                # build all workspaces
+pnpm --filter crowdpm-frontend build      # frontend only
+pnpm --filter crowdpm-functions build     # functions only
 ```
-- Replace `<device-id>` with the registered ID and `./emu-key.json` with the same Ed25519 key used during registration.
-- Defaults send 60 points (1-minute spacing, +2 per minute); override with `--minutes`, `--start-value`, or `--value-step`.
-- Send multiple batches in one run with `--batches`, for example `--batches 50`. Generated timestamps are spaced into contiguous batch windows ending at the current time.
 
-## Testing & Quality Gates
-- Unit tests: `pnpm --filter crowdpm-functions test`
-- Linting: `pnpm lint` (workspace-wide ESLint on TS/TSX sources)
-- Type + build checks: `pnpm -r build`
-- CI mirrors the build command; run locally before pushing to keep `infra/github-ci.yml` green.
+Device emulator examples:
 
-## API Surface
-The REST contract is documented in `functions/src/openapi.yaml` and implemented in `functions/src/index.ts`:
-- `GET /health` – environment probe
-- `GET /v1/devices` – list devices for the signed-in user
-- `POST /v1/devices` – create device (requires Firebase ID token)
-- `GET /v1/measurements` – query PM2.5 readings by device, time window, and limit
-- `GET /v1/batches` + `GET /v1/batches/:deviceId/:batchId` – owner batch views (quarantined batches hidden from non-moderators)
-- `GET /v1/public/batches` + `GET /v1/public/batches/:deviceId/:batchId` – anonymous public feed (only `public + approved`)
-- `GET /v1/admin/submissions` + `PATCH /v1/admin/submissions/:deviceId/:batchId` – submission moderation
-- `GET /v1/admin/users` + `PATCH /v1/admin/users/:uid` – user moderation and role updates
-- `POST /v1/admin/devices/:id/suspend` – suspend device ingest
+```bash
+pnpm device:pair -- --key .device-key.json --interval 3
+pnpm device:pair -- --mode ingest --key .device-key.json
+pnpm device:simulate:osu -- --count 20 --minutes 36
+```
 
-Set a Firebase ID token in the `Authorization: Bearer <token>` header for authenticated routes.
+## API And Data Flow
 
-### Admin bootstrap and migrations
-- Grant initial admin/moderator claims:
-  - `pnpm --filter crowdpm-functions admin:grant-role -- --email you@example.com --roles super_admin`
-- Backfill legacy batch documents with moderation metadata:
-  - `pnpm --filter crowdpm-functions backfill:batch-moderation`
-- Backfill legacy single-owner device records into `ownerUserIds` and remove `ownerUserId`:
-  - `pnpm --filter crowdpm-functions backfill:device-ownership`
+Primary Fastify routes are exported through the `crowdpmApi` HTTPS Function. The ingest gateway is a separate HTTPS Function because it preserves raw payloads before processing.
 
-### Error Responses
-- API and gateway failures return normalized JSON with required `error` (lower_snake_case) and optional `message`.
-- Some endpoints include metadata fields such as `details`, `poll_interval`, `retry_after`, and `forbiddenDeviceIds`.
+- Pairing: `POST /device/start`, `/device/token`, `/device/register`, `/device/access-token`
+- Activation UI support: `GET /v1/device-activation`, `POST /v1/device-activation/authorize`
+- User APIs: `/v1/devices`, `/v1/measurements`, `/v1/batches`, `/v1/user/settings`
+- Public data: `/v1/public/batches`
+- Admin and moderation: `/v1/admin/*`
+- Ingest gateway: `POST /ingestGateway`
 
-## Data Model & Storage
-- Firestore: `devices/{deviceId}` documents store device metadata and optional `calibration` fields; measurements live under `measures/{hourBucket}/rows/{doc}` with UTC bucket IDs computed via `hourBucket`.
-- Firestore: `devices/{deviceId}/batches/{batchId}` records ingest batch metadata (`count`, `processedAt`, `visibility`, `moderationState`, and moderation/audit fields).
-- Cloud Storage: raw ingest payloads saved to `ingest/{deviceId}/{batchId}.json` for auditing and replay.
+Raw ingest batches are stored in Cloud Storage at `ingest/{deviceId}/{batchId}.json`. Processed measurements are stored in Firestore under `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`, with batch metadata under `devices/{deviceId}/batches/{batchId}`.
 
-## Security Considerations
-- Devices must complete the `/device/start → /activate → /device/token → /device/register` flow and retrieve DPoP-bound access tokens before ingesting.
-- All pairing, registration, and ingest calls require DPoP proofs whose thumbprints match the Ed25519 keys declared during onboarding; mismatches are rejected immediately.
-- Firebase Auth custom claims (`roles`: `super_admin` / `moderator`) gate admin moderation routes.
-- Disabled Firebase users cannot mint fresh device access tokens; disabling a user also revokes refresh tokens and device tokens.
-- Firestore and Storage rules ship locked-down defaults: device and measurement data are read-only to external clients, ingest blobs are entirely private.
+## Documentation
+
+- `docs/README.md` - documentation index and conventions
+- `docs/development.md` - local setup and daily workflow
+- `docs/deployment.md` - deployed Firebase release process
+- `docs/hardware-builder.md` - hardware pairing and ingest contract
+- `docs/openapi-swagger-ui.md` - local Swagger UI for `functions/src/openapi.yaml`
+- `frontend/README.md`, `functions/README.md`, `shared-types/README.md`, `scripts/README.md` - package-specific notes
 
 ## Deployment
-Use the Firebase CLI once credentials and target project are configured:
-```bash
-firebase deploy
-```
-Ensure `.firebaserc` points to the intended project (avoid using the `demo-` alias outside emulator workflows). Configure runtime secrets (e.g., `DEVICE_TOKEN_PRIVATE_KEY`) through Firebase environment configuration or Cloud Secret Manager before deploying.
 
-## Further Reading
-- `docs/development.md` – end-to-end local development workflow, emulator smoke tests, and ingest pipeline walkthrough
-- `functions/src/openapi.yaml` – canonical REST contract
-- `storage.rules`, `firestore.rules` – production security posture
+Use `docs/deployment.md` for the deployed environment. Always deploy with an explicit Firebase project ID and never deploy the local fake project:
+
+```bash
+FIREBASE_PROJECT_ID=crowdpmplatform
+pnpm lint
+pnpm build
+firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
+```
+
+Deploy Firestore indexes and Firestore or Storage rules only when those files changed and have been reviewed.

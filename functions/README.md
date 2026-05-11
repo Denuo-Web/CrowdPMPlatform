@@ -1,0 +1,66 @@
+# Functions
+
+Firebase Functions package for the CrowdPM API, device pairing, DPoP validation, ingest gateway, batch processing, and admin workflows.
+
+## Commands
+
+Run from the repository root:
+
+```bash
+pnpm --filter crowdpm-functions build
+pnpm --filter crowdpm-functions build:watch
+pnpm --filter crowdpm-functions test
+pnpm --filter crowdpm-functions emulate
+```
+
+`pnpm dev` at the repository root builds functions once, starts the Firebase Emulator Suite, and watches TypeScript output into `functions/lib/`.
+
+## Runtime Configuration
+
+Create `functions/.env.local` from `functions/.env.example` for local development.
+
+Important values:
+
+- `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign registration and device access tokens.
+- `DEVICE_ACTIVATION_URL`: activation URL displayed to users.
+- `DEVICE_VERIFICATION_URI`: optional pairing verification URI override.
+- `DEVICE_TOKEN_ISSUER`: JWT issuer, default `crowdpm`.
+- `DEVICE_TOKEN_AUDIENCE`: device access-token audience, default `crowdpm_device_api`.
+- `DEVICE_ACCESS_TOKEN_TTL_SECONDS`: access-token lifetime, default `600`.
+- `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`: registration-token lifetime, default `60`.
+- `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, `DEV_AUTH_USER_DISPLAY_NAME`: local Auth emulator seed user.
+- `SMOKE_TEST_USER_EMAILS`: optional comma-separated allowlist for smoke-test routes.
+
+The code reads these values from `process.env`. Keep deployed secrets out of git and ensure the deploy process injects required runtime values.
+
+## API Surface
+
+`crowdpmApi` is a Fastify app exported as an HTTPS Function:
+
+- `GET /health`
+- Pairing: `POST /device/start`, `/device/token`, `/device/register`, `/device/access-token`
+- Activation: `GET /v1/device-activation`, `POST /v1/device-activation/authorize`
+- User APIs: `/v1/devices`, `/v1/measurements`, `/v1/batches`, `/v1/user/settings`
+- Public APIs: `/v1/public/batches`
+- Admin APIs: `/v1/admin/devices/:id/suspend`, `/v1/admin/ingest-smoke-test`, `/v1/admin/submissions`, `/v1/admin/users`
+
+`ingestGateway` is a separate HTTPS Function that validates device access tokens and DPoP proofs, stores raw JSON, and invokes the shared ingest processor.
+
+The OpenAPI document lives at `src/openapi.yaml`.
+
+## Data Layout
+
+- Firestore device records: `devices/{deviceId}`
+- Firestore measurements: `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`
+- Firestore batch metadata: `devices/{deviceId}/batches/{batchId}`
+- Raw ingest payloads: Cloud Storage `ingest/{deviceId}/{batchId}.json`
+
+## Tests
+
+Vitest tests should stay close to the code they cover:
+
+- `test/lib/`: pure helpers.
+- `test/services/`: business logic with mocked dependencies.
+- `test/routes/`: Fastify route tests with injected requests.
+
+Avoid emulator-dependent tests unless a behavior cannot be verified with unit tests.

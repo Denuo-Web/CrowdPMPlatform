@@ -2,9 +2,9 @@
 import { parseArgs } from "node:util";
 
 const DEFAULT_API_BASE = process.env.CROWDPM_API_BASE
-  ?? "http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi";
+  ?? "http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi";
 const DEFAULT_AUTH_URL = process.env.CROWDPM_AUTH_URL
-  ?? "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo";
+  ?? "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local";
 const DEFAULT_EMAIL = process.env.SMOKE_EMAIL ?? "smoke-tester@crowdpm.dev";
 const DEFAULT_PASSWORD = process.env.SMOKE_PASSWORD ?? "crowdpm-dev";
 

@@ -62,7 +62,7 @@ export function startCanvasRecording(
   options?: { fps?: number; mimeType?: string }
 ): CanvasRecordingSession {
   if (!canCaptureCanvas(canvas)) {
-    throw new Error("The live map canvas is not ready for capture.");
+    throw new Error("The active map canvas is not ready for capture.");
   }
 
   const support = detectCanvasVideoExportSupport();
@@ -76,13 +76,13 @@ export function startCanvasRecording(
     stream = canvas.captureStream(options?.fps ?? 30);
   }
   catch (err) {
-    const message = err instanceof Error ? err.message : "Unable to capture the live map canvas.";
+    const message = err instanceof Error ? err.message : "Unable to capture the active map canvas.";
     throw new Error(message);
   }
 
   if (!stream.getVideoTracks().length) {
     stream.getTracks().forEach((track) => track.stop());
-    throw new Error("The live map canvas did not expose a video track for recording.");
+    throw new Error("The active map canvas did not expose a video track for recording.");
   }
 
   let recorder: MediaRecorder;

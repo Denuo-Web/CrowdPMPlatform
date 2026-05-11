@@ -10,10 +10,10 @@ info:
     name: Proprietary
     url: https://crowdpmplatform.web.app
 servers:
-  - url: https://crowdpmplatform.web.app
-    description: Production
-  - url: http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi
-    description: Local development (Firebase emulator)
+  - url: https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi
+    description: Deployed Firebase Functions API
+  - url: http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi
+    description: Local Firebase emulator API
 security: []
 paths:
   /health:

@@ -3,7 +3,7 @@
 
   Thin example wrapper around CrowdPM::NodeClient.
   Keep this file small and move your real GPS / OLED / PM logic around the
-  client in your production firmware.
+  client in your released firmware.
 
   Required libraries:
   - ArduinoJson
@@ -154,7 +154,7 @@ bool connectWifi() {
 
 CrowdPM::Config makeConfig() {
   CrowdPM::Config config;
-  config.model = "esp32-live-node";
+  config.model = "esp32-deployed-node";
   config.version = "0.0.1";
   config.forceRepair = false;
   config.autoRepairOnRevocation = true;

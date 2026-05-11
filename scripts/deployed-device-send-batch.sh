@@ -13,9 +13,9 @@ if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
 fi
 
 API_BASE="${CROWDPM_API_BASE:-https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi}"
-KEY_FILE="${CROWDPM_KEY_FILE:-.crowdpm-live-device-key.json}"
-DEVICE_ID_FILE="${CROWDPM_DEVICE_ID_FILE:-.crowdpm-live-device-id}"
-ACCESS_TOKEN_FILE="${CROWDPM_ACCESS_TOKEN_FILE:-.crowdpm-live-access-token}"
+KEY_FILE="${CROWDPM_KEY_FILE:-.crowdpm-deployed-device-key.json}"
+DEVICE_ID_FILE="${CROWDPM_DEVICE_ID_FILE:-.crowdpm-deployed-device-id}"
+ACCESS_TOKEN_FILE="${CROWDPM_ACCESS_TOKEN_FILE:-.crowdpm-deployed-access-token}"
 SCOPE="${CROWDPM_SCOPE:-ingest.write}"
 DEVICE_ID_OVERRIDE="${CROWDPM_DEVICE_ID:-}"
 ACCESS_TOKEN_OVERRIDE="${CROWDPM_ACCESS_TOKEN:-}"
@@ -33,22 +33,22 @@ SAMPLE_PRECISION="${CROWDPM_PRECISION:-6}"
 SAMPLE_FLAGS="${CROWDPM_FLAGS:-}"
 PAYLOAD_SOURCE="generated sample batch"
 
-TMP_DIR="$(mktemp -d -t crowdpm-live-batch.XXXXXX)"
+TMP_DIR="$(mktemp -d -t crowdpm-deployed-batch.XXXXXX)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/live-device-send-batch.sh [batch.json]
-  scripts/live-device-send-batch.sh - < batch.json
+  scripts/deployed-device-send-batch.sh [batch.json]
+  scripts/deployed-device-send-batch.sh - < batch.json
 
 Sends one ingest batch through a device that was already registered with
-scripts/live-device-registration.sh.
+scripts/deployed-device-registration.sh.
 
-Defaults reuse the live device artifacts:
+Defaults reuse the deployed device artifacts:
   API base: https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi
-  Key file: .crowdpm-live-device-key.json
-  Device ID file: .crowdpm-live-device-id
+  Key file: .crowdpm-deployed-device-key.json
+  Device ID file: .crowdpm-deployed-device-id
 
 Payload precedence:
   1. positional batch.json (or '-' for stdin)
@@ -61,7 +61,7 @@ If a point omits timestamp, pollutant, or unit, the script fills them in with
 safe defaults before sending the batch.
 
 Environment variables:
-  CROWDPM_API_BASE             Override the live API base.
+  CROWDPM_API_BASE             Override the deployed API base.
   CROWDPM_INGEST_URL           Override the ingest gateway URL.
   CROWDPM_KEY_FILE             Path to the registered Ed25519 JWK pair.
   CROWDPM_DEVICE_ID            Override the registered device ID directly.
@@ -172,7 +172,7 @@ function isPrivateJwk(value) {
 }
 
 if (!existsSync(keyFile)) {
-  throw new Error(`Key file not found at ${keyFile}. Run scripts/live-device-registration.sh first.`);
+  throw new Error(`Key file not found at ${keyFile}. Run scripts/deployed-device-registration.sh first.`);
 }
 
 const parsed = JSON.parse(readFileSync(keyFile, "utf8"));
@@ -310,7 +310,7 @@ resolve_device_id() {
   fi
 
   if [[ ! -s "${DEVICE_ID_FILE}" ]]; then
-    echo "Device ID file not found at ${DEVICE_ID_FILE}. Run scripts/live-device-registration.sh first or set CROWDPM_DEVICE_ID." >&2
+    echo "Device ID file not found at ${DEVICE_ID_FILE}. Run scripts/deployed-device-registration.sh first or set CROWDPM_DEVICE_ID." >&2
     exit 1
   fi
 
@@ -492,7 +492,7 @@ INGEST_OUT="${TMP_DIR}/ingest.json"
 write_payload_to_file "${1:-}" "${RAW_PAYLOAD_FILE}"
 POINT_COUNT="$(normalize_batch_file "${RAW_PAYLOAD_FILE}" "${NORMALIZED_PAYLOAD_FILE}" "${DEVICE_ID}" "${DEFAULT_TIMESTAMP}")"
 
-print_section "Live Target"
+print_section "Deployed Target"
 echo "API base: ${API_BASE}"
 echo "Ingest URL: ${INGEST_URL}"
 echo "Key file: ${KEY_FILE}"

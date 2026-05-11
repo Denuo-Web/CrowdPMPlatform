@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const DEFAULT_API_BASE = process.env.CROWDPM_API_BASE
-  ?? "http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi";
+  ?? "http://localhost:5001/crowdpm-local/us-central1/crowdpmApi";
 const DEFAULT_INGEST_URL = process.env.CROWDPM_INGEST_URL
   ?? DEFAULT_API_BASE.replace(/crowdpmApi\/?$/u, "ingestGateway");
 const DEFAULT_DEVICE_ID_FILE = process.env.CROWDPM_DEVICE_ID_FILE ?? ".device-id";
@@ -416,7 +416,7 @@ async function main() {
 
   if (contentType.includes("text/html")) {
     console.error("Received HTML from /device/start. Point --api at the Functions base, not hosting.");
-    console.error("Example: --api http://localhost:5001/demo-crowdpm/us-central1/crowdpmApi");
+    console.error("Example: --api http://localhost:5001/crowdpm-local/us-central1/crowdpmApi");
     console.error("Body preview:");
     console.error(rawBody.slice(0, 400));
     process.exitCode = 1;

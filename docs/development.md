@@ -1,238 +1,127 @@
-# CrowdPM Platform – Local Development Guide
+# Local Development
 
-This document is the single place to learn how to clone the repository, configure required keys, and run the full CrowdPM stack **locally using the Firebase Emulator Suite**. Everything here is sequential—start at Step 1 and work down.
+This guide is the canonical local workflow. It runs the frontend and Firebase services against emulators only.
 
----
+## 1. Runtime
 
-## 1. What You Will Accomplish
-1. Prepare your workstation with the required tooling.
-2. Clone the repo and install dependencies.
-3. Configure local environment variables (.env files only).
-4. Launch the emulator + frontend stack with `pnpm dev`.
-5. Verify the API, frontend, and ingest pipeline.
-6. Run tests before opening a pull request.
-
-Remote demo/production deploys are intentionally excluded.
-
----
-
-## 2. Prerequisites (install once on your machine)
-- **Python 3.12**
-- **Node.js 24.x** – install with nvm, Volta, fnm, Homebrew, or download from nodejs.org.
-- **pnpm 10.x** – `npm install -g pnpm@10`.
-- **Firebase CLI** – `npm install -g firebase-tools`; authenticate with `firebase login`.
-- **Google Cloud CLI** – `curl -fsS https://sdk.cloud.google.com | bash`, then `gcloud auth login` (optional, useful for broader GCP tooling).
-- **Git** – any modern version (2.34+).
-- **Java JDK 25** – required by Firebase emulators. Visit [Install guide](docs/INSTALL-openjdk25-linux.md)
-
-Once installed, confirm versions:
 ```bash
-node -v              # expect v24.x
-pnpm -v              # expect 10.x
-firebase --version   # expect 14.x
-gcloud -v            # expect Google Cloud SDK 542.x + others
-java --version       # expect openjdk 25 + others
-```
-
----
-
-## 3. Clone the Repository
-```bash
-git clone git@github.com:denuoweb/CrowdPMPlatform.git
-cd CrowdPMPlatform
-```
-(Use HTTPS if you prefer: `git clone https://github.com/denuoweb/CrowdPMPlatform.git`.)
-
-Optional Git configuration for this repo:
-```bash
-git config user.name "Full Name"
-git config user.email "you@email.com"
-```
-
----
-
-## 4. Configure Firebase CLI for Local Emulators Only
-The emulator needs a project ID to namespace data. Use a fake local project so you never point at real Firebase projects by accident.
-
-1. Verify `.firebaserc` includes a `local` alias mapped to `demo-crowdpm`.
-2. Login to firebase (one time):
-   ```bash
-   firebase login
-   ```
-
-The example `.firebaserc` maps `local` to `demo-crowdpm`, satisfying Firebase's guidance to use IDs prefixed with `demo-` so the CLI treats it as a safe fake project.
-
-All local stack scripts pin Firebase CLI to `--project local`, so emulator runs always use the fake `demo-crowdpm` namespace.
-
-> **Important:** Never deploy using this alias. It is solely for emulator usage and will not map to a real Firebase project.
-
----
-
-## 5. Install Workspace Dependencies
-```bash
+source ~/.nvm/nvm.sh && nvm use 24
+corepack enable
+corepack prepare pnpm@10.18.1 --activate
 pnpm install
 ```
-This installs the dependencies for `frontend` and `functions` in a single step. Expect the first run to take a few minutes.
 
----
+Required tools:
 
-## 6. Create Local Environment Files
-You need two `.env.local` files—one for the frontend and one for Cloud Functions. Do not commit these files. 
+- Node.js 24.x
+- pnpm 10.x
+- Firebase CLI
+- Java JDK 25 for the Firebase emulators
+- Python 3.x for helper snippets
+- Git
+- Google Maps JavaScript API key and vector map ID
 
-We will be using individual API keys (should be within the free tier of use).
+Linux and macOS JDK notes are in `INSTALL-openjdk25-linux.md` and `INSTALL-openjdk25-mac.md`.
 
-### 6.1 `frontend/.env.local`
+## 2. Firebase Local Project
+
+Local development uses the Firebase project ID `crowdpm-local`.
+
+Do not deploy `crowdpm-local`. It is reserved for emulator workflows. The deployed environment uses a real Firebase project ID and is covered in `deployment.md`.
+
+## 3. Environment Files
+
+Create local copies:
+
 ```bash
 cp frontend/.env.example frontend/.env.local
-```
-- Update `VITE_GOOGLE_MAPS_API_KEY` with your valid key.
-- Set `VITE_GOOGLE_MAP_ID` to a vector map style ID from the Google Cloud Console (required for WebGL overlays). See below for specifics.
-   - In the Google Maps Platform -> Map management -> Create map ID
-   - Fill in the name and optional description.
-   - Map type: Javascript -> Vector.
-   - Optionally allow Tilt and Rotation.
-   - Save and copy the Map ID (looks like abcd1234efgh5678).
-- Populate the Firebase web app configuration values so email/password authentication can connect to your project:
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - `VITE_FIREBASE_APP_ID`
-   - `VITE_FIREBASE_AUTH_EMULATOR_HOST` (set to `127.0.0.1:9099` so the web app talks to the Auth emulator)
-   - You can find these in the Firebase Console under **Project settings → General → Your apps → Firebase SDK snippet** (pick the Web app template).
-
-
-- Restart the Vite dev server after editing; Vite reads env variables only at startup.
-
-### 6.2 `functions/.env.local`
-```bash
 cp functions/.env.example functions/.env.local
 ```
-- Replace the placeholder `DEVICE_TOKEN_PRIVATE_KEY` with a real Ed25519 private key (PKCS8 PEM). The emulator can reuse the sample key from `.env.example`, but production-like flows should generate their own.
-- Adjust `DEVICE_ACTIVATION_URL` and `DEVICE_VERIFICATION_URI` only when testing alternative activation sites.
-- (Optional) Override the default Auth emulator test account with `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME`. If you leave them unset, the emulator seeds `smoke-tester@crowdpm.dev / crowdpm-dev` for you each time `pnpm dev` runs.
 
----
+Frontend values that normally need editing:
 
-## 7. Start the Local Stack
-From the repo root:
+- `VITE_API_BASE=http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi`
+- `VITE_GOOGLE_MAPS_API_KEY`
+- `VITE_GOOGLE_MAP_ID`
+- `VITE_FIREBASE_*` web app values
+- `VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`
+
+Functions values that normally need editing:
+
+- `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign registration and access tokens.
+- `DEVICE_ACTIVATION_URL=http://localhost:5173/activate`
+- `DEVICE_VERIFICATION_URI=http://localhost:5173/activate`
+- `DEV_AUTH_USER_*`: optional local Auth emulator seed user override.
+
+Generate a local device token key when needed:
+
+```bash
+openssl genpkey -algorithm ED25519 -out /tmp/crowdpm-device-token-key.pem
+python3 - <<'PY'
+from pathlib import Path
+key = Path('/tmp/crowdpm-device-token-key.pem').read_text().replace('\n', '\\n')
+print(f'DEVICE_TOKEN_PRIVATE_KEY={key}')
+PY
+```
+
+Paste the printed line into `functions/.env.local`. Keep all `.env.local` files out of git.
+
+## 4. Start The Stack
+
 ```bash
 pnpm dev
 ```
-What happens:
-- `pnpm --filter frontend dev` starts Vite on `http://localhost:5173`.
-- `pnpm --filter functions emulate` runs `firebase emulators:start --project local` (Functions, Firestore, Storage, Auth, Emulator UI).
-- `pnpm --filter functions build:watch` compiles TypeScript sources into `functions/lib/` so the emulator loads fresh code as you save files.
 
-> **Heads-up:** The Storage rules runtime currently prints `sun.misc.Unsafe::arrayBaseOffset` deprecation warnings when running on newer JDKs. Firebase has not shipped a patched runtime yet; you can safely ignore these messages while developing.
+This runs:
 
-Leave this terminal open while you develop. Watch for immediate red errors—most failures are missing env vars or bad imports.
+- `crowdpm-frontend dev`: Vite at `http://localhost:5173`
+- Firebase emulators: Functions, Firestore, Storage, Auth, and Emulator UI
+- `crowdpm-functions build:watch`: TypeScript output into `functions/lib/`
 
----
+Health checks:
 
-## 8. Verify Everything Is Running
-Perform these checks each time you start the stack.
-
-### 8.1 Frontend
-Open `http://localhost:5173` in the browser. The React app should load without console errors.
-
-### 8.2 REST API Health Check
-From another terminal:
 ```bash
-curl http://127.0.0.1:5001/demo-crowdpm/us-central1/crowdpmApi/health
+curl http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi/health
+open http://localhost:4000
 ```
-Expected JSON: `{ "ok": true }`.
 
-### 8.3 Emulator UI
-Visit `http://localhost:4000` to inspect Firestore documents, Storage files, and emulator logs.
+The Functions emulator seeds `smoke-tester@crowdpm.dev` with password `crowdpm-dev` unless overridden in `functions/.env.local`.
 
-### 8.4 Default Auth Emulator User
-The Functions emulator now auto-creates a test account every time you run `pnpm dev`, so you no longer need to sign up manually after restarts. Log in with `smoke-tester@crowdpm.dev` / `crowdpm-dev` out of the box. Set `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, and `DEV_AUTH_USER_DISPLAY_NAME` in `functions/.env.local` if you prefer different credentials (they apply only to the local emulator).
+## 5. Smoke Tests
 
-If any of these steps fail, stop the stack (`Ctrl+C` twice) and restart after fixing the issue.
+Use the web app first:
 
----
+1. Open `http://localhost:5173`.
+2. Sign in with the local smoke-test user.
+3. Open the Smoke Test Lab.
+4. Run a smoke test and confirm a batch appears on the map and in the dashboard.
 
-## 9. Optional: Ingest Pipeline Smoke Test
-Run this whenever you change ingest code or schemas.
+Use the device emulator when testing pairing or DPoP behavior:
 
-1. Launch the local stack with `pnpm dev` (Functions emulator must have `DEVICE_TOKEN_PRIVATE_KEY` in `functions/.env.local`).
-2. Visit `http://localhost:5173`, open the **User Dashboard** tab, and click **Run Smoke Test**.
-3. The UI seeds `device-123`, completes the DPoP-based pairing flow, mints an access token, submits a payload with a 1-minute trail of points (including altitude/accuracy), and shows the resulting batch metadata. The Map tab auto-selects the device, draws the path, and renders a timeline slider that moves a single sphere along the route sized to GPS accuracy and elevated per the sample altitude.
-4. Open the Firebase Emulator UI (`http://localhost:4000`) if you want to double-check:
-   - Storage: `ingest/device-123/<batchId>.json`.
-   - Firestore: `devices/device-123/measures/<hourBucket>/rows`.
-   - Functions logs: look for `ingestService`/`ingestGateway` handling the batch.
-
-> Prefer a raw cURL workflow or custom payload? Call `POST /v1/admin/ingest-smoke-test` from the API directly with your overrides, or adapt the previous manual script (kept in repo history) for advanced debugging.
-
-Need to reset the environment? Use **Delete Smoke Test Data** in the User Dashboard tab, which clears the seeded device, storage batches, and map state so you can run the scenario again.
-
----
-
-## 10. Run Tests Before You Push
-Keep the repository healthy by running these regularly:
 ```bash
-# All workspace tests
-pnpm -r test
+pnpm device:pair -- --key .device-key.json --interval 3
+pnpm device:pair -- --mode ingest --key .device-key.json
+```
 
-# Static analysis
+The first command starts pairing, prints the user code, polls for approval, registers the key, and saves the device ID. The second command reuses the saved key and device ID to send an ingest batch.
+
+## 6. Quality Gates
+
+Run these before opening a pull request:
+
+```bash
 pnpm lint
-
-# Build TypeScript outputs (catches compile errors)
-pnpm -r build
+pnpm --filter crowdpm-functions test
+pnpm build
 ```
-Add Vitest suites in `functions/` and `frontend/` as new behaviour is introduced.
 
----
+## 7. Daily Workflow
 
-## 11. Daily Workflow Checklist
-1. Pull latest changes: `git pull --rebase`.
-2. Start stack: `pnpm dev`.
-3. Make code changes.
-4. Keep emulator UI open for quick data inspection.
-5. Run `pnpm -r test` + `pnpm -r build`.
-6. Stop stack with `Ctrl+C` when done.
-
----
-
-## 12. Quick Reference Commands
 ```bash
-# Start everything
+git checkout main
+git pull --rebase
+git checkout -b "$USER/short-description"
 pnpm dev
-
-# Only frontend (useful when API is already running elsewhere)
-pnpm --filter frontend dev
-
-# Only functions emulator
-pnpm --filter functions dev
-
-# Firestore emulator host for scripts (run in new shell)
-export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 ```
 
-## 13. Branching Strategy
-1. Pulet the latest change: `git pull --rebase`
-2. Create a new branch:  `git checkout -b $USERNAME/short_description` (example: git checkout -b msparhawk/wiki_update)
-3. Commit changes with meaningful message `git commit -am "Add branch strategy to documentation"`
-4. Push branch to github:  `git push origin msparhawk/wiki_update`
-5. Create a pull request:
-6. Ask for review on pull request via github, and discord
-
-```mermaid
-flowchart TD
-    A[Start on main branch] --> B[git pull --rebase]
-    B --> C["Create feature branch"]
-    C --> D[Make changes to code or docs]
-    D --> E["Commit changes"]
-    E --> F["Push branch to origin"]
-    F --> G[Create Pull Request on GitHub]
-    G --> H["Request review GitHub + Discord"]
-    H --> I{Approved?}
-    I -- No --> D
-    I -- Yes --> J[Merge into main]
-    J --> K[Done]
-```
-
-Keep any new discoveries in this guide so the next teammate can onboard even faster.
+Keep documentation changes close to the code they describe. Root-level setup belongs in `README.md` or this file; package-specific details belong in the package README.

@@ -13,13 +13,13 @@
   "scripts": {
     "prepare:functions-deps": "node scripts/prepare-functions-deps.mjs",
     "predev": "pnpm run prepare:functions-deps && pnpm --filter crowdpm-functions build",
-    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions exec firebase emulators:start --project demo-crowdpm\" \"pnpm --filter crowdpm-functions build:watch\"",
+    "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions exec firebase emulators:start --project crowdpm-local\" \"pnpm --filter crowdpm-functions build:watch\"",
     "device:pair": "node scripts/device-emulator.mjs",
     "device:simulate:osu": "node scripts/osu-bike-sim.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "eslint \"{functions,frontend}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
-    "deploy": "firebase deploy"
+    "deploy": "sh -c 'if [ \"${1:-}\" = \"--\" ]; then shift; fi; test -n \"${FIREBASE_PROJECT_ID:-}\" || { echo \"Set FIREBASE_PROJECT_ID to the deployed Firebase project ID.\" >&2; exit 1; }; firebase deploy --project \"$FIREBASE_PROJECT_ID\" \"$@\"' --"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.5",
