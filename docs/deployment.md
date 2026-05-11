@@ -121,7 +121,8 @@ Manual checks:
 
 - Open the deployed Hosting URL and confirm the app loads without console errors.
 - Sign in with a valid Firebase Auth user.
-- Start a node checkout and confirm Stripe Checkout only accepts US shipping addresses and shows tax added on top of the `$350` node price.
+- Start a node checkout and confirm Stripe Checkout only accepts US shipping addresses and shows tax added on top of the `$350` node price for a jurisdiction where the Stripe account has an active tax registration.
+- If Checkout shows `$0.00` tax with a valid address, inspect the Stripe transaction tax breakdown. `taxability_reason=not_collecting` means the account is not registered to collect tax in that jurisdiction.
 - Run or replay one known ingest flow and confirm a `202` response.
 - Confirm raw storage under `ingest/<deviceId>/<batchId>.json`.
 - Confirm Firestore batch metadata and measurement rows were written.

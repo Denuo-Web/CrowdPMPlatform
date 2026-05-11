@@ -16,7 +16,7 @@ type LegalDocumentLinkProps = {
   onOpen: (documentId: LegalDocumentId) => void;
 };
 
-const LAST_UPDATED = "May 10, 2026";
+const LAST_UPDATED = "May 11, 2026";
 const COMPANY_NAME = "Denuo Web, LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
@@ -124,8 +124,8 @@ function TermsOfService() {
       <UpdatedNotice />
       <P>
         These Terms of Service govern your access to and use of CrowdPM, a crowd-sourced PM2.5 air
-        quality monitoring platform operated by {COMPANY_NAME}. By creating an account or using the
-        hosted service, you agree to these terms.
+        quality monitoring platform operated by {COMPANY_NAME}. By creating an account, using the
+        hosted service, or purchasing CrowdPM node hardware, you agree to these terms.
       </P>
 
       <Section title="1. Service">
@@ -154,7 +154,41 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="3. Submitted Data">
+      <Section title="3. Node Hardware Purchases">
+        <P>
+          CrowdPM node hardware is sold by {COMPANY_NAME}. Node purchases are one-time hardware
+          purchases processed through Stripe Checkout. The listed node price is $350 per node with
+          standard US shipping included; applicable sales tax is calculated during checkout from the
+          shipping address.
+        </P>
+        <P>
+          We currently accept node orders only for shipping addresses in the United States. You are
+          responsible for providing accurate contact, billing, and shipping information and for any
+          local requirements that apply to deploying, powering, mounting, or operating the hardware.
+        </P>
+        <P>
+          Unless a different shipping estimate is stated at checkout or in an order confirmation, we
+          expect to ship node hardware within 30 days after completed payment. If we cannot ship
+          within the stated time or, if no time was stated, within 30 days, we will contact you with
+          a revised shipping date and the option to cancel the unshipped order for a prompt refund.
+        </P>
+        <P>
+          Contact us within 30 days after delivery if a node arrives damaged, defective, or
+          materially different from what you ordered. We may ask for reasonable troubleshooting
+          details, photographs, diagnostic information, or return of the hardware before issuing a
+          replacement, repair, or refund. Shipping charges included in the node price are not
+          separately refundable except where required by law or where the entire unshipped order is
+          cancelled. This policy does not limit rights that cannot be waived under applicable law.
+        </P>
+        <P>
+          Node hardware, firmware, sensors, battery components, GPS, wireless networking, and
+          environmental measurements are provided for community, research, and educational use. They
+          are not certified safety, medical, emergency, industrial hygiene, or regulatory monitoring
+          equipment.
+        </P>
+      </Section>
+
+      <Section title="4. Submitted Data">
         <P>
           You keep whatever rights you have in sensor data and other content you submit. You grant
           {` ${COMPANY_NAME} `}a license to host, store, process, analyze, reproduce, moderate,
@@ -175,7 +209,7 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="4. Acceptable Use">
+      <Section title="5. Acceptable Use">
         <BulletList>
           <Bullet>Do not interfere with the service, bypass access controls, or probe systems without permission.</Bullet>
           <Bullet>Do not submit malicious, fraudulent, misleading, unlawful, or privacy-invasive data.</Bullet>
@@ -184,7 +218,7 @@ function TermsOfService() {
         </BulletList>
       </Section>
 
-      <Section title="5. Moderation and Availability">
+      <Section title="6. Moderation and Availability">
         <P>
           CrowdPM may quarantine, hide, delete, or relabel batches; revoke or suspend devices; disable
           accounts; adjust roles; and preserve audit records where needed to operate the service,
@@ -197,7 +231,7 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="6. Open Source and Commercial Licensing">
+      <Section title="7. Open Source and Commercial Licensing">
         <P>
           Source code use is governed by the separate CrowdPM license, not by these service terms.
           Review the License modal and the repository license before copying, modifying, deploying,
@@ -205,7 +239,7 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="7. Disclaimers and Liability">
+      <Section title="8. Disclaimers and Liability">
         <P>
           CrowdPM is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind. To the
           fullest extent permitted by law, {COMPANY_NAME} disclaims implied warranties including
@@ -215,11 +249,16 @@ function TermsOfService() {
         <P>
           To the fullest extent permitted by law, {COMPANY_NAME} will not be liable for indirect,
           incidental, special, consequential, exemplary, or punitive damages, or for loss of data,
-          profits, goodwill, or service availability arising from CrowdPM.
+          profits, goodwill, service availability, hardware availability, measurement accuracy, or
+          device operation arising from CrowdPM.
+        </P>
+        <P>
+          Nothing in these terms limits any consumer warranty, refund, cancellation, or other rights
+          that cannot be waived under applicable law.
         </P>
       </Section>
 
-      <Section title="8. Changes and Contact">
+      <Section title="9. Changes and Contact">
         <P>
           We may update these terms by posting revised terms in the service. Continued use after an
           update means you accept the revised terms.
@@ -251,14 +290,17 @@ function PrivacyPolicy() {
           <Bullet>User settings, including default batch visibility, map/rendering preferences, and theme preferences.</Bullet>
           <Bullet>Device records, including device IDs, optional device names, owner IDs, model/version, status, fingerprints, public key material, pairing codes, token records, and last-seen timestamps.</Bullet>
           <Bullet>Measurement and batch data, including PM2.5 readings, pollutant/unit, latitude, longitude, altitude, precision, timestamp, flags, batch IDs, visibility, moderation state, storage paths, and related metadata.</Bullet>
+          <Bullet>Node purchase records, including Stripe Checkout session IDs, payment status, customer contact details, billing and shipping addresses, order totals, tax amounts, shipping details, receipts, refunds, support messages, and related fulfillment records.</Bullet>
           <Bullet>Moderation and administration records, including moderator user IDs, role changes, disabled account status, moderation reasons, and audit records.</Bullet>
           <Bullet>Technical and security data, including IP address or network hints, request headers, logs, rate-limit keys, browser/device information available to the service, and error diagnostics.</Bullet>
           <Bullet>Local browser storage, including recent map zoom, timeline position, smoke-test selections, and cached batch data used to keep the interface responsive.</Bullet>
           <Bullet>Communications you send to us, including email or support messages.</Bullet>
         </BulletList>
         <P>
-          As currently implemented, CrowdPM does not include payment processing, third-party
-          advertising analytics, or marketing pixels in the application code.
+          Payment card details are processed by Stripe. CrowdPM receives transaction and fulfillment
+          metadata from Stripe but does not store full payment card numbers in the application
+          database. As currently implemented, CrowdPM does not include third-party advertising
+          analytics or marketing pixels in the application code.
         </P>
       </Section>
 
@@ -266,6 +308,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>Provide authentication, device pairing, ingest, map display, dashboards, moderation, and administration features.</Bullet>
           <Bullet>Store and process sensor measurements, enforce visibility choices, and show public batches on the map and public API.</Bullet>
+          <Bullet>Process node hardware purchases, calculate tax, ship orders, send receipts, handle refunds or replacements, and respond to order support requests.</Bullet>
           <Bullet>Protect the service through rate limiting, abuse detection, access controls, logging, audits, token revocation, and troubleshooting.</Bullet>
           <Bullet>Save preferences and improve reliability, usability, and performance.</Bullet>
           <Bullet>Respond to support, licensing, security, or legal requests.</Bullet>
@@ -288,6 +331,8 @@ function PrivacyPolicy() {
       <Section title="4. How We Share Information">
         <BulletList>
           <Bullet>With Google Firebase and Google Cloud services used for authentication, hosting, functions, Firestore, storage, and operational logs.</Bullet>
+          <Bullet>With Stripe for payment processing, sales tax calculation, checkout, receipts, fraud prevention, refunds, and related payment operations.</Bullet>
+          <Bullet>With shipping, fulfillment, repair, or customer-support providers where needed to deliver or support node hardware orders.</Bullet>
           <Bullet>With the public, when you or a device under your account submits public approved batch data.</Bullet>
           <Bullet>With authorized moderators and administrators who need access to operate, secure, moderate, or support CrowdPM.</Bullet>
           <Bullet>When required to comply with law, protect rights and safety, investigate abuse, or enforce terms.</Bullet>
@@ -300,10 +345,11 @@ function PrivacyPolicy() {
 
       <Section title="5. Retention and Deletion">
         <P>
-          Account, device, settings, token, audit, log, and measurement records are retained for as
-          long as needed to provide CrowdPM, maintain integrity of the shared dataset, comply with
-          legal obligations, resolve disputes, and enforce terms. Batch deletion in the dashboard
-          removes the stored payload and batch record for that batch.
+          Account, device, settings, token, audit, log, purchase, fulfillment, support, and
+          measurement records are retained for as long as needed to provide CrowdPM, maintain
+          integrity of the shared dataset, fulfill orders, comply with tax and legal obligations,
+          resolve disputes, and enforce terms. Batch deletion in the dashboard removes the stored
+          payload and batch record for that batch.
         </P>
         <P>
           You may request access, correction, export, or deletion of personal information by contacting
@@ -395,7 +441,21 @@ function LicenseTerms() {
         </P>
       </Section>
 
-      <Section title="4. Public Dataset">
+      <Section title="4. Hardware and Embedded Software">
+        <P>
+          Buying CrowdPM node hardware transfers ownership of the physical device only. It does not
+          transfer ownership of CrowdPM source code, firmware, trademarks, datasets, hosted service
+          features, or third-party software included with or used by the device.
+        </P>
+        <P>
+          Any CrowdPM firmware, setup scripts, examples, or application code included with a node are
+          licensed under the applicable repository license or separate written commercial license.
+          Third-party hardware, firmware, operating system packages, and libraries remain subject to
+          their own terms.
+        </P>
+      </Section>
+
+      <Section title="5. Public Dataset">
         <P>
           Public approved measurements may be displayed through CrowdPM maps and public API responses.
           Because public data can be copied by others, do not mark a batch public unless you are
@@ -403,7 +463,7 @@ function LicenseTerms() {
         </P>
       </Section>
 
-      <Section title="5. Trademarks and Third-Party Software">
+      <Section title="6. Trademarks and Third-Party Software">
         <P>
           The names CrowdPM, Denuo Web, and related logos or branding are not licensed for unrelated
           commercial branding unless {COMPANY_NAME} grants that permission separately. CrowdPM also
@@ -411,11 +471,11 @@ function LicenseTerms() {
         </P>
       </Section>
 
-      <Section title="6. No Warranty">
+      <Section title="7. No Warranty">
         <P>
-          CrowdPM code, datasets, and hosted service features are provided without warranty to the
-          fullest extent permitted by law. See the repository license and Terms of Service for
-          warranty and liability details.
+          CrowdPM code, datasets, hosted service features, and embedded software are provided without
+          warranty to the fullest extent permitted by law. See the repository license and Terms of
+          Service for hardware, software, warranty, and liability details.
         </P>
       </Section>
 
