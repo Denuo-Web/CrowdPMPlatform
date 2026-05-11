@@ -9,6 +9,7 @@ import {
   disposeGoogleMapsOverlayExternalFramebuffer,
   patchGoogleMapsOverlayExternalFramebuffer
 } from "../lib/googleMapsOverlayInterop";
+import { logError, logWarning } from "../lib/logger";
 import { canCaptureCanvas } from "../lib/videoExport";
 
 type MeasurementPoint = {
@@ -337,7 +338,10 @@ function createCompositeCaptureSession(root: HTMLDivElement | null): Map3DCaptur
         context.drawImage(canvas, dx, dy, rect.width, rect.height);
       }
       catch (err) {
-        console.warn("Unable to composite map canvas layer for export.", err);
+        logWarning("Unable to composite map canvas layer for export.", {
+          width: rect.width,
+          height: rect.height
+        }, err);
       }
     });
   };
@@ -447,7 +451,10 @@ async function createStreamBackedCaptureSession(
         context.drawImage(canvas, dx, dy, rect.width, rect.height);
       }
       catch (err) {
-        console.warn("Unable to composite map canvas layer for export.", err);
+        logWarning("Unable to composite map canvas layer for export.", {
+          width: rect.width,
+          height: rect.height
+        }, err);
       }
     });
   };
@@ -621,7 +628,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
       const mapId = import.meta.env.VITE_GOOGLE_MAP_ID;
       if (!mapId) {
-        console.error("VITE_GOOGLE_MAP_ID is not configured; unable to initialize WebGL overlay.");
+        logError("VITE_GOOGLE_MAP_ID is not configured; unable to initialize WebGL overlay.");
         return;
       }
 
@@ -676,7 +683,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       if (cancelled || divRef.current !== element) return;
 
       if (!overlaySupported) {
-        console.warn("WebGLOverlayView is not supported in this environment; falling back to standard map rendering.");
+        logWarning("WebGLOverlayView is not supported in this environment; falling back to standard map rendering.");
         return;
       }
 

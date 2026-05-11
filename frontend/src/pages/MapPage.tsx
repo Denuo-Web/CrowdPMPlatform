@@ -15,6 +15,7 @@ import {
 } from "../lib/api";
 import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
 import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
+import { logWarning } from "../lib/logger";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet, scopedStorageKey } from "../lib/storage";
 import {
   detectCanvasVideoExportSupport,
@@ -424,7 +425,10 @@ export default function MapPage({
               return await fetchPublicBatchDetail(batch.deviceId, batch.batchId);
             }
             catch (err) {
-              console.warn("Unable to load public batch detail", batch.deviceId, batch.batchId, err);
+              logWarning("Unable to load public batch detail", {
+                deviceId: batch.deviceId,
+                batchId: batch.batchId
+              }, err);
               return null;
             }
           })

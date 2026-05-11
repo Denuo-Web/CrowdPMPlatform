@@ -5,13 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  node-forge: 1.4.0
   qs: 6.15.1
-  jsonwebtoken: 9.0.3
-  '@google-cloud/storage': 7.19.0
   '@tootallnate/once': 3.0.1
-  fast-uri: 3.1.2
-  fast-xml-builder: 1.2.0
 
 importers:
 
@@ -62,18 +57,9 @@ importers:
       '@googlemaps/js-api-loader':
         specifier: 2.0.2
         version: 2.0.2
-      '@luma.gl/core':
-        specifier: 9.3.3
-        version: 9.3.3
       '@luma.gl/engine':
         specifier: 9.3.3
         version: 9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3))
-      '@luma.gl/gltf':
-        specifier: 9.3.3
-        version: 9.3.3(@luma.gl/core@9.3.3)(@luma.gl/engine@9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3)))(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3))
-      '@luma.gl/shadertools':
-        specifier: 9.3.3
-        version: 9.3.3(@luma.gl/core@9.3.3)
       '@radix-ui/react-dialog':
         specifier: 1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

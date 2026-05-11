@@ -14,6 +14,7 @@ import {
   type DeviceSummary,
 } from "../lib/api";
 import { APP_ROUTES } from "../lib/appRoutes";
+import { logError } from "../lib/logger";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
@@ -284,7 +285,7 @@ export default function UserDashboard({ onRequestActivation, onOpenThemeModal, r
       setTimeout(() => setActivationLinkMessage(null), 2000);
     }
     catch (err) {
-      console.error(err);
+      logError("Unable to copy activation link", { activationUrl }, err);
       setActivationLinkMessage("Unable to copy link.");
     }
   }, [activationUrl]);
