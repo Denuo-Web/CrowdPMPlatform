@@ -21,6 +21,7 @@ const COMPANY_NAME = "Denuo Web, LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
 const COMPANY_MAILING_ADDRESS = "1292 High Street PMB 222, Eugene, OR 97401";
+const AMAZON_ASSOCIATE_DISCLOSURE = "As an Amazon Associate I earn from qualifying purchases.";
 
 const legalDocumentTitles: Record<LegalDocumentId, string> = {
   terms: "Terms of Service",
@@ -239,7 +240,24 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="8. Disclaimers and Liability">
+      <Section title="8. Affiliate and Hardware Links">
+        <P>
+          {AMAZON_ASSOCIATE_DISCLOSURE} Some hardware links, including Amazon
+          Associates or Amazon Influencer links, are paid referral links. If you
+          click a paid link and buy something, {COMPANY_NAME} may receive a
+          commission at no additional cost to you.
+        </P>
+        <P>
+          Third-party retailers are independent from CrowdPM. Product availability,
+          pricing, shipping, returns, warranties, taxes, safety information, and
+          retailer customer service are handled by the retailer or manufacturer,
+          not CrowdPM, unless you buy CrowdPM hardware directly through our
+          checkout. Affiliate links do not mean Amazon or any retailer sponsors,
+          endorses, or is responsible for CrowdPM.
+        </P>
+      </Section>
+
+      <Section title="9. Disclaimers and Liability">
         <P>
           CrowdPM is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind. To the
           fullest extent permitted by law, {COMPANY_NAME} disclaims implied warranties including
@@ -258,7 +276,7 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="9. Changes and Contact">
+      <Section title="10. Changes and Contact">
         <P>
           We may update these terms by posting revised terms in the service. Continued use after an
           update means you accept the revised terms.
@@ -343,7 +361,24 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="5. Retention and Deletion">
+      <Section title="5. Affiliate Links and Third-Party Retailers">
+        <P>
+          {AMAZON_ASSOCIATE_DISCLOSURE} If you click an Amazon Associates,
+          Amazon Influencer, or other third-party retailer link, you leave
+          CrowdPM and the retailer may collect information about your visit,
+          browser, device, account, purchases, and referral source under its own
+          privacy notice.
+        </P>
+        <P>
+          Amazon or another affiliate program may identify that a click came from
+          a CrowdPM paid referral link so purchases can be attributed. We may
+          receive referral or commission reports, but retailer purchases are
+          processed by the retailer and we do not receive your retailer account
+          credentials or full payment card details from those links.
+        </P>
+      </Section>
+
+      <Section title="6. Retention and Deletion">
         <P>
           Account, device, settings, token, audit, log, purchase, fulfillment, support, and
           measurement records are retained for as long as needed to provide CrowdPM, maintain
@@ -358,7 +393,7 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="6. Security">
+      <Section title="7. Security">
         <P>
           CrowdPM uses Firebase Authentication, owner checks, role-based authorization, device
           pairing, token controls, DPoP-oriented device flows, rate limits, moderation controls, and
@@ -366,7 +401,7 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="7. Children">
+      <Section title="8. Children">
         <P>
           CrowdPM is not directed to children under 13, and we do not knowingly collect personal
           information from children under 13. Contact us if you believe a child provided personal
@@ -374,7 +409,7 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="8. Contact">
+      <Section title="9. Contact">
         <P>
           Contact {COMPANY_NAME} at{" "}
           <Link href={`mailto:${COMPANY_CONTACT_EMAIL}`} color="iris" highContrast>
@@ -471,7 +506,22 @@ function LicenseTerms() {
         </P>
       </Section>
 
-      <Section title="7. No Warranty">
+      <Section title="7. Affiliate Links and Third-Party Materials">
+        <P>
+          Affiliate disclosures and retailer links are not software, content, or
+          dataset licenses. Amazon Associates, Amazon Influencer, and other
+          retailer links do not grant rights to use Amazon marks, product content,
+          seller content, third-party product materials, or retailer data except
+          as allowed by the applicable owner and program terms.
+        </P>
+        <P>
+          Paid referral links do not mean Amazon or any retailer sponsors,
+          endorses, licenses, or is responsible for CrowdPM, the CrowdPM source
+          code, the hosted service, or submitted data.
+        </P>
+      </Section>
+
+      <Section title="8. No Warranty">
         <P>
           CrowdPM code, datasets, hosted service features, and embedded software are provided without
           warranty to the fullest extent permitted by law. See the repository license and Terms of

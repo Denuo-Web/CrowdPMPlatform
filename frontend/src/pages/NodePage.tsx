@@ -31,6 +31,7 @@ const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-cor
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
 const DHT22_URL = "https://www.amazon.com/dp/B0DSW7D3S9?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=8a2b4c580bdeb37c7affe8f834a72a28&language=en_US&ref_=as_li_ss_tl";
 const GPS_FEATHERWING_URL = "https://www.amazon.com/Adafruit-3133-Ultimate-GPS-FeatherWing/dp/B01G00Q5HA?crid=1X53I1W4DISNM&dib=eyJ2IjoiMSJ9.JSJlLK9_Sq4L3fPvtooh22eJd9cKJC_-7hcW-ui76Bp20Og4vxbBOm2Tam5u3WxPE9aWvKesoatagCEyl6mbZ6AIbRm1MMX8aLm099jTuCwhTSdD-5lqK_Sv2CXTZzl-o82ilDBVsJ4klAAy19Sm-cpgLgB_oHfKJyn15NJGxbsPqmZCALgzYTBmiPqQpasO5nqDuQ5TDYuCgy3Uliefxw.xLDgaCkY86xRO4swaIcX-0BaEAlz6EGBdfd1h_6GYTY&dib_tag=se&keywords=Adafruit+Ultimate+GPS+Pi+HAT&qid=1778399043&sprefix=adafruit+ultimate+gps+pi+hat%2Caps%2C326&xpid=KcdfhSO3ZXN-G&linkCode=ll2&tag=lipbalm01-20&linkId=6d5d342f3cbe67d00de8ec0f4c9fd577&language=en_US&ref_=as_li_ss_tl";
+const SD_CARD_URL = "https://www.amazon.com/SanDisk-Ultra-microSDHC-Memory-Adapter/dp/B08GY9NYRM?crid=2KSLXNGFQ6QTU&dib=eyJ2IjoiMSJ9.cC5cEhilIJZ8uIFkRCnkltIEzWQtFgQq-85a7sC5zOBuxlNn7kV6Acl2AEPksDanzwUdhsAYtVHVcpBMsxrySYzrIn8iKKPReGo-n6Sm25xY5h_s3gxOBvxB6biVeYvbSVMpdqq0V04ys73DryoywF8MfCrJ0bFo5CPk8JW5oaqJQVcZYqtWJvDbeCPKeUUgPqh7fX4boOjRY1ycBDPa5Q.mpsFJuv4tSWFqRD0s4gHz8UtruEG4l92pbms5TJAAjU&dib_tag=se&keywords=sandisk%2Bextreme%2B32%2Bsd&qid=1778531180&sprefix=sandisk%2Bextreme%2B%2Bsd%2Caps%2C491&xpid=Z4LCntxaYnMES&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=ecb68eedf02441ad989f4b465c8037ba&language=en_US&ref_=as_li_ss_tl";
 const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=5e49b7bc297b33e721e671312e45f1a1&language=en_US&ref_=as_li_ss_tl";
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
@@ -315,8 +316,9 @@ export default function NodePage() {
           local setup controls, and integrated battery management.
         </Text>
         <Text size="1" color="gray" as="p">
-          Hardware part links are commission links. Equivalent parts can be used
-          when they match the electrical and mechanical requirements.
+          As an Amazon Associate I earn from qualifying purchases. Hardware part
+          links are paid links. Equivalent parts can be used when they match the
+          electrical and mechanical requirements.
         </Text>
 
         <InfoTable
@@ -337,6 +339,10 @@ export default function NodePage() {
             [
               <PartLink key="gps-featherwing" href={GPS_FEATHERWING_URL}>Adafruit Ultimate GPS FeatherWing</PartLink>,
               "Latitude, longitude, time, and optional PPS signal",
+            ],
+            [
+              <PartLink key="sd-card" href={SD_CARD_URL}>SanDisk Ultra microSDHC memory card</PartLink>,
+              "MicroSD storage for Raspberry Pi OS, local readings, and offline buffering",
             ],
             [
               <PartLink key="usb-to-ttl" href={USB_TO_TTL_URL}>USB-to-TTL serial adapter</PartLink>,
