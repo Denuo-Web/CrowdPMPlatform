@@ -5,8 +5,7 @@ info:
   description: >
     API used by CrowdPM to manage devices and retrieve pollution measurements.
     Error responses use a normalized JSON format with a required `error` field and
-    optional `message`. The `error_description` alias is still emitted for compatibility
-    and is deprecated.
+    optional `message`.
   license:
     name: Proprietary
     url: https://crowdpmplatform.web.app
@@ -785,10 +784,6 @@ components:
         message:
           type: string
           description: Human-readable error detail.
-        error_description:
-          type: string
-          deprecated: true
-          description: Deprecated alias for `message`.
       additionalProperties: true
     DeviceStatus:
       type: string
@@ -805,9 +800,6 @@ components:
         name:
           type: string
           description: Friendly name supplied by the owner.
-        ownerUserId:
-          type: string
-          description: Primary Firebase UID associated with the device. Legacy field retained for backwards compatibility.
         ownerUserIds:
           type: array
           description: All Firebase UIDs that can access the device.
@@ -831,7 +823,7 @@ components:
       required:
         - id
         - name
-        - ownerUserId
+        - ownerUserIds
         - status
         - createdAt
     ActivationSession:

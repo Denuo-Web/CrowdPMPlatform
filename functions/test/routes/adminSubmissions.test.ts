@@ -199,7 +199,6 @@ describe("GET /v1/admin/submissions", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have permission to access this resource.",
-      error_description: "You do not have permission to access this resource.",
     });
     await app.close();
   });
@@ -246,7 +245,6 @@ describe("PATCH /v1/admin/submissions/:deviceId/:batchId", () => {
     expect(res.json()).toEqual({
       error: "not_found",
       message: "Batch not found.",
-      error_description: "Batch not found.",
     });
     await app.close();
   });

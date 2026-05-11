@@ -61,15 +61,10 @@ function toSummary(record: FirebaseAuth.UserRecord): AdminUserSummary {
 async function revokeOwnedDeviceTokens(uid: string): Promise<string[]> {
   if (!uid) return [];
   const devices = db().collection("devices");
-  const [multiOwnerSnap, legacySnap] = await Promise.all([
-    devices.where("ownerUserIds", "array-contains", uid).get(),
-    devices.where("ownerUserId", "==", uid).get(),
-  ]);
+  const ownedDevicesSnap = await devices.where("ownerUserIds", "array-contains", uid).get();
 
   const ids = new Set<string>();
-  [multiOwnerSnap, legacySnap].forEach((snap) => {
-    snap.docs.forEach((doc) => ids.add(doc.id));
-  });
+  ownedDevicesSnap.docs.forEach((doc) => ids.add(doc.id));
 
   await Promise.all(Array.from(ids).map((deviceId) => revokeTokensForDevice(deviceId)));
   return Array.from(ids);

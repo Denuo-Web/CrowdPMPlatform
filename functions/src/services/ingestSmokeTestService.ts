@@ -179,10 +179,8 @@ export class IngestSmokeTestService {
         publicDeviceId,
         ownerScope: ownerSegment,
       };
-      if (primaryOwnerId) {
-        payload.ownerUserId = primaryOwnerId;
-      }
       if (ownerIds.length) {
+        payload.accId = primaryOwnerId;
         payload.ownerUserIds = this.deps.arrayUnion(...ownerIds);
       }
       await this.deps.db.collection("devices").doc(deviceId).set(payload, { merge: true });

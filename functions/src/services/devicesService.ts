@@ -48,7 +48,6 @@ export class DevicesService {
     const createdAt = this.deps.now().toISOString();
     await ref.set({
       name: params.name,
-      ownerUserId: userId,
       ownerUserIds: [userId],
       status: "ACTIVE",
       createdAt,
@@ -82,6 +81,7 @@ export class DevicesService {
       : null;
 
     const extras = data && typeof data === "object" ? { ...data } : {};
+    delete extras.ownerUserId;
 
     return {
       ...extras,
@@ -89,7 +89,6 @@ export class DevicesService {
       name: typeof data?.name === "string" ? data.name : null,
       status: typeof data?.status === "string" ? data.status : null,
       registryStatus: typeof data?.registryStatus === "string" ? data.registryStatus : null,
-      ownerUserId: typeof data?.ownerUserId === "string" ? data.ownerUserId : null,
       ownerUserIds,
       publicDeviceId: typeof data?.publicDeviceId === "string" ? data.publicDeviceId : null,
       ownerScope: typeof data?.ownerScope === "string" ? data.ownerScope : null,

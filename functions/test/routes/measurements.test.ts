@@ -107,7 +107,6 @@ describe("GET /v1/measurements", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     expect(mocks.fetchRange).not.toHaveBeenCalled();
     await app.close();
@@ -126,7 +125,6 @@ describe("GET /v1/measurements", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     expect(mocks.fetchRange).not.toHaveBeenCalled();
     await app.close();
@@ -161,7 +159,6 @@ describe("GET /v1/measurements", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have access to this device.",
-      error_description: "You do not have access to this device.",
     });
     await app.close();
   });
@@ -250,7 +247,6 @@ describe("GET /v1/measurements", () => {
     expect(res.json()).toEqual({
       error: "invalid_query",
       message: "bad query",
-      error_description: "bad query",
     });
     await app.close();
   });

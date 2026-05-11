@@ -9,7 +9,6 @@ type DocumentData = firestore.DocumentData;
 export type DeviceRecord = {
   id: string;
   accId: string;
-  ownerUserId: string;
   ownerUserIds: string[];
   model: string;
   version: string;
@@ -24,12 +23,11 @@ export type DeviceRecord = {
 
 function normalizeDevice(id: string, data: DocumentData | undefined): DeviceRecord | null {
   if (!data) return null;
-  const accId = typeof data.accId === "string" ? data.accId : (typeof data.ownerUserId === "string" ? data.ownerUserId : null);
+  const accId = typeof data.accId === "string" ? data.accId : null;
   if (!accId) return null;
-  const ownerUserId = typeof data.ownerUserId === "string" ? data.ownerUserId : accId;
   const ownerUserIds = Array.isArray(data.ownerUserIds)
     ? data.ownerUserIds.filter((uid): uid is string => typeof uid === "string" && uid.length > 0)
-    : [ownerUserId];
+    : [accId];
   const lowerRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : null;
   const allowedStatuses = ["active", "revoked", "suspended"] as const;
   const normalizedStatus = (lowerRegistryStatus && allowedStatuses.includes(lowerRegistryStatus as typeof allowedStatuses[number]))
@@ -38,7 +36,6 @@ function normalizeDevice(id: string, data: DocumentData | undefined): DeviceReco
   return {
     id,
     accId,
-    ownerUserId,
     ownerUserIds,
     model: typeof data.model === "string" ? data.model : "unknown",
     version: typeof data.version === "string" ? data.version : "unknown",
@@ -69,7 +66,6 @@ export async function registerDevice(args: {
   const ownerIds = [args.accountId];
   await db().collection("devices").doc(deviceId).set({
     accId: args.accountId,
-    ownerUserId: args.accountId,
     ownerUserIds: ownerIds,
     model: args.model,
     version: args.version,

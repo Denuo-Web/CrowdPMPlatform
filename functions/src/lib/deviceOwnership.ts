@@ -2,7 +2,6 @@ import type { firestore } from "firebase-admin";
 import { db } from "./fire.js";
 
 export type DeviceOwnershipFields = {
-  ownerUserId?: unknown;
   ownerUserIds?: unknown;
 };
 
@@ -17,8 +16,6 @@ function toOwnerId(value: unknown): string | null {
 export function normalizeOwnerIds(data: DeviceOwnershipFields | undefined): string[] {
   if (!data) return [];
   const ids = new Set<string>();
-  const primary = toOwnerId(data.ownerUserId);
-  if (primary) ids.add(primary);
   if (Array.isArray(data.ownerUserIds)) {
     for (const candidate of data.ownerUserIds) {
       const ownerId = toOwnerId(candidate);
@@ -38,18 +35,11 @@ export async function loadOwnedDeviceDocs(userId: string): Promise<{
   docs: Map<string, firestore.DocumentData>;
 }> {
   const collection = db().collection("devices");
-  const [multiOwnerSnap, legacySnap] = await Promise.all([
-    collection.where("ownerUserIds", "array-contains", userId).get(),
-    collection.where("ownerUserId", "==", userId).get(),
-  ]);
+  const ownedDevicesSnap = await collection.where("ownerUserIds", "array-contains", userId).get();
 
   const docs = new Map<string, firestore.DocumentData>();
-  [multiOwnerSnap, legacySnap].forEach((snap) => {
-    snap.forEach((doc) => {
-      if (!docs.has(doc.id)) {
-        docs.set(doc.id, doc.data());
-      }
-    });
+  ownedDevicesSnap.forEach((doc) => {
+    docs.set(doc.id, doc.data());
   });
 
   return { collection, docs };

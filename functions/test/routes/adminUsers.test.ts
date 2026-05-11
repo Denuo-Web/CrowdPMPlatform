@@ -62,14 +62,11 @@ const mockDb = {
     return {
       where: (field: string, op: string, value: string) => ({
         get: async () => {
-          if (op !== "==" && op !== "array-contains") {
+          if (op !== "array-contains") {
             throw new Error("unsupported query");
           }
           const matchingIds = Array.from(deviceOwnership.entries())
             .filter(([, owners]) => {
-              if (field === "ownerUserId" && op === "==") {
-                return owners[0] === value;
-              }
               if (field === "ownerUserIds" && op === "array-contains") {
                 return owners.includes(value);
               }
@@ -245,7 +242,6 @@ describe("PATCH /v1/admin/users/:uid", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have permission to access this resource.",
-      error_description: "You do not have permission to access this resource.",
     });
     await app.close();
   });

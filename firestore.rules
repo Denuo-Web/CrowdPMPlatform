@@ -9,13 +9,8 @@ service cloud.firestore {
       return authedUid() != null &&
         device != null &&
         device.data != null &&
-        (
-          device.data.ownerUserId == authedUid() ||
-          (
-            device.data.ownerUserIds != null &&
-            device.data.ownerUserIds.hasAny([authedUid()])
-          )
-        );
+        device.data.ownerUserIds != null &&
+        device.data.ownerUserIds.hasAny([authedUid()]);
     }
 
     function canReadDevice(deviceId) {

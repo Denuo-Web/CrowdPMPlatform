@@ -85,7 +85,7 @@ describe("IngestSmokeTestService", () => {
     expect(writes[0]).toMatchObject({
       path: "devices/scoped-device-1",
       data: expect.objectContaining({
-        ownerUserId: "user-1",
+        accId: "user-1",
         ownerScope: plan.ownerSegment,
       }),
     });

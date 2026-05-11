@@ -9,7 +9,6 @@ describe("toHttpError", () => {
     expect(normalized.body).toMatchObject({
       error: "invalid_payload",
       message: "Payload failed",
-      error_description: "Payload failed",
     });
   });
 
@@ -23,14 +22,13 @@ describe("toHttpError", () => {
     expect(normalized.body).toMatchObject({
       error: "invalid_request",
       message: "Validation failed",
-      error_description: "Validation failed",
       details: { fieldErrors: { user_code: ["Required"] } },
       poll_interval: 10,
     });
     expect(normalized.body).not.toHaveProperty("ignored");
   });
 
-  it("emits aliases when message is present and omits them when absent", () => {
+  it("emits message when present and omits it when absent", () => {
     const withoutMessage = toHttpError(httpError(400, "invalid_request"));
     expect(withoutMessage.body).toEqual({ error: "invalid_request" });
 
@@ -38,7 +36,6 @@ describe("toHttpError", () => {
     expect(withMessage.body).toEqual({
       error: "invalid_request",
       message: "invalid request",
-      error_description: "invalid request",
     });
   });
 
@@ -58,7 +55,6 @@ describe("toHttpError", () => {
     expect(normalized.body).toMatchObject({
       error: "bad_request",
       message: "boom",
-      error_description: "boom",
     });
   });
 

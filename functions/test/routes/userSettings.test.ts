@@ -198,7 +198,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "missing_fields",
       message: "Provide defaultBatchVisibility, interleavedRendering, or theme to update.",
-      error_description: "Provide defaultBatchVisibility, interleavedRendering, or theme to update.",
     });
     await app.close();
   });
@@ -217,7 +216,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "invalid_visibility",
       message: "defaultBatchVisibility must be 'public' or 'private'.",
-      error_description: "defaultBatchVisibility must be 'public' or 'private'.",
     });
     await app.close();
   });
@@ -236,7 +234,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "invalid_interleaved",
       message: "interleavedRendering must be boolean.",
-      error_description: "interleavedRendering must be boolean.",
     });
     await app.close();
   });
@@ -255,7 +252,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "invalid_theme",
       message: "theme contains an unsupported value.",
-      error_description: "theme contains an unsupported value.",
     });
     await app.close();
   });
@@ -269,7 +265,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     await app.close();
   });
@@ -288,7 +283,6 @@ describe("user settings routes", () => {
     expect(res.json()).toEqual({
       error: "db_down",
       message: "db_down",
-      error_description: "db_down",
     });
     await app.close();
   });

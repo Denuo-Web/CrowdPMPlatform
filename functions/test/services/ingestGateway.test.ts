@@ -76,7 +76,6 @@ describe("ingestGatewayHandler", () => {
     expect(res.payload).toMatchObject({
       error: "invalid_request",
       message: "missing bearer token",
-      error_description: "missing bearer token",
     });
   });
 
@@ -155,7 +154,6 @@ describe("ingestGatewayHandler", () => {
     expect(res.payload).toMatchObject({
       error: "device_forbidden",
       message: "device not allowed",
-      error_description: "device not allowed",
     });
   });
 });

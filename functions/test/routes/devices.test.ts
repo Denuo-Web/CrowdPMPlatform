@@ -142,7 +142,6 @@ describe("devices routes", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     await app.close();
   });
@@ -161,7 +160,6 @@ describe("devices routes", () => {
     expect(res.json()).toEqual({
       error: "not_found",
       message: "device missing",
-      error_description: "device missing",
     });
     await app.close();
   });
