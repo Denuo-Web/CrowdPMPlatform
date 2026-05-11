@@ -98,8 +98,8 @@ beforeEach(() => {
     url: "https://checkout.stripe.com/c/pay/cs_test_123",
     mode: "payment",
     currency: "usd",
-    amount_subtotal: 30000,
-    amount_total: 30000,
+    amount_subtotal: 35000,
+    amount_total: 35000,
   });
 });
 
@@ -130,9 +130,12 @@ describe("POST /v1/node-purchase/checkout-session", () => {
 
     expect(mocks.productsCreate).toHaveBeenCalledWith({
       name: "CrowdPM Node Hardware",
+      description: "Node hardware purchase with US shipping included.",
+      tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
-        unit_amount: 30000,
+        unit_amount: 35000,
+        tax_behavior: "exclusive",
       },
     });
     expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith({
@@ -143,6 +146,21 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         },
       ],
       mode: "payment",
+      automatic_tax: {
+        enabled: true,
+      },
+      billing_address_collection: "required",
+      shipping_address_collection: {
+        allowed_countries: ["US"],
+      },
+      custom_text: {
+        shipping_address: {
+          message: "We currently ship CrowdPM nodes only to addresses in the United States.",
+        },
+        submit: {
+          message: "Price includes US shipping. Applicable sales tax is calculated at checkout.",
+        },
+      },
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
     });
@@ -150,7 +168,9 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
-      unitAmount: 30000,
+      unitAmount: 35000,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
     });
     expect(dbStore.get("nodePurchaseSessions/cs_test_123")).toMatchObject({
       sessionId: "cs_test_123",
@@ -160,9 +180,10 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       mode: "payment",
       checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_123",
       currency: "usd",
-      unitAmount: 30000,
-      amountSubtotal: 30000,
-      amountTotal: 30000,
+      unitAmount: 35000,
+      automaticTaxEnabled: true,
+      amountSubtotal: 35000,
+      amountTotal: 35000,
     });
     await app.close();
   });
@@ -172,7 +193,9 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_existing",
       defaultPriceId: "price_existing",
       currency: "usd",
-      unitAmount: 30000,
+      unitAmount: 35000,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
     });
     const app = await buildApp();
 
@@ -200,6 +223,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       defaultPriceId: "price_old",
       currency: "usd",
       unitAmount: 2000,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
     });
     const app = await buildApp();
 
@@ -222,7 +247,36 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
-      unitAmount: 30000,
+      unitAmount: 35000,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
+    });
+    await app.close();
+  });
+
+  it("recreates the Stripe catalog when the stored tax configuration is missing", async () => {
+    dbStore.set("paymentCatalog/nodeHardware", {
+      productId: "prod_old",
+      defaultPriceId: "price_old",
+      currency: "usd",
+      unitAmount: 35000,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.productsCreate).toHaveBeenCalledTimes(1);
+    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+      productId: "prod_node_123",
+      defaultPriceId: "price_node_123",
+      currency: "usd",
+      unitAmount: 35000,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
     });
     await app.close();
   });
@@ -249,9 +303,31 @@ describe("POST /v1/payments/stripe/webhook", () => {
           },
           customer_email: "buyer@example.com",
           payment_intent: "pi_123",
+          automatic_tax: {
+            enabled: true,
+            status: "complete",
+          },
+          collected_information: {
+            shipping_details: {
+              name: "Buyer Example",
+              address: {
+                city: "Seattle",
+                country: "US",
+                line1: "123 Pike St",
+                line2: "Unit 4",
+                postal_code: "98101",
+                state: "WA",
+              },
+            },
+          },
+          total_details: {
+            amount_discount: 0,
+            amount_shipping: 0,
+            amount_tax: 3150,
+          },
           currency: "usd",
-          amount_subtotal: 30000,
-          amount_total: 30000,
+          amount_subtotal: 35000,
+          amount_total: 38150,
           url: null,
         },
       },
@@ -285,8 +361,24 @@ describe("POST /v1/payments/stripe/webhook", () => {
       customerEmail: "buyer@example.com",
       paymentIntentId: "pi_123",
       currency: "usd",
-      amountSubtotal: 30000,
-      amountTotal: 30000,
+      amountSubtotal: 35000,
+      amountTotal: 38150,
+      amountDiscount: 0,
+      amountShipping: 0,
+      amountTax: 3150,
+      automaticTaxEnabled: true,
+      automaticTaxStatus: "complete",
+      shippingDetails: {
+        name: "Buyer Example",
+        address: {
+          city: "Seattle",
+          country: "US",
+          line1: "123 Pike St",
+          line2: "Unit 4",
+          postalCode: "98101",
+          state: "WA",
+        },
+      },
     });
     await app.close();
   });

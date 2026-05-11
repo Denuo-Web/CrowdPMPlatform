@@ -8,7 +8,12 @@ const CATALOG_DOC_ID = "nodeHardware";
 const SESSION_COLLECTION = "nodePurchaseSessions";
 const NODE_HARDWARE_PRODUCT_NAME = "CrowdPM Node Hardware";
 const NODE_HARDWARE_CURRENCY = "usd";
-const NODE_HARDWARE_UNIT_AMOUNT = 30000;
+const NODE_HARDWARE_UNIT_AMOUNT = 35000;
+const NODE_HARDWARE_PRODUCT_TAX_CODE = "txcd_99999999";
+const NODE_HARDWARE_PRICE_TAX_BEHAVIOR: Stripe.Price.TaxBehavior = "exclusive";
+const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
+const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "Price includes US shipping. Applicable sales tax is calculated at checkout.";
+const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
 
 type NodeHardwareCatalog = {
@@ -16,6 +21,8 @@ type NodeHardwareCatalog = {
   defaultPriceId: string;
   currency: string;
   unitAmount: number;
+  taxCode: string;
+  taxBehavior: Stripe.Price.TaxBehavior;
 };
 
 export type NodePurchaseCheckoutSession = {
@@ -65,8 +72,18 @@ function readStoredCatalog(data: Record<string, unknown> | undefined): NodeHardw
   const defaultPriceId = typeof data?.defaultPriceId === "string" ? data.defaultPriceId.trim() : "";
   const currency = typeof data?.currency === "string" ? data.currency.trim().toLowerCase() : "";
   const unitAmount = typeof data?.unitAmount === "number" ? data.unitAmount : Number.NaN;
+  const taxCode = typeof data?.taxCode === "string" ? data.taxCode.trim() : "";
+  const taxBehavior = typeof data?.taxBehavior === "string" ? data.taxBehavior.trim() as Stripe.Price.TaxBehavior : "";
 
-  if (!productId || !defaultPriceId || !currency || !Number.isFinite(unitAmount) || unitAmount <= 0) {
+  if (
+    !productId
+    || !defaultPriceId
+    || !currency
+    || !Number.isFinite(unitAmount)
+    || unitAmount <= 0
+    || !taxCode
+    || (taxBehavior !== "exclusive" && taxBehavior !== "inclusive" && taxBehavior !== "unspecified")
+  ) {
     return null;
   }
 
@@ -75,12 +92,16 @@ function readStoredCatalog(data: Record<string, unknown> | undefined): NodeHardw
     defaultPriceId,
     currency,
     unitAmount,
+    taxCode,
+    taxBehavior,
   };
 }
 
 function isCurrentCatalog(catalog: NodeHardwareCatalog): boolean {
   return catalog.currency === NODE_HARDWARE_CURRENCY
-    && catalog.unitAmount === NODE_HARDWARE_UNIT_AMOUNT;
+    && catalog.unitAmount === NODE_HARDWARE_UNIT_AMOUNT
+    && catalog.taxCode === NODE_HARDWARE_PRODUCT_TAX_CODE
+    && catalog.taxBehavior === NODE_HARDWARE_PRICE_TAX_BEHAVIOR;
 }
 
 function checkoutRedirectUrls(): { successUrl: string; cancelUrl: string } {
@@ -88,6 +109,20 @@ function checkoutRedirectUrls(): { successUrl: string; cancelUrl: string } {
   return {
     successUrl: `${baseUrl}/node?checkout=success`,
     cancelUrl: `${baseUrl}/node?checkout=cancelled`,
+  };
+}
+
+function normalizeStripeAddress(address: Stripe.Address | null | undefined): Record<string, string | null> | null {
+  if (!address) {
+    return null;
+  }
+  return {
+    city: address.city ?? null,
+    country: address.country ?? null,
+    line1: address.line1 ?? null,
+    line2: address.line2 ?? null,
+    postalCode: address.postal_code ?? null,
+    state: address.state ?? null,
   };
 }
 
@@ -103,9 +138,12 @@ async function ensureNodeHardwareCatalog(): Promise<NodeHardwareCatalog> {
   try {
     product = await getStripeClient().products.create({
       name: NODE_HARDWARE_PRODUCT_NAME,
+      description: "Node hardware purchase with US shipping included.",
+      tax_code: NODE_HARDWARE_PRODUCT_TAX_CODE,
       default_price_data: {
         currency: NODE_HARDWARE_CURRENCY,
         unit_amount: NODE_HARDWARE_UNIT_AMOUNT,
+        tax_behavior: NODE_HARDWARE_PRICE_TAX_BEHAVIOR,
       },
     });
   }
@@ -126,6 +164,8 @@ async function ensureNodeHardwareCatalog(): Promise<NodeHardwareCatalog> {
     defaultPriceId,
     currency: NODE_HARDWARE_CURRENCY,
     unitAmount: NODE_HARDWARE_UNIT_AMOUNT,
+    taxCode: NODE_HARDWARE_PRODUCT_TAX_CODE,
+    taxBehavior: NODE_HARDWARE_PRICE_TAX_BEHAVIOR,
   };
 
   await ref.set({
@@ -150,6 +190,21 @@ export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseC
         },
       ],
       mode: "payment",
+      automatic_tax: {
+        enabled: true,
+      },
+      billing_address_collection: "required",
+      shipping_address_collection: {
+        allowed_countries: NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES,
+      },
+      custom_text: {
+        shipping_address: {
+          message: NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE,
+        },
+        submit: {
+          message: NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE,
+        },
+      },
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
@@ -174,6 +229,7 @@ export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseC
     checkoutUrl: session.url,
     currency: session.currency ?? catalog.currency,
     unitAmount: catalog.unitAmount,
+    automaticTaxEnabled: true,
     amountSubtotal: session.amount_subtotal ?? null,
     amountTotal: session.amount_total ?? null,
     createdAt: new Date().toISOString(),
@@ -206,6 +262,7 @@ export async function handleStripeWebhook({ signature, rawBody }: StripeWebhookA
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    const shippingDetails = session.collected_information?.shipping_details ?? null;
     await db().collection(SESSION_COLLECTION).doc(session.id).set({
       sessionId: session.id,
       status: "completed",
@@ -218,9 +275,20 @@ export async function handleStripeWebhook({ signature, rawBody }: StripeWebhookA
       currency: session.currency ?? null,
       amountSubtotal: session.amount_subtotal ?? null,
       amountTotal: session.amount_total ?? null,
+      amountDiscount: session.total_details?.amount_discount ?? null,
+      amountShipping: session.total_details?.amount_shipping ?? null,
+      amountTax: session.total_details?.amount_tax ?? null,
+      automaticTaxEnabled: session.automatic_tax?.enabled ?? null,
+      automaticTaxStatus: session.automatic_tax?.status ?? null,
       customerId: extractExpandableId(session.customer as string | { id: string } | null | undefined),
       customerEmail: session.customer_details?.email ?? session.customer_email ?? null,
       paymentIntentId: extractExpandableId(session.payment_intent as string | { id: string } | null | undefined),
+      shippingDetails: shippingDetails
+        ? {
+          name: shippingDetails.name ?? null,
+          address: normalizeStripeAddress(shippingDetails.address),
+        }
+        : null,
     }, { merge: true });
   }
 

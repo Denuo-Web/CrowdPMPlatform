@@ -241,6 +241,10 @@ export default function NodePage() {
               records where and when the measurement happened, stores the reading
               locally, and uploads the data to CrowdPM when internet is available.
             </Text>
+            <Text size="2" mt="3" as="p">
+              Price: $350 per node with US shipping included. Sales tax is calculated
+              at checkout from the shipping address.
+            </Text>
           </Box>
 
           <Button
@@ -248,7 +252,7 @@ export default function NodePage() {
             onClick={() => { void handlePurchaseNode(); }}
             disabled={isStartingCheckout}
           >
-            {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - Add to Cart"}
+            {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - $350"}
           </Button>
         </Flex>
 

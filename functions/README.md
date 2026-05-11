@@ -36,6 +36,8 @@ Important values:
 
 The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` are expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
 
+The node purchase flow now relies on Stripe Checkout shipping-address collection plus Stripe Tax. Configure Stripe Tax in the Stripe Dashboard so the physical-goods product can add US sales tax on top of the `$350` node price after the buyer enters a US shipping address.
+
 ## API Surface
 
 `crowdpmApi` is a Fastify app exported as an HTTPS Function:

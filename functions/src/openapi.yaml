@@ -33,7 +33,9 @@ paths:
       summary: Create a Stripe Checkout session for node hardware
       description: >
         Creates a Stripe Checkout session for the one-time CrowdPM node hardware
-        purchase. The API lazily provisions the backing Stripe product + price
+        purchase. Checkout collects a US shipping address, applies Stripe Tax
+        based on that destination, and charges a $350 base price with shipping
+        included. The API lazily provisions the backing Stripe product + price
         the first time this route is used, then reuses the stored identifiers on
         later requests.
       security: []
@@ -56,8 +58,8 @@ paths:
       summary: Receive Stripe webhook events
       description: >
         Accepts Stripe webhook callbacks and records successful node purchase
-        sessions after verifying the `Stripe-Signature` header against the raw
-        request body.
+        sessions, including shipping details and calculated tax, after verifying
+        the `Stripe-Signature` header against the raw request body.
       security: []
       parameters:
         - in: header
