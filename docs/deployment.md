@@ -9,7 +9,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Clean `main` checkout at the commit being released.
 - CI green or equivalent local checks passing.
 - Frontend environment values ready for the deployed Firebase project.
-- Functions runtime environment values ready, especially `DEVICE_TOKEN_PRIVATE_KEY`.
+- Functions runtime configuration ready, especially the `DEVICE_TOKEN_PRIVATE_KEY` Firebase secret.
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
 
 ```bash
@@ -45,7 +45,7 @@ For a new deployed Firebase project, verify these services before the first rele
 
 The functions code reads runtime values from `process.env`.
 
-Required deployed value:
+Required deployed secret:
 
 - `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign device registration and access tokens.
 
@@ -62,7 +62,7 @@ Common optional values:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 
-Keep secrets out of git. If using Firebase dotenv files for deploy-time environment variables, keep project-specific `.env.*` files local or in the deployment secret store. If migrating to Cloud Secret Manager-backed parameters, update the functions code to bind those secrets before relying on `firebase functions:secrets:set`.
+Keep secrets out of git. `DEVICE_TOKEN_PRIVATE_KEY` is deployed as a Firebase Secret Manager secret and bound directly to the HTTP functions. The CI workflow writes only non-secret runtime env vars and the Stripe values into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
 
 ## Build And Deploy
 
@@ -87,7 +87,6 @@ The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from 
 
 For functions runtime config, the workflow now writes `functions/.env.$FIREBASE_PROJECT_ID` during CI from GitHub secrets plus `FRONTEND_URL`. That file should provide:
 
-- `DEVICE_TOKEN_PRIVATE_KEY`
 - `DEVICE_ACTIVATION_URL`
 - `DEVICE_VERIFICATION_URI`
 - `DEVICE_TOKEN_ISSUER`
@@ -98,6 +97,8 @@ For functions runtime config, the workflow now writes `functions/.env.$FIREBASE_
 - `PUBLIC_APP_BASE_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+
+The `DEVICE_TOKEN_PRIVATE_KEY` secret must exist in Firebase Secret Manager and is referenced by the `secrets` option on `crowdpmApi` and `ingestGateway`.
 
 ## Post-Deploy Validation
 

@@ -96,7 +96,7 @@ const apiSetup = (async () => {
   throw err;
 });
 
-export const crowdpmApi = https.onRequest({ cors: true }, (req, res) => {
+export const crowdpmApi = https.onRequest({ cors: true, secrets: ["DEVICE_TOKEN_PRIVATE_KEY"] }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   requestWithRawBody.rawBody = requestWithRawBody.rawBody ?? undefined;
   apiSetup.then(() => api.server.emit("request", req, res));

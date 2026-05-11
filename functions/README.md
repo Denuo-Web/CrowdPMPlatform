@@ -34,7 +34,7 @@ Important values:
 - `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, `DEV_AUTH_USER_DISPLAY_NAME`: local Auth emulator seed user.
 - `SMOKE_TEST_USER_EMAILS`: optional comma-separated allowlist for smoke-test routes.
 
-The code reads these values from `process.env`. Keep deployed secrets out of git and ensure the deploy process injects required runtime values.
+The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY` is expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
 
 ## API Surface
 
