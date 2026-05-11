@@ -8,6 +8,17 @@ on:
 env:
   FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
   FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL || vars.FUNCTIONS_HEALTH_URL }}
+  DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
+  DEVICE_ACTIVATION_URL: ${{ secrets.DEVICE_ACTIVATION_URL }}
+  DEVICE_VERIFICATION_URI: ${{ secrets.DEVICE_VERIFICATION_URI }}
+  DEVICE_TOKEN_ISSUER: ${{ secrets.DEVICE_TOKEN_ISSUER }}
+  DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE }}
+  DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS }}
+  DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
+  SMOKE_TEST_USER_EMAIL: ${{ secrets.SMOKE_TEST_USER_EMAIL }}
+  SMOKE_TEST_USER_EMAILS: ${{ secrets.SMOKE_TEST_USER_EMAILS }}
+  STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+  STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
   VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
   VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID }}
@@ -61,6 +72,32 @@ jobs:
           test -n "$project_id" || { echo "Set FIREBASE_PROJECT_ID in repository/environment secrets or variables, or define a deployed alias in .firebaserc."; exit 1; }
           echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
           echo "FIREBASE_PROJECT_ID=$project_id" >> "$GITHUB_ENV"
+
+      - name: Write functions deploy env file
+        run: |
+          test -n "$DEVICE_TOKEN_PRIVATE_KEY" || { echo "Set DEVICE_TOKEN_PRIVATE_KEY in GitHub secrets."; exit 1; }
+          test -n "$STRIPE_SECRET_KEY" || { echo "Set STRIPE_SECRET_KEY in GitHub secrets."; exit 1; }
+          test -n "$STRIPE_WEBHOOK_SECRET" || { echo "Set STRIPE_WEBHOOK_SECRET in GitHub secrets."; exit 1; }
+
+          public_app_base_url="${FRONTEND_URL%/}"
+          test -n "$public_app_base_url" || { echo "Set FRONTEND_URL in GitHub variables or secrets."; exit 1; }
+
+          env_file="functions/.env.${FIREBASE_PROJECT_ID}"
+
+          {
+            printf 'DEVICE_TOKEN_PRIVATE_KEY=%s\n' "$DEVICE_TOKEN_PRIVATE_KEY"
+            [ -n "$DEVICE_ACTIVATION_URL" ] && printf 'DEVICE_ACTIVATION_URL=%s\n' "$DEVICE_ACTIVATION_URL"
+            [ -n "$DEVICE_VERIFICATION_URI" ] && printf 'DEVICE_VERIFICATION_URI=%s\n' "$DEVICE_VERIFICATION_URI"
+            [ -n "$DEVICE_TOKEN_ISSUER" ] && printf 'DEVICE_TOKEN_ISSUER=%s\n' "$DEVICE_TOKEN_ISSUER"
+            [ -n "$DEVICE_TOKEN_AUDIENCE" ] && printf 'DEVICE_TOKEN_AUDIENCE=%s\n' "$DEVICE_TOKEN_AUDIENCE"
+            [ -n "$DEVICE_ACCESS_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_ACCESS_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_ACCESS_TOKEN_TTL_SECONDS"
+            [ -n "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_REGISTRATION_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS"
+            [ -n "$SMOKE_TEST_USER_EMAIL" ] && printf 'SMOKE_TEST_USER_EMAIL=%s\n' "$SMOKE_TEST_USER_EMAIL"
+            [ -n "$SMOKE_TEST_USER_EMAILS" ] && printf 'SMOKE_TEST_USER_EMAILS=%s\n' "$SMOKE_TEST_USER_EMAILS"
+            printf 'PUBLIC_APP_BASE_URL=%s\n' "$public_app_base_url"
+            printf 'STRIPE_SECRET_KEY=%s\n' "$STRIPE_SECRET_KEY"
+            printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$STRIPE_WEBHOOK_SECRET"
+          } > "$env_file"
 
       - name: Validate deployment authentication
         id: auth_config

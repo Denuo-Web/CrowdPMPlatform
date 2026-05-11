@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Box,
+  Button,
+  Callout,
   Card,
   Flex,
   Heading,
@@ -8,6 +10,7 @@ import {
   Text,
 } from "@radix-ui/themes";
 import { ExternalLink } from "../components/ExternalLink";
+import { createNodePurchaseCheckoutSession } from "../lib/api";
 
 type SectionProps = {
   title: string;
@@ -183,19 +186,93 @@ function InfoTable({ headers, rows }: TableProps) {
   );
 }
 
+type CheckoutNotice = "success" | "cancelled" | null;
+
+function readCheckoutNotice(): CheckoutNotice {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const status = new URLSearchParams(window.location.search).get("checkout");
+  return status === "success" || status === "cancelled" ? status : null;
+}
+
 export default function NodePage() {
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(readCheckoutNotice);
+
+  useEffect(() => {
+    setCheckoutNotice(readCheckoutNotice());
+  }, []);
+
+  const handlePurchaseNode = async () => {
+    setCheckoutError("");
+    setIsStartingCheckout(true);
+    try {
+      const session = await createNodePurchaseCheckoutSession();
+      window.location.assign(session.url);
+      return;
+    }
+    catch (err) {
+      const message = err instanceof Error && err.message.trim().length > 0
+        ? err.message
+        : "Unable to open checkout right now.";
+      setCheckoutError(message);
+      setIsStartingCheckout(false);
+    }
+  };
+
   return (
     <Flex direction="column" gap="5">
       {/* ---- Hero ---- */}
       <Box>
-        <Heading as="h1" size="5">
-          CrowdPM Node Hardware
-        </Heading>
-        <Text size="3" color="gray" mt="2" as="p">
-          A CrowdPM node is a small air-quality computer that measures PM2.5,
-          records where and when the measurement happened, stores the reading
-          locally, and uploads the data to CrowdPM when internet is available.
-        </Text>
+        <Flex
+          justify="between"
+          align="start"
+          gap="4"
+          wrap="wrap"
+        >
+          <Box style={{ maxWidth: "46rem" }}>
+            <Heading as="h1" size="5">
+              CrowdPM Node Hardware
+            </Heading>
+            <Text size="3" color="gray" mt="2" as="p">
+              A CrowdPM node is a small air-quality computer that measures PM2.5,
+              records where and when the measurement happened, stores the reading
+              locally, and uploads the data to CrowdPM when internet is available.
+            </Text>
+          </Box>
+
+          <Button
+            size="3"
+            onClick={() => { void handlePurchaseNode(); }}
+            disabled={isStartingCheckout}
+          >
+            {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - Add to Cart"}
+          </Button>
+        </Flex>
+
+        {checkoutNotice === "success" ? (
+          <Callout.Root color="green" variant="surface" mt="4">
+            <Callout.Text>
+              Checkout completed. Stripe will email the receipt for your node purchase.
+            </Callout.Text>
+          </Callout.Root>
+        ) : null}
+
+        {checkoutNotice === "cancelled" ? (
+          <Callout.Root color="amber" variant="surface" mt="4">
+            <Callout.Text>
+              Checkout was cancelled before payment completed.
+            </Callout.Text>
+          </Callout.Root>
+        ) : null}
+
+        {checkoutError ? (
+          <Callout.Root color="tomato" variant="surface" mt="4">
+            <Callout.Text>{checkoutError}</Callout.Text>
+          </Callout.Root>
+        ) : null}
       </Box>
 
       <Separator size="4" />

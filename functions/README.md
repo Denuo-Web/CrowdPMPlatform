@@ -28,6 +28,9 @@ Important values:
 - `DEVICE_TOKEN_AUDIENCE`: device access-token audience, default `crowdpm_device_api`.
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`: access-token lifetime, default `600`.
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`: registration-token lifetime, default `60`.
+- `PUBLIC_APP_BASE_URL`: base URL used for Stripe Checkout success and cancel redirects.
+- `STRIPE_SECRET_KEY`: Stripe secret key for creating the node hardware Checkout session.
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
 - `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, `DEV_AUTH_USER_DISPLAY_NAME`: local Auth emulator seed user.
 - `SMOKE_TEST_USER_EMAILS`: optional comma-separated allowlist for smoke-test routes.
 

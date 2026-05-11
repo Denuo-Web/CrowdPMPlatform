@@ -1,4 +1,5 @@
 const DEFAULT_ACTIVATION_URL = "https://crowdpmplatform.web.app/activate";
+const DEFAULT_PUBLIC_APP_BASE_URL = "https://crowdpmplatform.web.app";
 const DEFAULT_TOKEN_ISSUER = "crowdpm";
 const DEFAULT_TOKEN_AUDIENCE = "crowdpm_device_api";
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 600;
@@ -25,8 +26,29 @@ export function getVerificationUri(): string {
   return readStringEnv("DEVICE_VERIFICATION_URI", getActivationBaseUrl());
 }
 
+export function getPublicAppBaseUrl(): string {
+  const explicit = process.env.PUBLIC_APP_BASE_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, "");
+  }
+  try {
+    return new URL(getActivationBaseUrl()).origin;
+  }
+  catch {
+    return DEFAULT_PUBLIC_APP_BASE_URL;
+  }
+}
+
 export function getDeviceTokenPrivateKey(): string {
   return process.env.DEVICE_TOKEN_PRIVATE_KEY ?? "";
+}
+
+export function getStripeSecretKey(): string {
+  return readStringEnv("STRIPE_SECRET_KEY", "");
+}
+
+export function getStripeWebhookSecret(): string {
+  return readStringEnv("STRIPE_WEBHOOK_SECRET", "");
 }
 
 export function getDeviceTokenIssuer(): string {

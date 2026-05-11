@@ -14,6 +14,7 @@ import { publicBatchesRoutes } from "./routes/publicBatches.js";
 import { userSettingsRoutes } from "./routes/userSettings.js";
 import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
+import { nodePurchaseRoutes } from "./routes/nodePurchase.js";
 import { ensureDevAuthUser } from "./lib/devAuthUser.js";
 import { toHttpError } from "./lib/httpError.js";
 import { RateLimitError } from "./lib/rateLimiter.js";
@@ -86,6 +87,7 @@ const apiSetup = (async () => {
   await api.register(userSettingsRoutes);
   await api.register(pairingRoutes);
   await api.register(activationRoutes);
+  await api.register(nodePurchaseRoutes);
 
   // Ensure all lifecycle hooks are ready before handling traffic.
   await api.ready();
