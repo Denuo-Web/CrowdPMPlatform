@@ -29,7 +29,7 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
           <Heading as="h1" size="5">About CrowdPM</Heading>
           <Text size="3" color="gray" mt="2" as="p">
             CrowdPM is an open-source, crowd-sourced air quality monitoring platform
-            that visualizes real-time PM2.5 data on an interactive 3D map.
+            that visualizes hyper-local particulate matter data on an interactive 3D map.
           </Text>
         </Box>
 
@@ -47,7 +47,7 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
             </Text>
             <Text size="2" as="p">
               By combining crowd-sourced hardware with modern web visualization, we provide
-              communities with the granular, real-time data they need to make informed decisions
+              communities with the granular, hyper-local data they need to make informed decisions
               about the air they breathe.
             </Text>
           </Flex>
@@ -68,7 +68,7 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
               </Text>
               <Text size="2" as="p">
                 <strong>3. Visualize on the map</strong>&ensp;— All public measurements appear on the
-                interactive 3D map in near real-time, color-coded by air quality level.
+                interactive 3D map, color-coded by air quality level.
               </Text>
               <Text size="2" as="p">
                 <strong>4. Export &amp; share</strong>&ensp;— Render flythrough videos of batch data or
