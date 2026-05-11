@@ -13,10 +13,45 @@ import {
   LegalDocumentLink,
   type LegalDocumentId,
 } from "../components/LegalDocumentDialog";
+import { ExternalLink } from "../components/ExternalLink";
+import { PROJECT_LINKS } from "../lib/projectLinks";
 
 type AboutPageProps = {
   onOpenTeamModal: () => void;
 };
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    title: "1. Pair a sensor node",
+    description: "Connect a CrowdPM-compatible air quality sensor to your account using our secure device pairing flow.",
+  },
+  {
+    title: "2. Stream measurements",
+    description: "Your node automatically collects PM2.5 readings along with GPS coordinates and streams them to the CrowdPM backend.",
+  },
+  {
+    title: "3. Visualize on the map",
+    description: "All public measurements appear on the interactive 3D map, color-coded by air quality level.",
+  },
+  {
+    title: "4. Export & share",
+    description: "Render flythrough videos of batch data or browse historical measurements from the dashboard.",
+  },
+] as const;
+
+const TECHNOLOGY_STACK = [
+  { label: "Frontend", value: "React, Vite, Radix UI, deck.gl with Google Maps" },
+  { label: "Backend", value: "Firebase Cloud Functions (Node.js / TypeScript)" },
+  { label: "Database", value: "Cloud Firestore" },
+  { label: "Auth", value: "Firebase Authentication + OAuth 2.0 Device Authorization Grant with DPoP" },
+  { label: "Hardware", value: "ESP32-based sensor nodes with PM2.5 sensors and GPS modules" },
+] as const;
+
+const LEGAL_DOCUMENT_LINKS = [
+  { documentId: "terms", label: "Terms of Service" },
+  { documentId: "license", label: "License" },
+  { documentId: "privacy", label: "Privacy Policy" },
+] as const satisfies readonly { documentId: LegalDocumentId; label: string }[];
 
 export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
@@ -58,22 +93,11 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
           <Flex direction="column" gap="3">
             <Heading as="h2" size="4">How It Works</Heading>
             <Flex direction="column" gap="2" pl="2">
-              <Text size="2" as="p">
-                <strong>1. Pair a sensor node</strong>&ensp;— Connect a CrowdPM-compatible air quality
-                sensor to your account using our secure device pairing flow.
-              </Text>
-              <Text size="2" as="p">
-                <strong>2. Stream measurements</strong>&ensp;— Your node automatically collects PM2.5
-                readings along with GPS coordinates and streams them to the CrowdPM backend.
-              </Text>
-              <Text size="2" as="p">
-                <strong>3. Visualize on the map</strong>&ensp;— All public measurements appear on the
-                interactive 3D map, color-coded by air quality level.
-              </Text>
-              <Text size="2" as="p">
-                <strong>4. Export &amp; share</strong>&ensp;— Render flythrough videos of batch data or
-                browse historical measurements from the dashboard.
-              </Text>
+              {HOW_IT_WORKS_STEPS.map((step) => (
+                <Text key={step.title} size="2" as="p">
+                  <strong>{step.title}</strong>&ensp;— {step.description}
+                </Text>
+              ))}
             </Flex>
           </Flex>
         </Card>
@@ -86,11 +110,11 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
               CrowdPM is built with a modern, open-source stack:
             </Text>
             <Flex direction="column" gap="1" pl="2">
-              <Text size="2" as="p">• <strong>Frontend</strong> — React, Vite, Radix UI, deck.gl with Google Maps</Text>
-              <Text size="2" as="p">• <strong>Backend</strong> — Firebase Cloud Functions (Node.js / TypeScript)</Text>
-              <Text size="2" as="p">• <strong>Database</strong> — Cloud Firestore</Text>
-              <Text size="2" as="p">• <strong>Auth</strong> — Firebase Authentication + OAuth 2.0 Device Authorization Grant with DPoP</Text>
-              <Text size="2" as="p">• <strong>Hardware</strong> — ESP32-based sensor nodes with PM2.5 sensors and GPS modules</Text>
+              {TECHNOLOGY_STACK.map((item) => (
+                <Text key={item.label} size="2" as="p">
+                  • <strong>{item.label}</strong> — {item.value}
+                </Text>
+              ))}
             </Flex>
           </Flex>
         </Card>
@@ -101,28 +125,16 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
             <Heading as="h2" size="4">Origin</Heading>
             <Text size="2" as="p">
               CrowdPM began as an{" "}
-              <Link
-                href="https://eecs.engineering.oregonstate.edu/capstone/submission/pages/viewSingleProject.php?id=WHBsGlAFvH7HrCiH"
-                target="_blank"
-                rel="noreferrer"
-                color="iris"
-                highContrast
-              >
+              <ExternalLink href={PROJECT_LINKS.capstonePortal} color="iris" highContrast>
                 Oregon State University EECS Capstone
-              </Link>{" "}
+              </ExternalLink>{" "}
               project. The platform is actively developed and maintained as an open-source effort.
             </Text>
             <Text size="2" as="p">
               The source code is available on{" "}
-              <Link
-                href="https://github.com/Denuo-Web/CrowdPMPlatform/"
-                target="_blank"
-                rel="noreferrer"
-                color="iris"
-                highContrast
-              >
+              <ExternalLink href={PROJECT_LINKS.repository} color="iris" highContrast>
                 GitHub
-              </Link>.
+              </ExternalLink>.
             </Text>
             <Text size="2" as="p">
               Meet the people behind the project in the{" "}
@@ -149,15 +161,15 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
               Review the hosted service terms, project license, and data practices:
             </Text>
             <Flex gap="3" wrap="wrap">
-              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
-                Terms of Service
-              </LegalDocumentLink>
-              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
-                License
-              </LegalDocumentLink>
-              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
-                Privacy Policy
-              </LegalDocumentLink>
+              {LEGAL_DOCUMENT_LINKS.map((document) => (
+                <LegalDocumentLink
+                  key={document.documentId}
+                  documentId={document.documentId}
+                  onOpen={setOpenLegalDocument}
+                >
+                  {document.label}
+                </LegalDocumentLink>
+              ))}
             </Flex>
           </Flex>
         </Card>
@@ -169,25 +181,13 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
           <Heading as="h2" size="4" mb="2">Get Involved</Heading>
           <Text size="2" color="gray" as="p">
             Interested in contributing, deploying your own node, or just learning more? Join the{" "}
-            <Link
-              href="https://discord.gg/cEbGw8HAUQ"
-              target="_blank"
-              rel="noreferrer"
-              color="iris"
-              highContrast
-            >
+            <ExternalLink href={PROJECT_LINKS.discord} color="iris" highContrast>
               CrowdPM Discord
-            </Link>{" "}
+            </ExternalLink>{" "}
             or check out the project on{" "}
-            <Link
-              href="https://github.com/Denuo-Web/CrowdPMPlatform/"
-              target="_blank"
-              rel="noreferrer"
-              color="iris"
-              highContrast
-            >
+            <ExternalLink href={PROJECT_LINKS.repository} color="iris" highContrast>
               GitHub
-            </Link>.
+            </ExternalLink>.
           </Text>
         </Box>
       </Flex>

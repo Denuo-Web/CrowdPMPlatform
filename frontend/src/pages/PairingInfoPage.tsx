@@ -13,6 +13,8 @@ import {
   ChevronDownIcon,
   InfoCircledIcon,
 } from "@radix-ui/react-icons";
+import { ExternalAnchor } from "../components/ExternalLink";
+import { PROJECT_LINKS } from "../lib/projectLinks";
 
 type PairingInfoPageProps = {
   onOpenActivation?: () => void;
@@ -240,9 +242,9 @@ export default function PairingInfoPage({ onOpenActivation }: PairingInfoPagePro
             </Text>
             <Text size="2" as="p">
               <strong>Still stuck?</strong>&ensp;Reach out on the{" "}
-              <a href="https://discord.gg/cEbGw8HAUQ" target="_blank" rel="noreferrer" style={{ color: "var(--accent-11)" }}>
+              <ExternalAnchor href={PROJECT_LINKS.discord} style={{ color: "var(--accent-11)" }}>
                 CrowdPM Discord
-              </a>.
+              </ExternalAnchor>.
             </Text>
           </Flex>
         </Flex>

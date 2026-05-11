@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { AuthDialog, type AuthMode } from "./components/AuthDialog";
+import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
+import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
 import { ThemeSettingsControls } from "./components/ThemeSettingsControls";
+import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
 import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
@@ -63,37 +66,6 @@ const TEAM_MEMBERS: Array<{
   },
 ];
 
-const RESOURCE_LINKS: Array<{ label: string; href: string }> = [
-  {
-    label: "Capstone Portal",
-    href: "https://eecs.engineering.oregonstate.edu/capstone/submission/pages/viewSingleProject.php?id=WHBsGlAFvH7HrCiH",
-  },
-  {
-    label: "Capstone Drive",
-    href: "https://drive.google.com/drive/folders/1Yh_4dku-TqYAlbGtKzT0UM0-LubAig17?usp=sharing",
-  },
-  {
-    label: "Technical Requirements Doc",
-    href: "https://docs.google.com/document/d/1i0fjx2_IagNerPkSPpG9JzbErKNKuu0caAm-F-koBTo/edit?usp=sharing",
-  },
-  {
-    label: "GitHub Monorepo",
-    href: "https://github.com/Denuo-Web/CrowdPMPlatform/",
-  },
-  {
-    label: "Deep Wiki",
-    href: "https://deepwiki.com/Denuo-Web/CrowdPMPlatform",
-  },
-  {
-    label: "Asana Board",
-    href: "https://app.asana.com/1/941689499454829/project/1211814553979599/board",
-  },
-  {
-    label: "Discord Invite",
-    href: "https://discord.gg/cEbGw8HAUQ",
-  },
-];
-
 const THEME_SHORTCUT_IGNORED_SELECTOR = [
   "[contenteditable]",
   '[role="combobox"]',
@@ -117,17 +89,23 @@ const AboutPage = lazy(() => import("./pages/AboutPage"));
 const NodePage = lazy(() => import("./pages/NodePage"));
 const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
+type AppTab = "map" | "dashboard" | "smoke" | "admin" | DeepLinkedAppTab;
+
+function isDeepLinkedTab(tab: AppTab): tab is DeepLinkedAppTab {
+  return tab === "pairing-info" || tab === "about" || tab === "node";
+}
+
 export default function App() {
   const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
   const { settings } = useUserSettings();
   const userScopedKey = user?.uid ?? "anon";
-  const initialPairingGuidePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/pairing-guide");
-  const initialAboutPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/about");
-  const initialNodePath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/node");
-  const [tab, setTab] = useState<"map" | "dashboard" | "smoke" | "admin" | "pairing-info" | "about" | "node">(initialNodePath ? "node" : initialAboutPath ? "about" : initialPairingGuidePath ? "pairing-info" : "map");
+  const initialDeepLinkedTab = typeof window !== "undefined"
+    ? getDeepLinkedAppTab(window.location.pathname)
+    : null;
+  const [tab, setTab] = useState<AppTab>(initialDeepLinkedTab ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
-  const initialActivationPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().startsWith("/activate");
+  const initialActivationPath = typeof window !== "undefined" && isActivationRoute(window.location.pathname);
   const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
   const [isThemeModalOpen, setThemeModalOpen] = useState(false);
@@ -207,35 +185,26 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (isActivationModalOpen) {
-      if (!window.location.pathname.toLowerCase().startsWith("/activate")) {
-        window.history.pushState({}, "", "/activate");
+      if (!isActivationRoute(window.location.pathname)) {
+        window.history.pushState({}, "", APP_ROUTES.activation);
       }
     }
-    else if (window.location.pathname.toLowerCase().startsWith("/activate")) {
-      window.history.replaceState({}, "", "/");
+    else if (isActivationRoute(window.location.pathname)) {
+      window.history.replaceState({}, "", APP_ROUTES.home);
     }
   }, [isActivationModalOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const pathname = window.location.pathname.toLowerCase();
-    if (tab === "pairing-info") {
-      if (!pathname.startsWith("/pairing-guide")) {
-        window.history.pushState({}, "", "/pairing-guide");
+    if (isDeepLinkedTab(tab)) {
+      const targetRoute = getRouteForDeepLinkedAppTab(tab);
+      if (!pathname.startsWith(targetRoute)) {
+        window.history.pushState({}, "", targetRoute);
       }
     }
-    else if (tab === "about") {
-      if (!pathname.startsWith("/about")) {
-        window.history.pushState({}, "", "/about");
-      }
-    }
-    else if (tab === "node") {
-      if (!pathname.startsWith("/node")) {
-        window.history.pushState({}, "", "/node");
-      }
-    }
-    else if (pathname.startsWith("/pairing-guide") || pathname.startsWith("/about") || pathname.startsWith("/node")) {
-      window.history.replaceState({}, "", "/");
+    else if (isDeepLinkedAppRoute(pathname)) {
+      window.history.replaceState({}, "", APP_ROUTES.home);
     }
   }, [tab]);
 
@@ -243,17 +212,12 @@ export default function App() {
     if (typeof window === "undefined") return;
     const handlePopState = () => {
       const pathname = window.location.pathname.toLowerCase();
-      setActivationModalOpen(pathname.startsWith("/activate"));
-      if (pathname.startsWith("/pairing-guide")) {
-        setTab("pairing-info");
+      const deepLinkedTab = getDeepLinkedAppTab(pathname);
+      setActivationModalOpen(isActivationRoute(pathname));
+      if (deepLinkedTab) {
+        setTab(deepLinkedTab);
       }
-      else if (pathname.startsWith("/about")) {
-        setTab("about");
-      }
-      else if (pathname.startsWith("/node")) {
-        setTab("node");
-      }
-      else if (tab === "pairing-info" || tab === "about" || tab === "node") {
+      else if (isDeepLinkedTab(tab)) {
         setTab("map");
       }
     };
@@ -703,15 +667,9 @@ function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
         }}
       >
         <Heading as="h2" size="5" trim="start">
-          <Link
-            href="https://ecampus.oregonstate.edu/online-degrees/undergraduate/electrical-computer-engineering/"
-            target="_blank"
-            rel="noreferrer"
-            color="iris"
-            highContrast
-          >
+          <ExternalLink href={PROJECT_LINKS.osuEecsProgram} color="iris" highContrast>
             OSU EECS
-          </Link>{" "}
+          </ExternalLink>{" "}
           Capstone Team
         </Heading>
         <Text size="2" color="gray" mt="2">
@@ -747,9 +705,9 @@ function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
                   radius="full"
                   aria-label={`${member.name} GitHub profile`}
                 >
-                  <a href={member.github} target="_blank" rel="noreferrer">
+                  <ExternalAnchor href={member.github}>
                     <GitHubLogoIcon />
-                  </a>
+                  </ExternalAnchor>
                 </IconButton>
                 <IconButton
                   asChild
@@ -758,9 +716,9 @@ function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
                   radius="full"
                   aria-label={`${member.name} LinkedIn profile`}
                 >
-                  <a href={member.linkedin} target="_blank" rel="noreferrer">
+                  <ExternalAnchor href={member.linkedin}>
                     <LinkedInLogoIcon />
-                  </a>
+                  </ExternalAnchor>
                 </IconButton>
               </Flex>
             </Flex>
@@ -773,17 +731,16 @@ function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
               Coordination links
             </Text>
             <Flex direction="column" gap="2" mt="2">
-              {RESOURCE_LINKS.map((resource) => (
-                <Link
+              {PROJECT_RESOURCE_LINKS.map((resource) => (
+                <ExternalLink
                   key={resource.href}
                   href={resource.href}
-                  target="_blank"
-                  rel="noreferrer"
                   color="iris"
+                  highContrast
                   size="2"
                 >
                   {resource.label}
-                </Link>
+                </ExternalLink>
               ))}
             </Flex>
           </>
