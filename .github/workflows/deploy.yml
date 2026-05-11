@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: deployed
     env:
-      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || vars.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
       FIREBASE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
@@ -50,10 +49,22 @@ jobs:
       - name: Install dependencies
         run: corepack pnpm install --frozen-lockfile
 
+      - name: Resolve deployment configuration
+        id: deploy_config
+        env:
+          CONFIGURED_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || vars.FIREBASE_PROJECT_ID }}
+        run: |
+          project_id="$CONFIGURED_FIREBASE_PROJECT_ID"
+          if [ -z "$project_id" ]; then
+            project_id="$(node -p "const config = require('./.firebaserc'); config.projects?.deployed || ''")"
+          fi
+          test -n "$project_id" || { echo "Set FIREBASE_PROJECT_ID in repository/environment secrets or variables, or define a deployed alias in .firebaserc."; exit 1; }
+          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+          echo "FIREBASE_PROJECT_ID=$project_id" >> "$GITHUB_ENV"
+
       - name: Validate deployment authentication
         id: auth_config
         run: |
-          test -n "$FIREBASE_PROJECT_ID" || { echo "Set FIREBASE_PROJECT_ID in repository/environment secrets or variables before deploying."; exit 1; }
           if [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
             echo "method=credentials_json" >> "$GITHUB_OUTPUT"
             exit 0
@@ -71,7 +82,7 @@ jobs:
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ env.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          project_id: ${{ env.FIREBASE_PROJECT_ID }}
+          project_id: ${{ steps.deploy_config.outputs.project_id }}
 
       - name: Authenticate to Google Cloud with Workload Identity Federation
         if: ${{ steps.auth_config.outputs.method == 'workload_identity' }}
@@ -79,7 +90,7 @@ jobs:
         with:
           workload_identity_provider: ${{ env.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
-          project_id: ${{ env.FIREBASE_PROJECT_ID }}
+          project_id: ${{ steps.deploy_config.outputs.project_id }}
 
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v3
