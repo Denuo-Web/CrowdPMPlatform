@@ -4,6 +4,7 @@ import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
 import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
 import { ThemeSettingsControls } from "./components/ThemeSettingsControls";
 import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
+import { logWarning } from "./lib/logger";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
 import { type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
@@ -159,7 +160,7 @@ export default function App() {
       setTab("map");
     }
     catch (err) {
-      console.warn("Sign out failed", err);
+      logWarning("Sign out failed", undefined, err);
     }
   };
 

@@ -1,4 +1,5 @@
 import { importLibrary, setOptions, type APIOptions } from "@googlemaps/js-api-loader";
+import { logError } from "./logger";
 
 type LoaderLike = {
   importLibrary: typeof importLibrary;
@@ -15,7 +16,7 @@ export function getMapsLoader(): LoaderLike {
     };
     if (mapId) options.mapIds = [mapId];
     if (!options.key) {
-      console.error("VITE_GOOGLE_MAPS_API_KEY is not configured; the Maps JavaScript API cannot load.");
+      logError("VITE_GOOGLE_MAPS_API_KEY is not configured; the Maps JavaScript API cannot load.");
     }
     setOptions(options);
     loader = { importLibrary };
