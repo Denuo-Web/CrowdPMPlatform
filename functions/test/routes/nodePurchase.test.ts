@@ -223,8 +223,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
       mode: "payment",
       currency: "usd",
-      amount_subtotal: 37799,
-      amount_total: 37799,
+      amount_subtotal: 37899,
+      amount_total: 37899,
     });
     const app = await buildApp();
 
@@ -246,7 +246,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
-        unit_amount: 37799,
+        unit_amount: 37899,
         tax_behavior: "exclusive",
       },
     });
@@ -267,16 +267,16 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_co2_123",
       defaultPriceId: "price_node_co2_123",
       currency: "usd",
-      unitAmount: 37799,
+      unitAmount: 37899,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
     expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
       sessionId: "cs_node_co2_123",
       purchaseType: "node_hardware",
-      unitAmount: 37799,
-      amountSubtotal: 37799,
-      amountTotal: 37799,
+      unitAmount: 37899,
+      amountSubtotal: 37899,
+      amountTotal: 37899,
       variantId: "co2",
       variantLabel: "PM2.5 + CO2 node",
     });

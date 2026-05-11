@@ -91,21 +91,21 @@ const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantC
     label: "PM2.5 + NO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + NO2",
     description: "PM2.5 node with MiCS-6814 NO2 sensor and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 38_884,
+    unitAmount: 38_394,
   },
   co2: {
     catalogDocId: "nodeHardwareCo2",
     label: "PM2.5 + CO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + CO2",
     description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
-    unitAmount: 37_799,
+    unitAmount: 37_899,
   },
   co2_no2: {
     catalogDocId: "nodeHardwareCo2No2",
     label: "PM2.5 + CO2 + NO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + CO2 + NO2",
     description: "PM2.5 node with SCD41 CO2 sensor, MiCS-6814 NO2 sensor, and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 41_683,
+    unitAmount: 41_293,
   },
 };
 

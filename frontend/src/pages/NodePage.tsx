@@ -42,8 +42,8 @@ type NodeProductVariant = {
 };
 
 const BASE_NODE_PRICE_CENTS = 35_000;
-const CO2_SENSOR_ADD_ON_CENTS = 2_799;
-const NO2_SENSOR_ADD_ON_CENTS = 2_695 + 1_189;
+const CO2_SENSOR_ADD_ON_CENTS = 2_899;
+const NO2_SENSOR_ADD_ON_CENTS = 2_695 + 699;
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
@@ -54,9 +54,9 @@ const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&t
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
 const PISUGAR_3_PLUS_URL = "https://www.amazon.com/PiSugar-Plus-Pwnagotchi-Management-Raspberry/dp/B0FBK89B8H?crid=LFBH2KAF10OE&dib=eyJ2IjoiMSJ9.L0Ud_TUpDnpSJdO5W3nbRsP6KDdvl9mBzCTXI1Wgu8N8TErLSyNRjB761bzndZGqn8-A8kN77bnyCNm25h_AtH8fbGcUDaW2gupHScAfR8t7ylwXTTgwRxWWtJXzMZ6r4ew80IZaX6eRtLnMMl14zg.0HpvF_Oc66MzhahEEWzs9yCISfYWDvDd3YIgQQlW6BQ&dib_tag=se&keywords=PiSugar2+Plus+5000+mAh&qid=1778400315&s=electronics&sprefix=pisugar2+plus+5000+mah%2Celectronics%2C161&sr=1-3&linkCode=ll2&tag=lipbalm01-20&linkId=c7d788c8d0b545684e272d2ae0c677cf&language=en_US&ref_=as_li_ss_tl";
-const CO2_SENSOR_URL = "https://www.amazon.com/dp/B0D18XXGCW";
+const CO2_SENSOR_URL = "https://www.amazon.com/HiLetgo-Temperature-Humidity-Communication-Monitoring/dp/B0CDWXWCS5?psc=1&pd_rd_w=blPda&content-id=amzn1.sym.e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_p=e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_r=59515EY9GQNTR9T545T5&pd_rd_wg=8fbmW&pd_rd_r=74728aef-4573-4948-b457-68178961b213&sp_csd=d2lkZ2V0TmFtZT1zcF9kZXRhaWxfdGhlbWF0aWM%3D&linkCode=ll2&tag=lipbalm01-20&linkId=ea274a4ca23462d3503110f5d7ac5e4f&language=en_US&ref_=as_li_ss_tl";
 const NO2_SENSOR_URL = "https://www.amazon.com/dp/B0BG2YZP5L";
-const ADS1115_URL = "https://www.amazon.com/dp/B01DLHKMO2";
+const ADS1115_URL = "https://www.amazon.com/ADS1115-4-Channel-Converter-Arduino-Raspberry/dp/B0FLNDLX8K?crid=3RYX9FG87U6CM&dib=eyJ2IjoiMSJ9.vSXpQFCIOGW8Td7egqghItKea7rWhgp1u88Hzd4_30ya41b80qvopTqt3nuXewJ-SJaiqILg_eRk14OZIhExEVDLoudgGQxwK3jhWd3XiCOz7cdguU674-vANvudUPOfYFBAcCd16OGBGkvGHNFvB-b_Pboa5cdXyi5LdZc22Le5DO0pwdY0HJEkVrt37HJJeTtz0D8L421WubLPedN57g.BK5SdzZVxNfpMmMqtuSJL_oKs1QRxyNdLfNicsYlwZA&dib_tag=se&keywords=ADS1115&qid=1778541032&sprefix=ads1115%2Caps%2C416&xpid=wwbj2redDMdny&linkCode=ll2&tag=lipbalm01-20&linkId=ba8f1b74761bdb64217b8ea538d62d01&language=en_US&ref_=as_li_ss_tl";
 
 const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
   {
