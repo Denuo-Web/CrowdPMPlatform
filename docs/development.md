@@ -92,9 +92,10 @@ The Functions emulator seeds `smoke-tester@crowdpm.dev` with password `crowdpm-d
 Use the web app first:
 
 1. Open `http://localhost:5173`.
-2. Sign in with the local smoke-test user.
-3. Open the Smoke Test Lab.
-4. Run a smoke test and confirm a batch appears on the map and in the dashboard.
+2. Grant `smoke-tester@crowdpm.dev` the `super_admin` role for local use if needed: `pnpm --filter crowdpm-functions admin:grant-role -- --email smoke-tester@crowdpm.dev --roles super_admin`
+3. Sign in with that super-admin account.
+4. Open the Smoke Test Lab from the User Dashboard.
+5. Run a smoke test and confirm a batch appears on the map and in the dashboard.
 
 Use the device emulator when testing pairing or DPoP behavior:
 

@@ -45,46 +45,12 @@ type ResolvedDependencies = {
 export type SmokeTestServiceDependencies = Partial<ResolvedDependencies>;
 
 export function authorizeSmokeTestUser(user: DecodedIdToken): void {
-  if (isSmokeTestEmail(user)) return;
   if (hasRole(user, "super_admin")) return;
-  const roles = extractRoles(user);
-  const allowedRoles = new Set(["smoke-test", "smoke_test", "smoketester"]);
-  const hasAllowedRole = roles.some((role) => allowedRoles.has(role.toLowerCase()));
-  if (hasAllowedRole) return;
   throw new SmokeTestServiceError("forbidden", "Caller lacks permission to run smoke tests", 403);
 }
 
 function defaultAuthorizeSmokeTest(user: DecodedIdToken): void {
   authorizeSmokeTestUser(user);
-}
-
-const SMOKE_TEST_EMAILS = normalizeEmails(
-  process.env.SMOKE_TEST_USER_EMAILS
-  ?? process.env.SMOKE_TEST_USER_EMAIL
-  ?? process.env.DEV_AUTH_USER_EMAIL
-  ?? "smoke-tester@crowdpm.dev"
-);
-
-function normalizeEmails(raw: string): Set<string> {
-  return new Set(
-    raw.split(",")
-      .map((value) => value.trim().toLowerCase())
-      .filter((value) => value.length > 0)
-  );
-}
-
-function isSmokeTestEmail(user: DecodedIdToken): boolean {
-  const email = (user as { email?: unknown }).email;
-  if (typeof email !== "string") return false;
-  return SMOKE_TEST_EMAILS.has(email.trim().toLowerCase());
-}
-
-function extractRoles(user: DecodedIdToken): string[] {
-  const rawRoles = (user as { roles?: unknown }).roles;
-  if (!Array.isArray(rawRoles)) return [];
-  return rawRoles
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => value.trim());
 }
 
 export class IngestSmokeTestService {

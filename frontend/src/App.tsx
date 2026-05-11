@@ -22,13 +22,6 @@ import {
 } from "@radix-ui/themes";
 import { GitHubLogoIcon, HamburgerMenuIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
 
-const rawSmokeTestEmails = import.meta.env.VITE_SMOKE_TEST_USER_EMAILS
-  ?? import.meta.env.VITE_SMOKE_TEST_USER_EMAIL
-  ?? "smoke-tester@crowdpm.dev";
-const SMOKE_TEST_EMAILS = parseSmokeTestEmails(
-  typeof rawSmokeTestEmails === "string" ? rawSmokeTestEmails : String(rawSmokeTestEmails)
-);
-
 const TEAM_MEMBERS: Array<{
   name: string;
   role: string;
@@ -122,11 +115,7 @@ export default function App() {
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
 
   const isSignedIn = Boolean(user);
-  const isSmokeTestAccount = (() => {
-    const email = user?.email;
-    return typeof email === "string" && email.length > 0 && isSmokeTestEmail(email);
-  })();
-  const canUseSmokeTests = Boolean(user) && (isSmokeTestAccount || isSuperAdmin);
+  const canUseSmokeTests = Boolean(user) && isSuperAdmin;
   const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
   const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
@@ -442,15 +431,6 @@ export default function App() {
                 >
                   User Dashboard
                 </DropdownMenu.Item>
-                {canUseSmokeTests ? (
-                  <DropdownMenu.Item
-                    onSelect={() => handleProtectedTabClick("smoke")}
-                    style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
-                    disabled={isLoading}
-                  >
-                    Smoke Test
-                  </DropdownMenu.Item>
-                ) : null}
                 {canUseAdmin ? (
                   <DropdownMenu.Item
                     onSelect={() => handleProtectedTabClick("admin")}
@@ -527,6 +507,7 @@ export default function App() {
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
+                      onOpenSmokeTest={canUseSmokeTests ? (() => handleProtectedTabClick("smoke")) : undefined}
                       onOpenThemeModal={openThemeModal}
                       refreshToken={dashboardRefreshToken}
                     />
@@ -554,8 +535,7 @@ export default function App() {
                     >
                       <Heading size="5">Sign in to access CrowdPM</Heading>
                       <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                        Log in to explore the CrowdPM map, run smoke tests, review batches, and access the coordination
-                        resources.
+                        Log in to explore the CrowdPM map, review batches, and access the coordination resources.
                       </Text>
                     </Flex>
                   )}
@@ -578,17 +558,6 @@ export default function App() {
       </Suspense>
     </Theme>
   );
-}
-
-function parseSmokeTestEmails(raw: string): string[] {
-  return raw.split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length > 0);
-}
-
-function isSmokeTestEmail(email: string): boolean {
-  const normalized = email.trim().toLowerCase();
-  return normalized.length > 0 && SMOKE_TEST_EMAILS.includes(normalized);
 }
 
 type ActivationModalProps = {

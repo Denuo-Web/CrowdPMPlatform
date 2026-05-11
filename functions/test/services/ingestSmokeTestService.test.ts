@@ -142,10 +142,18 @@ describe("authorizeSmokeTestUser", () => {
     } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).not.toThrow();
   });
 
-  it("rejects users without smoke-test or super-admin privileges", () => {
+  it("rejects users without super-admin privileges", () => {
     expect(() => authorizeSmokeTestUser({
       uid: "user-1",
       roles: ["moderator"],
+    } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
+  });
+
+  it("rejects legacy smoke-test accounts without super-admin claims", () => {
+    expect(() => authorizeSmokeTestUser({
+      uid: "smoke-1",
+      email: "smoke-tester@crowdpm.dev",
+      roles: ["smoke-test"],
     } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
   });
 });

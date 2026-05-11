@@ -32,7 +32,6 @@ Important values:
 - `STRIPE_SECRET_KEY`: Stripe secret key for creating the node hardware Checkout session.
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
 - `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, `DEV_AUTH_USER_DISPLAY_NAME`: local Auth emulator seed user.
-- `SMOKE_TEST_USER_EMAILS`: optional comma-separated allowlist for smoke-test routes.
 
 The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` are expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
 
