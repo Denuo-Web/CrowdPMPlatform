@@ -122,6 +122,14 @@ export default function App() {
     : (tab === "smoke" && (!user || !canUseSmokeTests)
       ? "map"
       : (tab === "admin" && !canUseAdmin ? "map" : tab));
+  const isDarkTheme = settings.theme.appearance === "dark";
+  const mapHeaderBackground = activeTab === "map"
+    ? isDarkTheme
+      ? "linear-gradient(180deg, color-mix(in srgb, white 84%, transparent) 0%, color-mix(in srgb, white 72%, transparent) 58%, color-mix(in srgb, white 42%, transparent) 100%)"
+      : "linear-gradient(180deg, color-mix(in srgb, white 96%, transparent) 0%, color-mix(in srgb, white 88%, transparent) 58%, color-mix(in srgb, white 56%, transparent) 100%)"
+    : "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
+  const mapHeaderForegroundColor = activeTab === "map" && isDarkTheme ? "#111111" : "var(--gray-12)";
+  const airQualityNetworkColor = activeTab === "map" && isDarkTheme ? "#000000" : "var(--gray-11)";
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -317,10 +325,8 @@ export default function App() {
             gap: 10,
             padding: "var(--space-3) var(--space-4)",
             paddingLeft: "calc(var(--space-4) + 2.5px)",
-            color: "var(--gray-12)",
-            background: activeTab === "map"
-              ? "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 82%, transparent) 0%, transparent 100%)"
-              : "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)",
+            color: mapHeaderForegroundColor,
+            background: mapHeaderBackground,
             backdropFilter: activeTab === "map" ? "none" : "blur(12px)",
             WebkitBackdropFilter: activeTab === "map" ? "none" : "blur(12px)",
             pointerEvents: "auto",
@@ -359,7 +365,7 @@ export default function App() {
               style={{
                 fontSize: "var(--font-size-4)",
                 fontWeight: 700,
-                color: "var(--gray-12)",
+                color: "currentColor",
                 letterSpacing: 0,
                 textShadow: "0 1px 4px var(--gray-a6)",
               }}
@@ -369,7 +375,7 @@ export default function App() {
             <span
               style={{
                 fontSize: "var(--font-size-1)",
-                color: "var(--gray-11)",
+                color: airQualityNetworkColor,
                 fontWeight: 400,
                 letterSpacing: 0,
                 textTransform: "uppercase",
