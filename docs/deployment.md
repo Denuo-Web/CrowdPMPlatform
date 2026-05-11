@@ -40,6 +40,7 @@ For a new deployed Firebase project, verify these services before the first rele
 - Firebase Auth sign-in providers required by the app are enabled.
 - Google Maps API key and vector map ID are configured for the deployed frontend.
 - Hosting site is attached to the intended Firebase project.
+- Stripe Tax is enabled in the Stripe account, with product tax behavior configured for US sales-tax collection.
 
 ## Runtime Configuration
 
@@ -120,6 +121,7 @@ Manual checks:
 
 - Open the deployed Hosting URL and confirm the app loads without console errors.
 - Sign in with a valid Firebase Auth user.
+- Start a node checkout and confirm Stripe Checkout only accepts US shipping addresses and shows tax added on top of the `$350` node price.
 - Run or replay one known ingest flow and confirm a `202` response.
 - Confirm raw storage under `ingest/<deviceId>/<batchId>.json`.
 - Confirm Firestore batch metadata and measurement rows were written.
