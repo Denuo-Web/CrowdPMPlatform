@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { Box, Dialog, Flex, Heading, Link, Separator, Text } from "@radix-ui/themes";
+import { ExternalLink } from "./ExternalLink";
+import { PROJECT_LINKS } from "../lib/projectLinks";
 
 export type LegalDocumentId = "terms" | "privacy" | "license";
 
@@ -19,9 +21,6 @@ const COMPANY_NAME = "Denuo Web, LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
 const COMPANY_MAILING_ADDRESS = "1292 High Street PMB 222, Eugene, OR 97401";
-const PROJECT_REPOSITORY_URL = "https://github.com/Denuo-Web/CrowdPMPlatform/";
-const PROJECT_LICENSE_URL = "https://github.com/Denuo-Web/CrowdPMPlatform/blob/main/LICENSE.md";
-const AGPL_URL = "https://www.gnu.org/licenses/agpl-3.0.html";
 
 const legalDocumentTitles: Record<LegalDocumentId, string> = {
   terms: "Terms of Service",
@@ -354,9 +353,9 @@ function LicenseTerms() {
       <Section title="1. Source Code">
         <P>
           CrowdPM source code is available in the{" "}
-          <Link href={PROJECT_REPOSITORY_URL} target="_blank" rel="noreferrer" color="iris" highContrast>
+          <ExternalLink href={PROJECT_LINKS.repository} color="iris" highContrast>
             Denuo-Web/CrowdPMPlatform repository
-          </Link>{" "}
+          </ExternalLink>{" "}
           and is dual-licensed under the GNU Affero General Public License version 3.0 or later and a
           separate commercial license from {COMPANY_NAME}.
         </P>
@@ -364,13 +363,13 @@ function LicenseTerms() {
           The AGPL option lets you copy, modify, run, and distribute covered code if you comply with
           the AGPL, including its source availability requirements for modified network services.
           Review the{" "}
-          <Link href={AGPL_URL} target="_blank" rel="noreferrer" color="iris" highContrast>
+          <ExternalLink href={PROJECT_LINKS.agpl3} color="iris" highContrast>
             GNU AGPL v3.0
-          </Link>{" "}
+          </ExternalLink>{" "}
           and the{" "}
-          <Link href={PROJECT_LICENSE_URL} target="_blank" rel="noreferrer" color="iris" highContrast>
+          <ExternalLink href={PROJECT_LINKS.licenseFile} color="iris" highContrast>
             repository license
-          </Link>{" "}
+          </ExternalLink>{" "}
           for the complete terms.
         </P>
       </Section>

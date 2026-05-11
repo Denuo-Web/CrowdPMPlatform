@@ -4,10 +4,10 @@ import {
   Card,
   Flex,
   Heading,
-  Link,
   Separator,
   Text,
 } from "@radix-ui/themes";
+import { ExternalLink } from "../components/ExternalLink";
 
 type SectionProps = {
   title: string;
@@ -80,9 +80,9 @@ function ListItem({ children }: { children: ReactNode }) {
 
 function PartLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link href={href} target="_blank" rel="noopener" color="iris" highContrast>
+    <ExternalLink href={href} color="iris" highContrast>
       {children}
-    </Link>
+    </ExternalLink>
   );
 }
 

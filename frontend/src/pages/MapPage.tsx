@@ -14,6 +14,7 @@ import {
   type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
 import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
+import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet, scopedStorageKey } from "../lib/storage";
 import {
   detectCanvasVideoExportSupport,
@@ -45,6 +46,8 @@ const MAX_PERSISTED_MAP_ZOOM = 22;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
 const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
 const MAP_PANEL_BLUR = "blur(12px)";
+const MAP_EMPTY_STATE_TITLE = "Hyper-local community air quality, mapped in 3D";
+const MAP_EMPTY_STATE_DESCRIPTION = "Explore public sensor data below, or pair your own node to start contributing measurements.";
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -1123,10 +1126,10 @@ export default function MapPage({
               <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
             </svg>
             <h2 style={{ margin: 0, fontSize: "var(--font-size-6)", fontWeight: 700 }}>
-              Hyper-local community air quality, mapped in 3D
+              {MAP_EMPTY_STATE_TITLE}
             </h2>
             <p style={{ marginTop: "var(--space-3)", color: "var(--gray-11)", fontSize: "var(--font-size-3)" }}>
-              Explore public sensor data below, or pair your own node to start contributing measurements.
+              {MAP_EMPTY_STATE_DESCRIPTION}
             </p>
             <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", marginTop: "var(--space-4)", flexWrap: "wrap" }}>
               <button
@@ -1147,7 +1150,7 @@ export default function MapPage({
               </button>
               <button
                 type="button"
-                onClick={() => window.open("/pairing-guide", "_blank")}
+                onClick={() => openAppRouteInNewTab(APP_ROUTES.pairingGuide)}
                 style={{
                   padding: "var(--space-2) var(--space-4)",
                   borderRadius: "var(--radius-3)",

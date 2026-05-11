@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Box, Button, Callout, Card, Flex, Heading, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
+import { InternalNewTabAnchor } from "../components/InternalLink";
 import {
   deleteBatch,
   listBatches,
@@ -12,6 +13,7 @@ import {
   type BatchVisibility,
   type DeviceSummary,
 } from "../lib/api";
+import { APP_ROUTES } from "../lib/appRoutes";
 import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import { buildActivationLink } from "../lib/activation";
@@ -308,7 +310,7 @@ export default function UserDashboard({ onRequestActivation, onOpenThemeModal, r
             <Flex gap="3" wrap="wrap">
               <Button onClick={handleOpenActivation}>Open activation UI</Button>
               <Button variant="ghost" asChild>
-                <a href="/activate" target="_blank" rel="noreferrer">Open in current tab</a>
+                <InternalNewTabAnchor href={APP_ROUTES.activation}>Open in new tab</InternalNewTabAnchor>
               </Button>
             </Flex>
             <Text size="2" color="gray">Share this link with trusted teammates who can approve devices for your org:</Text>
@@ -345,7 +347,7 @@ export default function UserDashboard({ onRequestActivation, onOpenThemeModal, r
               Open activation UI
             </Button>
             <Button variant="ghost" asChild>
-              <a href="/pairing-guide" target="_blank" rel="noreferrer">How does pairing work?</a>
+              <InternalNewTabAnchor href={APP_ROUTES.pairingGuide}>How does pairing work?</InternalNewTabAnchor>
             </Button>
           </Flex>
         </Flex>

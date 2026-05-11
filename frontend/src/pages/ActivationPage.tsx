@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Separator, Text, TextField } from "@radix-ui/themes";
 import { timestampToMillis } from "@crowdpm/types";
+import { InternalNewTabAnchor } from "../components/InternalLink";
 import { useAuth } from "../providers/AuthProvider";
 import { AuthDialog, type AuthMode } from "../components/AuthDialog";
 import {
@@ -8,6 +9,7 @@ import {
   fetchActivationSession,
   type ActivationSession,
 } from "../lib/api";
+import { APP_ROUTES } from "../lib/appRoutes";
 
 type ActivationPageProps = {
   layout?: "standalone" | "dialog";
@@ -220,9 +222,9 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
         </Text>
         <Text size="2" mt="2" as="p">
           First time?{" "}
-          <a href="/pairing-guide" target="_blank" rel="noreferrer" style={{ color: "var(--accent-11)" }}>
+          <InternalNewTabAnchor href={APP_ROUTES.pairingGuide} style={{ color: "var(--accent-11)" }}>
             Read the pairing guide →
-          </a>
+          </InternalNewTabAnchor>
         </Text>
       </Box>
 
