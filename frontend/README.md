@@ -34,11 +34,6 @@ Local-only value:
 
 - `VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`
 
-Optional smoke-test values:
-
-- `VITE_SMOKE_TEST_USER_EMAIL`
-- `VITE_SMOKE_TEST_USER_EMAILS`
-
 Vite reads environment variables at startup, so restart the dev server after changing `.env.local`.
 
 ## Structure

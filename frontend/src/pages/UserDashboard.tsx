@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Box, Button, Callout, Card, Flex, Heading, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
+import { Badge, Box, Button, Callout, Card, Flex, Heading, Link, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
 import { InternalNewTabAnchor } from "../components/InternalLink";
@@ -22,6 +22,7 @@ import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../comp
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
+  onOpenSmokeTest?: () => void;
   onOpenThemeModal: () => void;
   refreshToken?: number;
 };
@@ -34,7 +35,7 @@ function describeStatus(status?: string | null): { label: string; tone: "green" 
   return { label: status ?? "Unknown", tone: "red" };
 }
 
-export default function UserDashboard({ onRequestActivation, onOpenThemeModal, refreshToken = 0 }: UserDashboardProps) {
+export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, onOpenThemeModal, refreshToken = 0 }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -351,6 +352,21 @@ export default function UserDashboard({ onRequestActivation, onOpenThemeModal, r
               <InternalNewTabAnchor href={APP_ROUTES.pairingGuide}>How does pairing work?</InternalNewTabAnchor>
             </Button>
           </Flex>
+          {onOpenSmokeTest ? (
+            <Text size="2" color="gray">
+              Super admins can also{" "}
+              <Link
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenSmokeTest();
+                }}
+              >
+                open the Smoke Test Lab
+              </Link>
+              {" "}from here.
+            </Text>
+          ) : null}
         </Flex>
       </Card>
 

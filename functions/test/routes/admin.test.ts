@@ -187,7 +187,7 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/ingest-smoke-test",
-      headers: { authorization: "Bearer smoke" },
+      headers: { authorization: "Bearer admin" },
       payload: { payload: { points: [] } },
     });
 
@@ -223,7 +223,7 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/admin/ingest-smoke-test",
-      headers: { authorization: "Bearer smoke" },
+      headers: { authorization: "Bearer admin" },
       payload: { payload: { points: [] } },
     });
 
