@@ -10,6 +10,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - CI green or equivalent local checks passing.
 - Frontend environment values ready for the deployed Firebase project.
 - Functions runtime environment values ready, especially `DEVICE_TOKEN_PRIVATE_KEY`.
+- Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
 
 ```bash
 source ~/.nvm/nvm.sh && nvm use 24
@@ -57,6 +58,9 @@ Common optional values:
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
 - `SMOKE_TEST_USER_EMAILS`
+- `PUBLIC_APP_BASE_URL`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 
 Keep secrets out of git. If using Firebase dotenv files for deploy-time environment variables, keep project-specific `.env.*` files local or in the deployment secret store. If migrating to Cloud Secret Manager-backed parameters, update the functions code to bind those secrets before relying on `firebase functions:secrets:set`.
 
@@ -80,6 +84,20 @@ The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from 
 
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `FIREBASE_WORKLOAD_IDENTITY_PROVIDER` plus `FIREBASE_SERVICE_ACCOUNT_EMAIL`
+
+For functions runtime config, the workflow now writes `functions/.env.$FIREBASE_PROJECT_ID` during CI from GitHub secrets plus `FRONTEND_URL`. That file should provide:
+
+- `DEVICE_TOKEN_PRIVATE_KEY`
+- `DEVICE_ACTIVATION_URL`
+- `DEVICE_VERIFICATION_URI`
+- `DEVICE_TOKEN_ISSUER`
+- `DEVICE_TOKEN_AUDIENCE`
+- `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
+- `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
+- `SMOKE_TEST_USER_EMAIL` or `SMOKE_TEST_USER_EMAILS`
+- `PUBLIC_APP_BASE_URL`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 
 ## Post-Deploy Validation
 

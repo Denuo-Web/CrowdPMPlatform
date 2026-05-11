@@ -130,10 +130,21 @@ export type IngestSmokeTestPoint = IngestPoint;
 export type IngestSmokeTestPayload = IngestBatchPayload;
 export type IngestSmokeTestResponse = SmokeTestResponse;
 export type IngestSmokeTestCleanupResponse = SmokeTestCleanupResponse;
+export type CheckoutRedirectSession = {
+  sessionId: string;
+  url: string;
+};
 
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
+
+export async function createNodePurchaseCheckoutSession(): Promise<CheckoutRedirectSession> {
+  return requestJson<CheckoutRedirectSession>("/v1/node-purchase/checkout-session", {
+    method: "POST",
+  });
+}
+
 export async function fetchMeasurements(q: {
   device_id: string; pollutant?: "pm25"; t0: string; t1: string; limit?: number;
 }): Promise<MeasurementRecord[]> {
