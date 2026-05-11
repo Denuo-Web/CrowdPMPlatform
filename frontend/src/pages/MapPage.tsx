@@ -1123,7 +1123,7 @@ export default function MapPage({
               <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
             </svg>
             <h2 style={{ margin: 0, fontSize: "var(--font-size-6)", fontWeight: 700 }}>
-              Real-time community air quality, mapped in 3D
+              Hyper-local community air quality, mapped in 3D
             </h2>
             <p style={{ marginTop: "var(--space-3)", color: "var(--gray-11)", fontSize: "var(--font-size-3)" }}>
               Explore public sensor data below, or pair your own node to start contributing measurements.
