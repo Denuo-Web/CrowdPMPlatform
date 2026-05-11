@@ -379,10 +379,16 @@ export default function MapPage({
     if (exists) return visibleBatches;
     return sortBatchesByProcessedAtDesc([selectedSummary, ...visibleBatches]);
   }, [selectedSummary, visibleBatches]);
-  const visibleDropdownBatches = useMemo(
-    () => dropdownBatches.slice(0, DROPDOWN_BATCH_LIMIT),
-    [dropdownBatches]
-  );
+  const visibleDropdownBatches = useMemo(() => {
+    if (!selectedSummary) return dropdownBatches.slice(0, DROPDOWN_BATCH_LIMIT);
+    const prioritized = [
+      selectedSummary,
+      ...dropdownBatches.filter((batch) => (
+        batch.deviceId !== selectedSummary.deviceId || batch.batchId !== selectedSummary.batchId
+      )),
+    ];
+    return prioritized.slice(0, DROPDOWN_BATCH_LIMIT);
+  }, [dropdownBatches, selectedSummary]);
 
   const batchDetailQueryKey = useMemo(
     () => (selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKey) : null),
@@ -871,13 +877,6 @@ export default function MapPage({
   );
   const batchSelectValue = selectedBatchKey || NO_BATCH_SELECTED_KEY;
   const batchSelectPlaceholder = user ? "Select batch" : "Select a public batch";
-  const batchTriggerText = useMemo(() => {
-    if (!selectedBatchKey) return undefined;
-    if (selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return "Show all public (last 24h)";
-    if (selectedSummary) return formatBatchLabel(selectedSummary);
-    if (!selectedBatchParsed) return undefined;
-    return `${selectedBatchParsed.batchId} — ${selectedBatchParsed.deviceId}`;
-  }, [selectedBatchKey, selectedBatchParsed, selectedSummary]);
   const batchBrowserActionLabel = user ? "See all batches..." : "See all public batches...";
   const batchBrowserTitle = user ? "All measurement batches" : "All public measurement batches";
   const allModeBatchCount = useMemo(() => (
@@ -1241,9 +1240,7 @@ export default function MapPage({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                 }}
-              >
-                {batchTriggerText}
-              </Select.Trigger>
+              />
               <Select.Content
                 position="popper"
                 style={{
