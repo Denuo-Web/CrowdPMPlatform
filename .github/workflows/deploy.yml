@@ -6,8 +6,8 @@ on:
       - main
 
 env:
-  FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-  FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL }}
+  FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
+  FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL || vars.FUNCTIONS_HEALTH_URL || vars.DEMO_FUNCTIONS_HEALTH_URL }}
   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
   VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
   VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID }}
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: deployed
     env:
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON || secrets.DEMO_SERVICE_ACCOUNT_JSON }}
       FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
       FIREBASE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
     permissions:
@@ -52,7 +52,7 @@ jobs:
       - name: Resolve deployment configuration
         id: deploy_config
         env:
-          CONFIGURED_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || vars.FIREBASE_PROJECT_ID }}
+          CONFIGURED_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || vars.FIREBASE_PROJECT_ID || vars.DEMO_FIREBASE_PROJECT_ID }}
         run: |
           project_id="$CONFIGURED_FIREBASE_PROJECT_ID"
           if [ -z "$project_id" ]; then
