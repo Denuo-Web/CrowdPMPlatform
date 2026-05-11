@@ -142,8 +142,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     });
 
     expect(mocks.productsCreate).toHaveBeenCalledWith({
-      name: "CrowdPM Node Hardware",
-      description: "Node hardware purchase with US shipping included.",
+      name: "CrowdPM Node Hardware - PM2.5 Standard",
+      description: "PM2.5 node hardware purchase with US shipping included.",
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
@@ -178,11 +178,13 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       client_reference_id: undefined,
       metadata: {
         purchaseType: "node_hardware",
+        variantId: "standard",
+        variantLabel: "PM2.5 standard node",
       },
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
     });
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -205,12 +207,84 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       purchaseType: "node_hardware",
       userId: null,
       customerEmail: null,
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
+    });
+    await app.close();
+  });
+
+  it("creates the CO2-expanded node variant at the matching Stripe price", async () => {
+    mocks.productsCreate.mockResolvedValueOnce({
+      id: "prod_node_co2_123",
+      default_price: "price_node_co2_123",
+    });
+    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
+      id: "cs_node_co2_123",
+      url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
+      mode: "payment",
+      currency: "usd",
+      amount_subtotal: 37799,
+      amount_total: 37799,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "co2",
+      },
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.productsCreate).toHaveBeenCalledWith({
+      name: "CrowdPM Node Hardware - PM2.5 + CO2",
+      description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
+      tax_code: "txcd_99999999",
+      default_price_data: {
+        currency: "usd",
+        unit_amount: 37799,
+        tax_behavior: "exclusive",
+      },
+    });
+    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith(expect.objectContaining({
+      line_items: [
+        {
+          price: "price_node_co2_123",
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        purchaseType: "node_hardware",
+        variantId: "co2",
+        variantLabel: "PM2.5 + CO2 node",
+      },
+    }));
+    expect(dbStore.get("paymentCatalog/nodeHardwareCo2")).toMatchObject({
+      productId: "prod_node_co2_123",
+      defaultPriceId: "price_node_co2_123",
+      currency: "usd",
+      unitAmount: 37799,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
+    });
+    expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
+      sessionId: "cs_node_co2_123",
+      purchaseType: "node_hardware",
+      unitAmount: 37799,
+      amountSubtotal: 37799,
+      amountTotal: 37799,
+      variantId: "co2",
+      variantLabel: "PM2.5 + CO2 node",
     });
     await app.close();
   });
 
   it("reuses the stored catalog without creating a second product", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeHardwareStandard", {
       productId: "prod_existing",
       defaultPriceId: "price_existing",
       currency: "usd",
@@ -239,7 +313,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored price no longer matches the expected node price", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeHardwareStandard", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -264,7 +338,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         },
       ],
     }));
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -276,7 +350,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored tax configuration is missing", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeHardwareStandard", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -291,7 +365,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
 
     expect(res.statusCode).toBe(200);
     expect(mocks.productsCreate).toHaveBeenCalledTimes(1);
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -299,6 +373,29 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
+    await app.close();
+  });
+
+  it("rejects an unknown node purchase variant", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "bogus",
+      },
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "invalid_request",
+      message: "invalid request",
+    });
+    expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     await app.close();
   });
 });

@@ -158,8 +158,9 @@ function TermsOfService() {
       <Section title="3. Paid Products and Digital Expansions">
         <P>
           CrowdPM node hardware is sold by {COMPANY_NAME}. Node purchases are one-time hardware
-          purchases processed through Stripe Checkout. The listed node price is $350 per node with
-          standard US shipping included; applicable sales tax is calculated during checkout from the
+          purchases processed through Stripe Checkout. The base node price is $350 with standard US
+          shipping included, and optional sensor add-ons increase the one-time hardware price for
+          the selected configuration. Applicable sales tax is calculated during checkout from the
           shipping address.
         </P>
         <P>

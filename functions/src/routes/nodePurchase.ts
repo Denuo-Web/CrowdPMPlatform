@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import { z } from "zod";
 import { extractClientIp } from "../lib/http.js";
 import { httpError } from "../lib/httpError.js";
 import { getRequestUser, rateLimitGuard, requestUserId, requireUserGuard } from "../lib/routeGuards.js";
@@ -7,6 +8,10 @@ import { createNodePurchaseCheckoutSession, createThemeSaveCheckoutSession, hand
 type RequestWithRawBody = {
   rawBody?: Buffer | string;
 };
+
+const nodeCheckoutBodySchema = z.object({
+  variantId: z.enum(["standard", "co2", "no2", "co2_no2"]).optional(),
+}).strict();
 
 function requestIp(req: FastifyRequest): string {
   return extractClientIp(req.headers) ?? req.ip ?? "unknown";
@@ -25,7 +30,15 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `node-purchase:checkout:ip:${requestIp(req)}`, 30, 60_000),
       rateLimitGuard("node-purchase:checkout:global", 1_000, 60_000),
     ],
-  }, async () => createNodePurchaseCheckoutSession());
+  }, async (req) => {
+    const parsed = nodeCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+    return createNodePurchaseCheckoutSession({
+      variantId: parsed.data.variantId,
+    });
+  });
 
   app.post("/v1/theme-purchase/checkout-session", {
     preHandler: [

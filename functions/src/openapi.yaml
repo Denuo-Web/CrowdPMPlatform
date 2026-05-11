@@ -34,11 +34,19 @@ paths:
       description: >
         Creates a Stripe Checkout session for the one-time CrowdPM node hardware
         purchase. Checkout collects a US shipping address, applies Stripe Tax
-        based on that destination, and charges a $350 base price with shipping
-        included. The API lazily provisions the backing Stripe product + price
-        the first time this route is used, then reuses the stored identifiers on
-        later requests.
+        based on that destination, and charges the selected hardware variant.
+        The standard PM2.5 node starts at a $350 base price with shipping
+        included, while optional CO2 and NO2 sensor add-ons increase the final
+        pre-tax amount. The API lazily provisions the backing Stripe product +
+        price for each variant the first time that variant is requested, then
+        reuses the stored identifiers on later requests.
       security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePurchaseCheckoutRequest'
       responses:
         '200':
           description: Checkout session created.
@@ -46,6 +54,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckoutRedirectSession'
+        '400':
+          description: Invalid or unsupported hardware variant.
         '429':
           description: Rate limited.
         '500':
@@ -889,6 +899,18 @@ components:
           type: string
           format: uri
           description: Hosted Stripe Checkout URL to open in the browser.
+    NodePurchaseCheckoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        variantId:
+          type: string
+          enum:
+            - standard
+            - no2
+            - co2
+            - co2_no2
+          description: Selected CrowdPM hardware product variant.
     DeviceStatus:
       type: string
       enum:

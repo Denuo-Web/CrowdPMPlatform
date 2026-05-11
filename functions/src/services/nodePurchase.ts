@@ -12,6 +12,7 @@ const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
 const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "Price includes US shipping. Applicable sales tax is calculated at checkout.";
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
+const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
 
 type PaymentCatalog = {
   productId: string;
@@ -48,14 +49,16 @@ export type NodePurchaseCheckoutSession = {
   url: string;
 };
 
-const NODE_HARDWARE_CONFIG: CheckoutProductConfig = {
-  catalogDocId: "nodeHardware",
+export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
+type NodeHardwareVariantConfig = Pick<CheckoutProductConfig, "catalogDocId" | "productName" | "description" | "unitAmount"> & {
+  label: string;
+};
+
+const NODE_HARDWARE_BASE_CONFIG: Omit<CheckoutProductConfig, "catalogDocId" | "productName" | "description" | "unitAmount"> = {
   sessionCollection: "nodePurchaseSessions",
   purchaseType: "node_hardware",
-  productName: "CrowdPM Node Hardware",
-  description: "Node hardware purchase with US shipping included.",
   currency: "usd",
-  unitAmount: 35000,
   taxCode: DEFAULT_PRODUCT_TAX_CODE,
   taxBehavior: "exclusive",
   billingAddressCollection: "required",
@@ -74,6 +77,44 @@ const NODE_HARDWARE_CONFIG: CheckoutProductConfig = {
     allowed_countries: NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES,
   },
 };
+
+const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantConfig> = {
+  standard: {
+    catalogDocId: "nodeHardwareStandard",
+    label: "PM2.5 standard node",
+    productName: "CrowdPM Node Hardware - PM2.5 Standard",
+    description: "PM2.5 node hardware purchase with US shipping included.",
+    unitAmount: 35_000,
+  },
+  no2: {
+    catalogDocId: "nodeHardwareNo2",
+    label: "PM2.5 + NO2 node",
+    productName: "CrowdPM Node Hardware - PM2.5 + NO2",
+    description: "PM2.5 node with MiCS-6814 NO2 sensor and ADS1115 interface hardware, with US shipping included.",
+    unitAmount: 38_884,
+  },
+  co2: {
+    catalogDocId: "nodeHardwareCo2",
+    label: "PM2.5 + CO2 node",
+    productName: "CrowdPM Node Hardware - PM2.5 + CO2",
+    description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
+    unitAmount: 37_799,
+  },
+  co2_no2: {
+    catalogDocId: "nodeHardwareCo2No2",
+    label: "PM2.5 + CO2 + NO2 node",
+    productName: "CrowdPM Node Hardware - PM2.5 + CO2 + NO2",
+    description: "PM2.5 node with SCD41 CO2 sensor, MiCS-6814 NO2 sensor, and ADS1115 interface hardware, with US shipping included.",
+    unitAmount: 41_683,
+  },
+};
+
+function nodeHardwareConfigForVariant(variantId: NodePurchaseVariantId): CheckoutProductConfig {
+  return {
+    ...NODE_HARDWARE_BASE_CONFIG,
+    ...NODE_HARDWARE_VARIANTS[variantId],
+  };
+}
 
 const THEME_SAVE_UNLOCK_CONFIG: CheckoutProductConfig = {
   catalogDocId: "themeSaveUnlock",
@@ -245,6 +286,8 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
 type CreateCheckoutSessionOptions = {
   customerEmail?: string | null;
   userId?: string;
+  metadata?: Record<string, string>;
+  sessionData?: Record<string, unknown>;
 };
 
 async function createCheckoutSession(
@@ -258,6 +301,9 @@ async function createCheckoutSession(
   };
   if (options.userId) {
     metadata.userId = options.userId;
+  }
+  if (options.metadata) {
+    Object.assign(metadata, options.metadata);
   }
 
   let session: Stripe.Checkout.Session;
@@ -309,6 +355,7 @@ async function createCheckoutSession(
     amountTotal: session.amount_total ?? null,
     userId: options.userId ?? null,
     customerEmail: options.customerEmail ?? null,
+    ...(options.sessionData ?? {}),
     createdAt: new Date().toISOString(),
   }, { merge: true });
 
@@ -325,8 +372,21 @@ async function ensureThemeSaveLocked(userId: string): Promise<void> {
   }
 }
 
-export async function createNodePurchaseCheckoutSession(): Promise<NodePurchaseCheckoutSession> {
-  return createCheckoutSession(NODE_HARDWARE_CONFIG);
+export async function createNodePurchaseCheckoutSession(args: {
+  variantId?: NodePurchaseVariantId;
+} = {}): Promise<NodePurchaseCheckoutSession> {
+  const variantId = args.variantId ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
+  const variant = NODE_HARDWARE_VARIANTS[variantId];
+  return createCheckoutSession(nodeHardwareConfigForVariant(variantId), {
+    metadata: {
+      variantId,
+      variantLabel: variant.label,
+    },
+    sessionData: {
+      variantId,
+      variantLabel: variant.label,
+    },
+  });
 }
 
 export async function createThemeSaveCheckoutSession(args: {
@@ -360,10 +420,10 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
     };
   }
 
-  if (metadataPurchaseType === NODE_HARDWARE_CONFIG.purchaseType) {
-    const snap = await db().collection(NODE_HARDWARE_CONFIG.sessionCollection).doc(session.id).get();
+  if (metadataPurchaseType === NODE_HARDWARE_BASE_CONFIG.purchaseType) {
+    const snap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
     return {
-      config: NODE_HARDWARE_CONFIG,
+      config: nodeHardwareConfigForVariant(DEFAULT_NODE_HARDWARE_VARIANT_ID),
       storedSession: snap.exists ? (snap.data() as Record<string, unknown>) : null,
     };
   }
@@ -376,9 +436,9 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
     };
   }
 
-  const nodeSnap = await db().collection(NODE_HARDWARE_CONFIG.sessionCollection).doc(session.id).get();
+  const nodeSnap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
   return {
-    config: NODE_HARDWARE_CONFIG,
+    config: nodeHardwareConfigForVariant(DEFAULT_NODE_HARDWARE_VARIANT_ID),
     storedSession: nodeSnap.exists ? (nodeSnap.data() as Record<string, unknown>) : null,
   };
 }

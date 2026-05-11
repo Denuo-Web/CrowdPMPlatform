@@ -474,7 +474,7 @@ export default function App() {
               style={activeTab === "node" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
-              Node
+              Products
             </DropdownMenu.Item>
             {isSignedIn ? (
               <>
