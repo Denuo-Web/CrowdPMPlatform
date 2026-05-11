@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
@@ -46,6 +46,10 @@ const MAX_PERSISTED_MAP_ZOOM = 22;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
 const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
 const MAP_PANEL_BLUR = "blur(12px)";
+const MAP_VIEWPORT_BACKGROUND =
+  "radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--accent-8) 20%, transparent), transparent 55%), "
+  + "radial-gradient(100% 100% at 100% 0%, color-mix(in srgb, var(--gray-7) 14%, transparent), transparent 60%), "
+  + "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 82%, var(--gray-1)), var(--color-surface))";
 const MAP_EMPTY_STATE_TITLE = "Hyper-local community air quality, mapped in 3D";
 const MAP_EMPTY_STATE_DESCRIPTION = "Explore public sensor data below, or pair your own node to start contributing measurements.";
 
@@ -303,6 +307,7 @@ export default function MapPage({
   const [renderedVideoName, setRenderedVideoName] = useState<string | null>(null);
   const [, setRenderedVideoMimeType] = useState<string | null>(null);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
+  const [isMapViewportActivated, setMapViewportActivated] = useState(false);
 
 
   const getCachedBatch = useCallback(() => {
@@ -629,6 +634,11 @@ export default function MapPage({
   }, [getCachedBatch, queryClient, user, userScopedCacheKey]);
 
   const handleBatchSelect = useCallback((value: string) => {
+    if (value && !isMapViewportActivated) {
+      startTransition(() => {
+        setMapViewportActivated(true);
+      });
+    }
     setSelectedBatchKey(value);
     if (value) {
       safeLocalStorageSet(
@@ -643,7 +653,7 @@ export default function MapPage({
         { context: "map:selected-batch:clear", userId: user?.uid }
       );
     }
-  }, [user?.uid, userScopedSelectionKey]);
+  }, [isMapViewportActivated, user?.uid, userScopedSelectionKey]);
 
   const handleMapZoomChange = useCallback((zoom: number) => {
     const nextZoom = Math.min(Math.max(zoom, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
@@ -887,8 +897,10 @@ export default function MapPage({
     ).size
   ), [rows]);
 
-  // Always render the map — use all-public mode by default when nothing is selected
+  // Use all-public mode by default when nothing is selected, but defer the heavy 3D viewport on the anonymous hero.
   const effectiveShowAllMode = isShowingAllPublic24h || !selectedBatchKey;
+  const isAnonymousHeroState = !user && !selectedBatchKey && !rows.length;
+  const shouldRenderMapViewport = isMapViewportActivated || !isAnonymousHeroState;
   const isMapZoomHydrated = !isAuthLoading && zoomHydrationKey === userScopedZoomKey;
   const isExportSectionVisible = Boolean(selectedBatchKey) && !isShowingAllPublic24h;
   const canExportSelection = useMemo(() => {
@@ -919,6 +931,13 @@ export default function MapPage({
     user,
   ]);
   const canStartExport = isExportSectionVisible && !isExporting && !exportDisabledReason;
+
+  useEffect(() => {
+    if (isAnonymousHeroState || isMapViewportActivated) return;
+    startTransition(() => {
+      setMapViewportActivated(true);
+    });
+  }, [isAnonymousHeroState, isMapViewportActivated]);
 
   useEffect(() => {
     if (!isExportSectionVisible) {
@@ -1060,9 +1079,17 @@ export default function MapPage({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: MAP_VIEWPORT_BACKGROUND,
+        }}
+      />
       {/* ---- Always-visible map ---- */}
-      <Suspense fallback={<div style={{ width: "100%", height: "100%", background: "var(--color-surface)" }} />}>
-        {isMapZoomHydrated ? (
+      <Suspense fallback={<div style={{ width: "100%", height: "100%", background: MAP_VIEWPORT_BACKGROUND }} />}>
+        {shouldRenderMapViewport && isMapZoomHydrated ? (
           <Map3D
             ref={map3DRef}
             data={data}
@@ -1080,7 +1107,7 @@ export default function MapPage({
       </Suspense>
 
       {/* ---- Welcome hero overlay (when no batch selected and no data) ---- */}
-      {!user && !selectedBatchKey && !rows.length ? (
+      {isAnonymousHeroState ? (
         <div
           style={{
             position: "absolute",
