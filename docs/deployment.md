@@ -76,7 +76,10 @@ firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID"
 firebase deploy --only firestore:rules,storage --project "$FIREBASE_PROJECT_ID"
 ```
 
-The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from `main` using the `deployed` GitHub environment. Required GitHub configuration includes `FIREBASE_PROJECT_ID` and `FIREBASE_SERVICE_ACCOUNT_JSON`.
+The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from `main` using the `deployed` GitHub environment. Required GitHub configuration includes `FIREBASE_PROJECT_ID` and one of these authentication options:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIREBASE_WORKLOAD_IDENTITY_PROVIDER` plus `FIREBASE_SERVICE_ACCOUNT_EMAIL`
 
 ## Post-Deploy Validation
 
