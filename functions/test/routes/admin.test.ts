@@ -158,7 +158,6 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     await app.close();
   });
@@ -176,7 +175,6 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have permission to access this resource.",
-      error_description: "You do not have permission to access this resource.",
     });
     await app.close();
   });
@@ -214,7 +212,6 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "Caller lacks permission to run smoke tests",
-      error_description: "Caller lacks permission to run smoke tests",
     });
     await app.close();
   });
@@ -234,7 +231,6 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
     expect(res.json()).toEqual({
       error: "invalid_payload",
       message: "invalid payload",
-      error_description: "invalid payload",
     });
     await app.close();
   });
@@ -243,7 +239,7 @@ describe("POST /v1/admin/ingest-smoke-test", () => {
 describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
   it("happy path clears device data", async () => {
     const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserId: "user-123" } });
+    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
 
     const res = await app.inject({
       method: "POST",
@@ -266,7 +262,7 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
 
   it("auth: forbidden device returns 403 with list", async () => {
     const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserId: "other-user" } });
+    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["other-user"] } });
     mocks.userOwnsDevice.mockReturnValue(false);
 
     const res = await app.inject({
@@ -280,7 +276,6 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "You do not have permission to delete one or more devices.",
-      error_description: "You do not have permission to delete one or more devices.",
       forbiddenDeviceIds: ["device-1"],
     });
     await app.close();
@@ -288,7 +283,7 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
 
   it("partial failures return 207 with failedDeletions", async () => {
     const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserId: "user-123" } });
+    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
     mocks.recursiveDelete.mockRejectedValue(new Error("firestore failed"));
 
     const res = await app.inject({

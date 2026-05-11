@@ -9,7 +9,7 @@ export type NormalizedHttpError = {
 
 type HttpErrorMeta = Record<string, unknown>;
 
-const RESERVED_BODY_KEYS = new Set(["error", "message", "error_description"]);
+const RESERVED_BODY_KEYS = new Set(["error", "message"]);
 
 const DEFAULT_ERROR_BY_STATUS: Record<number, string> = {
   400: "bad_request",
@@ -119,10 +119,9 @@ function metaFrom(err: unknown): HttpErrorMeta | undefined {
   return cleanMeta((err as { meta?: unknown }).meta);
 }
 
-function withMessageAliases(body: Record<string, unknown>, message: string | undefined): void {
+function withMessage(body: Record<string, unknown>, message: string | undefined): void {
   if (!message || message.trim().length === 0) return;
   body.message = message;
-  body.error_description = message;
 }
 
 function mergeMeta(body: Record<string, unknown>, meta: HttpErrorMeta | undefined): void {
@@ -147,7 +146,7 @@ export function toHttpError(err: unknown, fallbackStatusCode = 500): NormalizedH
   const error = errorCodeFrom(err, statusCode);
   const message = messageFrom(err);
   const body: Record<string, unknown> = { error };
-  withMessageAliases(body, message);
+  withMessage(body, message);
   mergeMeta(body, metaFrom(err));
   const headers = headersFrom(err);
   return { statusCode, body, headers };

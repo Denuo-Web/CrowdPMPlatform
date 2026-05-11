@@ -121,7 +121,6 @@ describe("GET /v1/device-activation", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     expect(mocks.findSessionByUserCode).not.toHaveBeenCalled();
     await app.close();
@@ -156,7 +155,6 @@ describe("GET /v1/device-activation", () => {
     expect(res.json()).toEqual({
       error: "not_found",
       message: "Pairing code not found",
-      error_description: "Pairing code not found",
     });
     await app.close();
   });
@@ -193,7 +191,6 @@ describe("GET /v1/device-activation", () => {
     expect(res.json()).toEqual({
       error: "unavailable",
       message: "upstream down",
-      error_description: "upstream down",
     });
     await app.close();
   });
@@ -256,7 +253,6 @@ describe("POST /v1/device-activation/authorize", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "unauthorized",
-      error_description: "unauthorized",
     });
     await app.close();
   });
@@ -275,7 +271,6 @@ describe("POST /v1/device-activation/authorize", () => {
     expect(res.json()).toEqual({
       error: "unauthorized",
       message: "second_factor_required",
-      error_description: "second_factor_required",
     });
     await app.close();
   });
@@ -311,7 +306,6 @@ describe("POST /v1/device-activation/authorize", () => {
     expect(res.json()).toEqual({
       error: "not_found",
       message: "Pairing code not found",
-      error_description: "Pairing code not found",
     });
     await app.close();
   });
@@ -333,7 +327,6 @@ describe("POST /v1/device-activation/authorize", () => {
     expect(res.json()).toEqual({
       error: "gone",
       message: "Pairing code expired",
-      error_description: "Pairing code expired",
     });
     await app.close();
   });

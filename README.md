@@ -148,10 +148,11 @@ Set a Firebase ID token in the `Authorization: Bearer <token>` header for authen
   - `pnpm --filter crowdpm-functions admin:grant-role -- --email you@example.com --roles super_admin`
 - Backfill legacy batch documents with moderation metadata:
   - `pnpm --filter crowdpm-functions backfill:batch-moderation`
+- Backfill legacy single-owner device records into `ownerUserIds` and remove `ownerUserId`:
+  - `pnpm --filter crowdpm-functions backfill:device-ownership`
 
 ### Error Responses
 - API and gateway failures return normalized JSON with required `error` (lower_snake_case) and optional `message`.
-- `error_description` is emitted as a temporary compatibility alias for `message` and is deprecated.
 - Some endpoints include metadata fields such as `details`, `poll_interval`, `retry_after`, and `forbiddenDeviceIds`.
 
 ## Data Model & Storage

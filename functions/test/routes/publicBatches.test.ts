@@ -224,7 +224,6 @@ describe("GET /v1/public/batches/:deviceId/:batchId", () => {
     expect(res.json()).toEqual({
       error: "not_found",
       message: "Batch not found.",
-      error_description: "Batch not found.",
     });
     await app.close();
   });

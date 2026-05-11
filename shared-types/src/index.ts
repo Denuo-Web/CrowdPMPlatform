@@ -7,7 +7,6 @@ export type DeviceSummary = {
   name?: string | null;
   status?: string | null;
   registryStatus?: string | null;
-  ownerUserId?: string | null;
   ownerUserIds?: string[] | null;
   publicDeviceId?: string | null;
   ownerScope?: string | null;

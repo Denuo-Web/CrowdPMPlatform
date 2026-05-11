@@ -332,7 +332,6 @@ describe("POST /device/token", () => {
     expect(res.json()).toEqual({
       error: "invalid_dpop",
       message: "invalid_dpop",
-      error_description: "invalid_dpop",
     });
     await app.close();
   });
@@ -392,7 +391,6 @@ describe("POST /device/register", () => {
     expect(res.json()).toEqual({
       error: "invalid_request",
       message: "missing registration token",
-      error_description: "missing registration token",
     });
     await app.close();
   });
@@ -414,7 +412,6 @@ describe("POST /device/register", () => {
     expect(res.json()).toEqual({
       error: "invalid_token",
       message: "bad token",
-      error_description: "bad token",
     });
     await app.close();
   });
@@ -446,7 +443,6 @@ describe("POST /device/register", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "session not authorized for account",
-      error_description: "session not authorized for account",
     });
     await app.close();
   });
@@ -478,7 +474,6 @@ describe("POST /device/register", () => {
     expect(res.json()).toEqual({
       error: "unsupported_grant_type",
       message: "CSR enrollment is not yet supported",
-      error_description: "CSR enrollment is not yet supported",
     });
     await app.close();
   });
@@ -510,7 +505,6 @@ describe("POST /device/register", () => {
     expect(res.json()).toEqual({
       error: "invalid_request",
       message: "jwk_pub_kl is required",
-      error_description: "jwk_pub_kl is required",
     });
     await app.close();
   });
@@ -581,7 +575,6 @@ describe("POST /device/access-token", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "device not active",
-      error_description: "device not active",
     });
     await app.close();
   });
@@ -608,7 +601,6 @@ describe("POST /device/access-token", () => {
     expect(res.json()).toEqual({
       error: "forbidden",
       message: "device account disabled",
-      error_description: "device account disabled",
     });
     await app.close();
   });
@@ -635,7 +627,6 @@ describe("POST /device/access-token", () => {
     expect(res.json()).toEqual({
       error: "invalid_dpop",
       message: "invalid_dpop",
-      error_description: "invalid_dpop",
     });
     await app.close();
   });
@@ -662,7 +653,6 @@ describe("POST /device/access-token", () => {
     expect(res.json()).toEqual({
       error: "token_error",
       message: "token error",
-      error_description: "token error",
     });
     await app.close();
   });

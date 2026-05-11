@@ -904,8 +904,6 @@ void NodeClient::extractErrorDetails(const String& body, String& errorCode, Stri
   }
   if (document["message"].is<const char*>()) {
     message = String(document["message"].as<const char*>());
-  } else if (document["error_description"].is<const char*>()) {
-    message = String(document["error_description"].as<const char*>());
   }
   if (document["poll_interval"].is<int>()) {
     pollIntervalSeconds = document["poll_interval"].as<int>();
