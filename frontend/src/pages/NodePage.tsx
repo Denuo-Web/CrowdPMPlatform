@@ -385,7 +385,7 @@ export default function NodePage() {
                 : `Purchase Selected Product - ${formatUsd(selectedVariant.totalAmountCents)}`}
             </Button>
             <Text size="1" color="gray" as="p">
-              Sold by Denuo Web, LLC as a one-time hardware purchase. US shipping is
+              Sold by Denuo Web LLC as a one-time hardware purchase. US shipping is
               included, sales tax is calculated in Stripe Checkout, and selected
               sensor add-ons are reflected in the checkout price. Node orders are
               subject to the{" "}
@@ -401,6 +401,15 @@ export default function NodePage() {
                 Privacy Policy
               </LegalDocumentLink>
               .
+            </Text>
+            <Text size="1" color="gray" as="p">
+              You are purchasing physical CrowdPM node hardware and any expressly
+              listed related services from Denuo Web LLC. CrowdPM Platform software
+              is open-source software maintained by Denuo Web LLC and contributors.
+              Purchase of hardware does not restrict your rights under the applicable
+              open-source software license or transfer ownership of Denuo Web LLC
+              trademarks, branding, hosted infrastructure, customer accounts, or
+              proprietary business materials.
             </Text>
           </Flex>
         </Flex>

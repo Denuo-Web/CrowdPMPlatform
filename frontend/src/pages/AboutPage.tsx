@@ -53,6 +53,13 @@ const LEGAL_DOCUMENT_LINKS = [
   { documentId: "privacy", label: "Privacy Policy" },
 ] as const satisfies readonly { documentId: LegalDocumentId; label: string }[];
 
+const SOURCE_NOTICE_LINKS = [
+  { href: PROJECT_LINKS.repository, label: "Source code" },
+  { href: PROJECT_LINKS.licenseFile, label: "License" },
+  { href: PROJECT_LINKS.authorsFile, label: "Authors" },
+  { href: PROJECT_LINKS.noticeFile, label: "Notice" },
+] as const;
+
 export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
 
@@ -128,7 +135,8 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
               <ExternalLink href={PROJECT_LINKS.capstonePortal} color="iris" highContrast>
                 Oregon State University EECS Capstone
               </ExternalLink>{" "}
-              project. The platform is actively developed and maintained as an open-source effort.
+              project proposed by Jaron Rosenau / Denuo Web LLC. The platform is now maintained
+              and operated by Denuo Web LLC and includes contributions from project contributors.
             </Text>
             <Text size="2" as="p">
               The source code is available on{" "}
@@ -158,7 +166,18 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
           <Flex direction="column" gap="3">
             <Heading as="h2" size="4">Legal</Heading>
             <Text size="2" as="p">
-              Review the hosted service terms, project license, and data practices:
+              CrowdPM Platform is open-source software maintained by Denuo Web LLC and contributors.
+              Source code is available under GNU AGPLv3-or-later.
+            </Text>
+            <Flex gap="3" wrap="wrap">
+              {SOURCE_NOTICE_LINKS.map((link) => (
+                <ExternalLink key={link.href} href={link.href} color="iris" highContrast>
+                  {link.label}
+                </ExternalLink>
+              ))}
+            </Flex>
+            <Text size="2" as="p">
+              Review the hosted service terms, project license summary, and data practices:
             </Text>
             <Flex gap="3" wrap="wrap">
               {LEGAL_DOCUMENT_LINKS.map((document) => (

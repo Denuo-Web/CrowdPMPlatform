@@ -859,7 +859,7 @@ function ThemePreferencesModal({
                 {isStartingCheckout ? "Opening Checkout..." : "Unlock Theme Saving - $3"}
               </Button>
               <Text size="1" color="gray">
-                Sold by Denuo Web, LLC as a one-time digital expansion purchase. No shipping applies,
+                Sold by Denuo Web LLC as a one-time digital expansion purchase. No shipping applies,
                 applicable sales tax is calculated in Stripe Checkout, and theme save unlock purchases
                 are subject to the{" "}
                 <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
