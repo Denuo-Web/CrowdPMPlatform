@@ -55,7 +55,7 @@ const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
 const PISUGAR_3_PLUS_URL = "https://www.amazon.com/PiSugar-Plus-Pwnagotchi-Management-Raspberry/dp/B0FBK89B8H?crid=LFBH2KAF10OE&dib=eyJ2IjoiMSJ9.L0Ud_TUpDnpSJdO5W3nbRsP6KDdvl9mBzCTXI1Wgu8N8TErLSyNRjB761bzndZGqn8-A8kN77bnyCNm25h_AtH8fbGcUDaW2gupHScAfR8t7ylwXTTgwRxWWtJXzMZ6r4ew80IZaX6eRtLnMMl14zg.0HpvF_Oc66MzhahEEWzs9yCISfYWDvDd3YIgQQlW6BQ&dib_tag=se&keywords=PiSugar2+Plus+5000+mAh&qid=1778400315&s=electronics&sprefix=pisugar2+plus+5000+mah%2Celectronics%2C161&sr=1-3&linkCode=ll2&tag=lipbalm01-20&linkId=c7d788c8d0b545684e272d2ae0c677cf&language=en_US&ref_=as_li_ss_tl";
 const CO2_SENSOR_URL = "https://www.amazon.com/HiLetgo-Temperature-Humidity-Communication-Monitoring/dp/B0CDWXWCS5?psc=1&pd_rd_w=blPda&content-id=amzn1.sym.e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_p=e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_r=59515EY9GQNTR9T545T5&pd_rd_wg=8fbmW&pd_rd_r=74728aef-4573-4948-b457-68178961b213&sp_csd=d2lkZ2V0TmFtZT1zcF9kZXRhaWxfdGhlbWF0aWM%3D&linkCode=ll2&tag=lipbalm01-20&linkId=ea274a4ca23462d3503110f5d7ac5e4f&language=en_US&ref_=as_li_ss_tl";
-const NO2_SENSOR_URL = "https://www.amazon.com/dp/B0BG2YZP5L";
+const NO2_SENSOR_URL = "https://www.amazon.com/dp/B0BG2YZP5L?&linkCode=ll2&tag=lipbalm01-20&linkId=6bbc3169ef4e30f4e28a1ea88660826b&language=en_US&ref_=as_li_ss_tl";
 const ADS1115_URL = "https://www.amazon.com/ADS1115-4-Channel-Converter-Arduino-Raspberry/dp/B0FLNDLX8K?crid=3RYX9FG87U6CM&dib=eyJ2IjoiMSJ9.vSXpQFCIOGW8Td7egqghItKea7rWhgp1u88Hzd4_30ya41b80qvopTqt3nuXewJ-SJaiqILg_eRk14OZIhExEVDLoudgGQxwK3jhWd3XiCOz7cdguU674-vANvudUPOfYFBAcCd16OGBGkvGHNFvB-b_Pboa5cdXyi5LdZc22Le5DO0pwdY0HJEkVrt37HJJeTtz0D8L421WubLPedN57g.BK5SdzZVxNfpMmMqtuSJL_oKs1QRxyNdLfNicsYlwZA&dib_tag=se&keywords=ADS1115&qid=1778541032&sprefix=ads1115%2Caps%2C416&xpid=wwbj2redDMdny&linkCode=ll2&tag=lipbalm01-20&linkId=ba8f1b74761bdb64217b8ea538d62d01&language=en_US&ref_=as_li_ss_tl";
 
 const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
@@ -557,7 +557,6 @@ export default function NodePage() {
 
         <Tabs.Content value="build">
           <Flex direction="column" gap="5" style={{ paddingTop: "var(--space-4)" }}>
-
       {/* ---- Recommended Prototype ---- */}
       <Section title="Build a Node">
         <Text size="2" color="gray" as="p">
@@ -588,8 +587,8 @@ export default function NodePage() {
               "Temperature and humidity sensor",
             ],
             [
-              <PartLink key="co2-sensor" href={CO2_SENSOR_URL}>SCD41 CO2 sensor</PartLink>,
-              "Optional CO2 add-on over I2C. Also reports temperature and humidity, so it can supplement or replace the DHT22 in an expanded build.",
+              <PartLink key="co2-sensor" href={CO2_SENSOR_URL}>HiLetgo SCD41 CO2 sensor</PartLink>,
+              "Optional CO2 add-on over I2C. Also reports temperature and humidity, so it can supplement the DHT22 in an expanded build.",
             ],
             [
               <PartLink key="no2-sensor" href={NO2_SENSOR_URL}>MiCS-6814 NO2 / exhaust sensor module</PartLink>,

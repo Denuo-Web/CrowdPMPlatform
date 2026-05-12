@@ -80,10 +80,10 @@ const NODE_HARDWARE_BASE_CONFIG: Omit<CheckoutProductConfig, "catalogDocId" | "p
 
 const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantConfig> = {
   standard: {
-    catalogDocId: "nodeHardwareStandard",
+    catalogDocId: "nodeHardware",
     label: "PM2.5 standard node",
-    productName: "CrowdPM Node Hardware - PM2.5 Standard",
-    description: "PM2.5 node hardware purchase with US shipping included.",
+    productName: "CrowdPM Node Hardware",
+    description: "Node hardware purchase with US shipping included.",
     unitAmount: 35_000,
   },
   no2: {
@@ -148,6 +148,21 @@ function getStripeClient(): Stripe {
     apiVersion: STRIPE_API_VERSION,
   });
   return stripeClient;
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readNodeVariantId(value: unknown): NodePurchaseVariantId | null {
+  if (value === "standard" || value === "co2" || value === "no2" || value === "co2_no2") {
+    return value;
+  }
+  return null;
 }
 
 function extractExpandableId(value: string | { id: string } | null | undefined): string | null {
@@ -306,28 +321,36 @@ async function createCheckoutSession(
     Object.assign(metadata, options.metadata);
   }
 
+  const params: CheckoutSessionCreateParams = {
+    line_items: [
+      {
+        price: catalog.defaultPriceId,
+        quantity: 1,
+      },
+    ],
+    mode: "payment",
+    automatic_tax: {
+      enabled: true,
+    },
+    billing_address_collection: config.billingAddressCollection,
+    custom_text: config.customText,
+    metadata,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  };
+  if (config.shippingAddressCollection) {
+    params.shipping_address_collection = config.shippingAddressCollection;
+  }
+  if (options.customerEmail) {
+    params.customer_email = options.customerEmail;
+  }
+  if (options.userId) {
+    params.client_reference_id = options.userId;
+  }
+
   let session: Stripe.Checkout.Session;
   try {
-    session = await getStripeClient().checkout.sessions.create({
-      line_items: [
-        {
-          price: catalog.defaultPriceId,
-          quantity: 1,
-        },
-      ],
-      mode: "payment",
-      automatic_tax: {
-        enabled: true,
-      },
-      billing_address_collection: config.billingAddressCollection,
-      shipping_address_collection: config.shippingAddressCollection,
-      custom_text: config.customText,
-      customer_email: options.customerEmail ?? undefined,
-      client_reference_id: options.userId,
-      metadata,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
+    session = await getStripeClient().checkout.sessions.create(params);
   }
   catch (err) {
     const message = err instanceof Error && err.message.trim().length > 0
@@ -408,9 +431,7 @@ type ResolvedPurchase = {
 };
 
 async function resolvePurchase(session: Stripe.Checkout.Session): Promise<ResolvedPurchase> {
-  const metadataPurchaseType = typeof session.metadata?.purchaseType === "string"
-    ? session.metadata.purchaseType.trim()
-    : "";
+  const metadataPurchaseType = readNonEmptyString(session.metadata?.purchaseType);
 
   if (metadataPurchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType) {
     const snap = await db().collection(THEME_SAVE_UNLOCK_CONFIG.sessionCollection).doc(session.id).get();
@@ -420,26 +441,23 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
     };
   }
 
-  if (metadataPurchaseType === NODE_HARDWARE_BASE_CONFIG.purchaseType) {
-    const snap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
+  const nodeSnap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
+  const storedSession = nodeSnap.exists ? (nodeSnap.data() as Record<string, unknown>) : null;
+  const variantId = readNodeVariantId(session.metadata?.variantId)
+    ?? readNodeVariantId(storedSession?.variantId)
+    ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
+
+  if (metadataPurchaseType === NODE_HARDWARE_BASE_CONFIG.purchaseType || nodeSnap.exists) {
     return {
-      config: nodeHardwareConfigForVariant(DEFAULT_NODE_HARDWARE_VARIANT_ID),
-      storedSession: snap.exists ? (snap.data() as Record<string, unknown>) : null,
+      config: nodeHardwareConfigForVariant(variantId),
+      storedSession,
     };
   }
 
   const themeSnap = await db().collection(THEME_SAVE_UNLOCK_CONFIG.sessionCollection).doc(session.id).get();
-  if (themeSnap.exists) {
-    return {
-      config: THEME_SAVE_UNLOCK_CONFIG,
-      storedSession: themeSnap.data() as Record<string, unknown>,
-    };
-  }
-
-  const nodeSnap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
   return {
-    config: nodeHardwareConfigForVariant(DEFAULT_NODE_HARDWARE_VARIANT_ID),
-    storedSession: nodeSnap.exists ? (nodeSnap.data() as Record<string, unknown>) : null,
+    config: THEME_SAVE_UNLOCK_CONFIG,
+    storedSession: themeSnap.exists ? (themeSnap.data() as Record<string, unknown>) : null,
   };
 }
 
@@ -447,20 +465,13 @@ function resolveThemeUnlockUserId(
   session: Stripe.Checkout.Session,
   storedSession: Record<string, unknown> | null,
 ): string | null {
-  const metadataUserId = typeof session.metadata?.userId === "string" && session.metadata.userId.trim().length > 0
-    ? session.metadata.userId.trim()
-    : null;
+  const metadataUserId = readNonEmptyString(session.metadata?.userId);
   if (metadataUserId) return metadataUserId;
 
-  const clientReferenceId = typeof session.client_reference_id === "string" && session.client_reference_id.trim().length > 0
-    ? session.client_reference_id.trim()
-    : null;
+  const clientReferenceId = readNonEmptyString(session.client_reference_id);
   if (clientReferenceId) return clientReferenceId;
 
-  const storedUserId = typeof storedSession?.userId === "string" && storedSession.userId.trim().length > 0
-    ? storedSession.userId.trim()
-    : null;
-  return storedUserId;
+  return readNonEmptyString(storedSession?.userId);
 }
 
 async function recordCompletedSession(
@@ -513,6 +524,15 @@ async function recordCompletedSession(
       }, { merge: true });
     }
     return;
+  }
+
+  const variantId = readNodeVariantId(session.metadata?.variantId) ?? readNodeVariantId(storedSession?.variantId);
+  const variantLabel = readNonEmptyString(session.metadata?.variantLabel) ?? readNonEmptyString(storedSession?.variantLabel);
+  if (variantId) {
+    payload.variantId = variantId;
+  }
+  if (variantLabel) {
+    payload.variantLabel = variantLabel;
   }
 
   await db().collection(config.sessionCollection).doc(session.id).set(payload, { merge: true });

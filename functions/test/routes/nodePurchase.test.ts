@@ -142,8 +142,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     });
 
     expect(mocks.productsCreate).toHaveBeenCalledWith({
-      name: "CrowdPM Node Hardware - PM2.5 Standard",
-      description: "PM2.5 node hardware purchase with US shipping included.",
+      name: "CrowdPM Node Hardware",
+      description: "Node hardware purchase with US shipping included.",
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
@@ -174,8 +174,6 @@ describe("POST /v1/node-purchase/checkout-session", () => {
           message: "Price includes US shipping. Applicable sales tax is calculated at checkout.",
         },
       },
-      customer_email: undefined,
-      client_reference_id: undefined,
       metadata: {
         purchaseType: "node_hardware",
         variantId: "standard",
@@ -184,7 +182,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
     });
-    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -205,8 +203,6 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       amountSubtotal: 35000,
       amountTotal: 35000,
       purchaseType: "node_hardware",
-      userId: null,
-      customerEmail: null,
       variantId: "standard",
       variantLabel: "PM2.5 standard node",
     });
@@ -284,7 +280,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("reuses the stored catalog without creating a second product", async () => {
-    dbStore.set("paymentCatalog/nodeHardwareStandard", {
+    dbStore.set("paymentCatalog/nodeHardware", {
       productId: "prod_existing",
       defaultPriceId: "price_existing",
       currency: "usd",
@@ -313,7 +309,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored price no longer matches the expected node price", async () => {
-    dbStore.set("paymentCatalog/nodeHardwareStandard", {
+    dbStore.set("paymentCatalog/nodeHardware", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -338,7 +334,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         },
       ],
     }));
-    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -350,7 +346,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored tax configuration is missing", async () => {
-    dbStore.set("paymentCatalog/nodeHardwareStandard", {
+    dbStore.set("paymentCatalog/nodeHardware", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -365,7 +361,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
 
     expect(res.statusCode).toBe(200);
     expect(mocks.productsCreate).toHaveBeenCalledTimes(1);
-    expect(dbStore.get("paymentCatalog/nodeHardwareStandard")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -398,6 +394,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     await app.close();
   });
+
 });
 
 describe("POST /v1/theme-purchase/checkout-session", () => {
@@ -452,7 +449,6 @@ describe("POST /v1/theme-purchase/checkout-session", () => {
         enabled: true,
       },
       billing_address_collection: "required",
-      shipping_address_collection: undefined,
       custom_text: {
         submit: {
           message: "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.",
@@ -547,6 +543,11 @@ describe("POST /v1/payments/stripe/webhook", () => {
       data: {
         object: {
           id: "cs_test_123",
+          metadata: {
+            purchaseType: "node_hardware",
+            variantId: "standard",
+            variantLabel: "PM2.5 standard node",
+          },
           mode: "payment",
           payment_status: "paid",
           customer: "cus_123",
@@ -615,6 +616,9 @@ describe("POST /v1/payments/stripe/webhook", () => {
       currency: "usd",
       amountSubtotal: 35000,
       amountTotal: 38150,
+      purchaseType: "node_hardware",
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
       amountDiscount: 0,
       amountShipping: 0,
       amountTax: 3150,
