@@ -546,7 +546,15 @@ export default function App() {
         </DropdownMenu.Root>
       </Box>
 
-      <main id="main-content" style={{ minHeight: "100vh" }}>
+      <main
+        id="main-content"
+        style={{
+          minHeight: "100vh",
+          height: activeTab === "map" ? "100dvh" : "100dvh",
+          overflowY: activeTab === "map" ? "hidden" : "auto",
+          WebkitOverflowScrolling: activeTab === "map" ? undefined : "touch",
+        }}
+      >
         {activeTab === "map" ? (
           /* Full-bleed map — fills the entire viewport */
           <Box
@@ -571,14 +579,22 @@ export default function App() {
           /* All other tabs get the branded header + content layout */
           <Box
             style={{
-              minHeight: "100vh",
+              minHeight: "100dvh",
               backgroundColor: "var(--color-surface)",
               backgroundImage:
                 "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
             }}
           >
             {/* ---- Page content ---- */}
-            <Box style={{ maxWidth: 1100, margin: "0 auto", padding: "var(--space-5) var(--space-6)", paddingTop: 64 }}>
+            <Box
+              style={{
+                maxWidth: 1100,
+                margin: "0 auto",
+                padding: "var(--space-5) var(--space-6)",
+                paddingTop: 64,
+                paddingBottom: "max(var(--space-6), env(safe-area-inset-bottom, 0px) + var(--space-5))",
+              }}
+            >
               <Box
                 style={{
                   borderRadius: "var(--radius-4)",
