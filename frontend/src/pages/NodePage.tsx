@@ -7,14 +7,17 @@ import {
   Flex,
   Heading,
   Separator,
+  Tabs,
   Text,
 } from "@radix-ui/themes";
 import { ExternalLink } from "../components/ExternalLink";
+import { InternalNewTabAnchor } from "../components/InternalLink";
 import {
   LegalDocumentDialog,
   LegalDocumentLink,
   type LegalDocumentId,
 } from "../components/LegalDocumentDialog";
+import { APP_ROUTES } from "../lib/appRoutes";
 import { createNodePurchaseCheckoutSession } from "../lib/api";
 
 type SectionProps = {
@@ -454,8 +457,108 @@ export default function NodePage() {
         </Callout.Root>
       </Section>
 
+      <Tabs.Root defaultValue="setup">
+        <Tabs.List size="2">
+          <Tabs.Trigger value="setup">Setup Your Node</Tabs.Trigger>
+          <Tabs.Trigger value="build">Build a Node</Tabs.Trigger>
+        </Tabs.List>
+
+        <Tabs.Content value="setup">
+          <Flex direction="column" gap="5" style={{ paddingTop: "var(--space-4)" }}>
+            <Section title="Setup Your Node">
+              <Text size="2" color="gray" as="p">
+                These are the first-time setup steps for a shipped CrowdPM node.
+                Start near the Wi-Fi network you want the node to use most often.
+                Once setup is complete, the node should reconnect to that saved
+                network automatically on future startups.
+              </Text>
+
+              <Callout.Root color="blue" variant="surface">
+                <Callout.Text>
+                  You only need the setup Wi-Fi when the node is new, when your
+                  Wi-Fi credentials change, or after a factory reset.
+                </Callout.Text>
+              </Callout.Root>
+            </Section>
+
+            <Section title="First-Time Setup">
+              <InfoTable
+                headers={["Step", "What you do", "What the node does"]}
+                rows={[
+                  [
+                    "1. Power it on",
+                    "Move the node near your Wi-Fi router, flip the power switch to On, and let it finish booting. If the battery is low, connect external power first.",
+                    "The node boots its local software and, if it does not already have saved Wi-Fi credentials, starts setup mode.",
+                  ],
+                  [
+                    "2. Join the setup Wi-Fi",
+                    <>On your phone or laptop, connect to <InlineCode>CrowdPM-Setup-ABCD</InlineCode>.</>,
+                    "The node exposes a temporary local network so you can configure it without SSH or a mobile app.",
+                  ],
+                  [
+                    "3. Open the local setup page",
+                    <>Open <InlineCode>http://192.168.4.1</InlineCode> in a browser.</>,
+                    "The node serves its local setup portal directly from the device.",
+                  ],
+                  [
+                    "4. Enter your Wi-Fi credentials",
+                    "Select or type your home or office Wi-Fi network name, enter the password, and save.",
+                    "The node stores the credentials, disconnects from setup mode, and joins your configured Wi-Fi network.",
+                  ],
+                  [
+                    "5. Approve the device in CrowdPM",
+                    <>When the node shows a CrowdPM <InlineCode>user_code</InlineCode>, open the{" "}
+                      <InternalNewTabAnchor href={APP_ROUTES.activation} style={{ color: "var(--accent-11)" }}>
+                        Activation page
+                      </InternalNewTabAnchor>{" "}
+                      and authorize the node to your account.</>,
+                    "After approval, the node finishes registration and begins normal measurement and upload behavior.",
+                  ],
+                ]}
+              />
+
+              <Text size="2" color="gray" as="p">
+                If the setup network does not appear immediately, keep the node
+                powered on and give it more time to finish booting before trying again.
+              </Text>
+            </Section>
+
+            <Section title="What Happens After Setup">
+              <BulletList>
+                <ListItem>
+                  When the node is powered on, it continues taking PM2.5
+                  measurements until it is switched off or the battery is depleted.
+                </ListItem>
+                <ListItem>
+                  When it can reach your configured Wi-Fi, it uploads readings to
+                  CrowdPM over that saved network connection.
+                </ListItem>
+                <ListItem>
+                  If it leaves Wi-Fi range, it keeps measuring and stores readings
+                  locally first instead of stopping.
+                </ListItem>
+                <ListItem>
+                  When it comes back within range of a saved Wi-Fi network, it
+                  automatically uploads the backlog it recorded while offline.
+                </ListItem>
+                <ListItem>
+                  Turning the node off stops both measurement and upload until it
+                  is powered on again.
+                </ListItem>
+              </BulletList>
+
+              <Text size="2" color="gray" as="p">
+                If you later change your Wi-Fi name or password, repeat the same
+                setup-portal flow so the node can save the new network details.
+              </Text>
+            </Section>
+          </Flex>
+        </Tabs.Content>
+
+        <Tabs.Content value="build">
+          <Flex direction="column" gap="5" style={{ paddingTop: "var(--space-4)" }}>
       {/* ---- Recommended Prototype ---- */}
-      <Section title="Recommended Prototype Hardware">
+      <Section title="Build a Node">
         <Text size="2" color="gray" as="p">
           This page focuses on the standard CrowdPM mobile node prototype: a
           Raspberry Pi Zero 2 W, PM2.5 sensor, GPS, temperature/humidity sensor,
@@ -1117,6 +1220,9 @@ PY`}</CodeBlock>
   - show useful status with LEDs or a local page
   - avoid data loss unless storage is exhausted`}</CodeBlock>
       </Section>
+          </Flex>
+        </Tabs.Content>
+      </Tabs.Root>
       </Flex>
       <LegalDocumentDialog
         documentId={openLegalDocument}

@@ -16,6 +16,7 @@ import { httpError } from "../lib/httpError.js";
 import { rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
 
 const DEFAULT_INTERLEAVED_RENDERING = false;
+const DEFAULT_THEME_SAVE_UNLOCKED = false;
 const DEFAULT_THEME_SETTINGS: UserThemeSettings = {
   appearance: "dark",
   accentColor: "iris",
@@ -73,6 +74,10 @@ function normalizeStringUnion<T extends string>(value: unknown, values: readonly
   return typeof value === "string" && (values as readonly string[]).includes(value) ? value as T : null;
 }
 
+function normalizeThemeSaveUnlocked(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function normalizeThemeSettings(value: unknown, base: UserThemeSettings = DEFAULT_THEME_SETTINGS): UserThemeSettings | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
@@ -104,6 +109,10 @@ function readThemeSettings(value: unknown): UserThemeSettings {
   return normalizeThemeSettings(value, DEFAULT_THEME_SETTINGS) ?? DEFAULT_THEME_SETTINGS;
 }
 
+function readThemeSaveUnlocked(value: unknown): boolean {
+  return normalizeThemeSaveUnlocked(value) ?? DEFAULT_THEME_SAVE_UNLOCKED;
+}
+
 type UserSettingsResponse = UserSettings;
 
 type UserSettingsBody = {
@@ -126,7 +135,8 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       ? normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING
       : DEFAULT_INTERLEAVED_RENDERING;
     const theme = snap.exists ? readThemeSettings(snap.get("theme")) : DEFAULT_THEME_SETTINGS;
-    return { defaultBatchVisibility: visibility, interleavedRendering, theme } satisfies UserSettingsResponse;
+    const themeSaveUnlocked = snap.exists ? readThemeSaveUnlocked(snap.get("themeSaveUnlocked")) : DEFAULT_THEME_SAVE_UNLOCKED;
+    return { defaultBatchVisibility: visibility, interleavedRendering, theme, themeSaveUnlocked } satisfies UserSettingsResponse;
   });
 
   app.put<{ Body: UserSettingsBody }>("/v1/user/settings", {
@@ -164,6 +174,10 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     let theme: UserThemeSettings | null = null;
     if (hasTheme) {
       const existingSnap = await docRef.get();
+      const themeSaveUnlocked = readThemeSaveUnlocked(existingSnap.get("themeSaveUnlocked"));
+      if (!themeSaveUnlocked) {
+        throw httpError(403, "theme_save_locked", "Purchase the theme save unlock to persist theme preferences.");
+      }
       theme = normalizeThemeSettings(req.body?.theme, readThemeSettings(existingSnap.get("theme")));
       if (!theme) {
         throw httpError(400, "invalid_theme", "theme contains an unsupported value.");
@@ -180,10 +194,12 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     const nextVisibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
     const nextInterleaved = normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING;
     const nextTheme = readThemeSettings(snap.get("theme"));
+    const nextThemeSaveUnlocked = readThemeSaveUnlocked(snap.get("themeSaveUnlocked"));
     return {
       defaultBatchVisibility: nextVisibility,
       interleavedRendering: nextInterleaved,
       theme: nextTheme,
+      themeSaveUnlocked: nextThemeSaveUnlocked,
     } satisfies UserSettingsResponse;
   });
 };

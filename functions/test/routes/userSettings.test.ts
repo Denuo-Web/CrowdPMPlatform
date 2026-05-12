@@ -107,6 +107,7 @@ describe("user settings routes", () => {
       defaultBatchVisibility: "private",
       interleavedRendering: false,
       theme: defaultTheme,
+      themeSaveUnlocked: false,
     });
     await app.close();
   });
@@ -126,12 +127,16 @@ describe("user settings routes", () => {
       defaultBatchVisibility: "public",
       interleavedRendering: true,
       theme: defaultTheme,
+      themeSaveUnlocked: false,
     });
     await app.close();
   });
 
   it("PUT /v1/user/settings updates and merges theme preferences", async () => {
     const app = await buildApp();
+    dbStore.set("userSettings/user-123", {
+      themeSaveUnlocked: true,
+    });
 
     const res = await app.inject({
       method: "PUT",
@@ -161,6 +166,7 @@ describe("user settings routes", () => {
         radius: "medium",
         scaling: "105%",
       },
+      themeSaveUnlocked: true,
     });
 
     const partial = await app.inject({
@@ -180,6 +186,25 @@ describe("user settings routes", () => {
         radius: "medium",
         scaling: "105%",
       },
+      themeSaveUnlocked: true,
+    });
+    await app.close();
+  });
+
+  it("PUT /v1/user/settings rejects theme updates until theme saving is unlocked", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/user/settings",
+      payload: { theme: { accentColor: "teal" } },
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({
+      error: "theme_save_locked",
+      message: "Purchase the theme save unlock to persist theme preferences.",
     });
     await app.close();
   });
@@ -240,6 +265,9 @@ describe("user settings routes", () => {
 
   it("validation: invalid theme returns 400", async () => {
     const app = await buildApp();
+    dbStore.set("userSettings/user-123", {
+      themeSaveUnlocked: true,
+    });
 
     const res = await app.inject({
       method: "PUT",

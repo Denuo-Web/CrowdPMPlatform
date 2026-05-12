@@ -214,6 +214,7 @@ export type UserSettings = {
   defaultBatchVisibility: BatchVisibility;
   interleavedRendering: boolean;
   theme: UserThemeSettings;
+  themeSaveUnlocked: boolean;
 };
 
 export type SmokeTestRequestBody = {

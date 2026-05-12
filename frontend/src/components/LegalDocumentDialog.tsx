@@ -155,13 +155,20 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="3. Node Hardware Purchases">
+      <Section title="3. Paid Products and Digital Expansions">
         <P>
           CrowdPM node hardware is sold by {COMPANY_NAME}. Node purchases are one-time hardware
           purchases processed through Stripe Checkout. The base node price is $350 with standard US
           shipping included, and optional sensor add-ons increase the one-time hardware price for
           the selected configuration. Applicable sales tax is calculated during checkout from the
           shipping address.
+        </P>
+        <P>
+          CrowdPM may also offer one-time digital expansion purchases processed through Stripe
+          Checkout. Digital expansions, including the theme save unlock, apply to the purchasing
+          CrowdPM account, do not include shipping, and may permanently enable the purchased feature
+          for that account after payment completes. Applicable sales tax may be calculated during
+          checkout from the billing location.
         </P>
         <P>
           We currently accept node orders only for shipping addresses in the United States. You are
@@ -309,7 +316,7 @@ function PrivacyPolicy() {
           <Bullet>User settings, including default batch visibility, map/rendering preferences, and theme preferences.</Bullet>
           <Bullet>Device records, including device IDs, optional device names, owner IDs, model/version, status, fingerprints, public key material, pairing codes, token records, and last-seen timestamps.</Bullet>
           <Bullet>Measurement and batch data, including PM2.5 readings, pollutant/unit, latitude, longitude, altitude, precision, timestamp, flags, batch IDs, visibility, moderation state, storage paths, and related metadata.</Bullet>
-          <Bullet>Node purchase records, including Stripe Checkout session IDs, payment status, customer contact details, billing and shipping addresses, order totals, tax amounts, shipping details, receipts, refunds, support messages, and related fulfillment records.</Bullet>
+          <Bullet>Paid product records, including Stripe Checkout session IDs, payment status, customer contact details, billing and shipping addresses where applicable, order totals, tax amounts, shipping details for hardware, receipts, refunds, support messages, and related fulfillment or entitlement records.</Bullet>
           <Bullet>Moderation and administration records, including moderator user IDs, role changes, disabled account status, moderation reasons, and audit records.</Bullet>
           <Bullet>Technical and security data, including IP address or network hints, request headers, logs, rate-limit keys, browser/device information available to the service, and error diagnostics.</Bullet>
           <Bullet>Local browser storage, including recent map zoom, timeline position, smoke-test selections, and cached batch data used to keep the interface responsive.</Bullet>
@@ -327,7 +334,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>Provide authentication, device pairing, ingest, map display, dashboards, moderation, and administration features.</Bullet>
           <Bullet>Store and process sensor measurements, enforce visibility choices, and show public batches on the map and public API.</Bullet>
-          <Bullet>Process node hardware purchases, calculate tax, ship orders, send receipts, handle refunds or replacements, and respond to order support requests.</Bullet>
+          <Bullet>Process paid product purchases, calculate tax, ship hardware orders, grant digital entitlements, send receipts, handle refunds or replacements, and respond to order support requests.</Bullet>
           <Bullet>Protect the service through rate limiting, abuse detection, access controls, logging, audits, token revocation, and troubleshooting.</Bullet>
           <Bullet>Save preferences and improve reliability, usability, and performance.</Bullet>
           <Bullet>Respond to support, licensing, security, or legal requests.</Bullet>

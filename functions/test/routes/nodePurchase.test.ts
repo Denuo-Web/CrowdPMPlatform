@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   checkoutSessionsCreate: vi.fn(),
   constructEvent: vi.fn(),
   rateLimitOrThrow: vi.fn(),
+  requireUser: vi.fn(),
 }));
 
 let dbStore = new Map<string, Record<string, unknown>>();
@@ -19,6 +20,7 @@ function makeDocRef(path: string) {
       const data = dbStore.get(path);
       return {
         exists: Boolean(data),
+        get: (field: string) => data?.[field],
         data: () => (data ? { ...data } : undefined),
       };
     }),
@@ -38,6 +40,10 @@ const mockDb = {
 
 vi.mock("../../src/lib/fire.js", () => ({
   db: () => mockDb,
+}));
+
+vi.mock("../../src/auth/firebaseVerify.js", () => ({
+  requireUser: mocks.requireUser,
 }));
 
 vi.mock("../../src/lib/rateLimiter.js", async (importOriginal) => {
@@ -87,8 +93,15 @@ beforeEach(() => {
   mocks.checkoutSessionsCreate.mockReset();
   mocks.constructEvent.mockReset();
   mocks.rateLimitOrThrow.mockReset();
+  mocks.requireUser.mockReset();
 
   mocks.rateLimitOrThrow.mockReturnValue({ allowed: true, remaining: 59, retryAfterSeconds: 0 });
+  mocks.requireUser.mockImplementation(async (req) => {
+    const auth = req.headers?.authorization;
+    if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
+    if (auth === "Bearer invalid") throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
+    return { uid: "user-123", email: "buyer@example.com" };
+  });
   mocks.productsCreate.mockResolvedValue({
     id: "prod_node_123",
     default_price: "price_node_123",
@@ -381,6 +394,140 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
     await app.close();
   });
+
+});
+
+describe("POST /v1/theme-purchase/checkout-session", () => {
+  it("creates a one-time Stripe Checkout session for the theme save unlock", async () => {
+    mocks.productsCreate.mockResolvedValueOnce({
+      id: "prod_theme_123",
+      default_price: "price_theme_123",
+    });
+    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
+      id: "cs_theme_123",
+      url: "https://checkout.stripe.com/c/pay/cs_theme_123",
+      mode: "payment",
+      currency: "usd",
+      amount_subtotal: 300,
+      amount_total: 300,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/theme-purchase/checkout-session",
+      headers: {
+        authorization: "Bearer ok",
+        "x-forwarded-for": "203.0.113.6",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      sessionId: "cs_theme_123",
+      url: "https://checkout.stripe.com/c/pay/cs_theme_123",
+    });
+    expect(mocks.productsCreate).toHaveBeenCalledWith({
+      name: "CrowdPM Theme Save Unlock",
+      description: "One-time digital expansion that permanently unlocks theme preference saving for a CrowdPM account.",
+      tax_code: "txcd_99999999",
+      default_price_data: {
+        currency: "usd",
+        unit_amount: 300,
+        tax_behavior: "exclusive",
+      },
+    });
+    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith({
+      line_items: [
+        {
+          price: "price_theme_123",
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      automatic_tax: {
+        enabled: true,
+      },
+      billing_address_collection: "required",
+      custom_text: {
+        submit: {
+          message: "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.",
+        },
+      },
+      customer_email: "buyer@example.com",
+      client_reference_id: "user-123",
+      metadata: {
+        purchaseType: "theme_save_unlock",
+        userId: "user-123",
+      },
+      success_url: "https://crowdpmplatform.web.app/?themeCheckout=success",
+      cancel_url: "https://crowdpmplatform.web.app/?themeCheckout=cancelled",
+    });
+    expect(dbStore.get("paymentCatalog/themeSaveUnlock")).toMatchObject({
+      productId: "prod_theme_123",
+      defaultPriceId: "price_theme_123",
+      currency: "usd",
+      unitAmount: 300,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
+    });
+    expect(dbStore.get("themeSavePurchaseSessions/cs_theme_123")).toMatchObject({
+      sessionId: "cs_theme_123",
+      status: "created",
+      purchaseType: "theme_save_unlock",
+      productId: "prod_theme_123",
+      priceId: "price_theme_123",
+      mode: "payment",
+      checkoutUrl: "https://checkout.stripe.com/c/pay/cs_theme_123",
+      currency: "usd",
+      unitAmount: 300,
+      automaticTaxEnabled: true,
+      amountSubtotal: 300,
+      amountTotal: 300,
+      userId: "user-123",
+      customerEmail: "buyer@example.com",
+    });
+    await app.close();
+  });
+
+  it("requires authentication for the theme save unlock checkout", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/theme-purchase/checkout-session",
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({
+      error: "unauthorized",
+      message: "unauthorized",
+    });
+    await app.close();
+  });
+
+  it("rejects duplicate theme unlock purchases for an already unlocked account", async () => {
+    dbStore.set("userSettings/user-123", {
+      themeSaveUnlocked: true,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/theme-purchase/checkout-session",
+      headers: {
+        authorization: "Bearer ok",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: "theme_save_unlocked",
+      message: "Theme saving is already unlocked for this account.",
+    });
+    expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
 
 describe("POST /v1/payments/stripe/webhook", () => {
@@ -488,6 +635,89 @@ describe("POST /v1/payments/stripe/webhook", () => {
           state: "WA",
         },
       },
+    });
+    await app.close();
+  });
+
+  it("unlocks theme saving for the purchasing account after Stripe webhook verification", async () => {
+    dbStore.set("themeSavePurchaseSessions/cs_theme_123", {
+      sessionId: "cs_theme_123",
+      status: "created",
+      userId: "user-123",
+      purchaseType: "theme_save_unlock",
+    });
+    mocks.constructEvent.mockReturnValue({
+      id: "evt_theme_123",
+      type: "checkout.session.completed",
+      created: 1_710_000_100,
+      data: {
+        object: {
+          id: "cs_theme_123",
+          mode: "payment",
+          payment_status: "paid",
+          customer: "cus_theme_123",
+          customer_details: {
+            email: "buyer@example.com",
+          },
+          customer_email: "buyer@example.com",
+          payment_intent: "pi_theme_123",
+          automatic_tax: {
+            enabled: true,
+            status: "complete",
+          },
+          metadata: {
+            purchaseType: "theme_save_unlock",
+            userId: "user-123",
+          },
+          client_reference_id: "user-123",
+          total_details: {
+            amount_discount: 0,
+            amount_shipping: 0,
+            amount_tax: 27,
+          },
+          currency: "usd",
+          amount_subtotal: 300,
+          amount_total: 327,
+          url: null,
+        },
+      },
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/stripe/webhook",
+      payload: { ok: true },
+      headers: {
+        "content-type": "application/json",
+        "stripe-signature": "t=1,v1=signature",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(dbStore.get("themeSavePurchaseSessions/cs_theme_123")).toMatchObject({
+      sessionId: "cs_theme_123",
+      status: "completed",
+      purchaseType: "theme_save_unlock",
+      eventId: "evt_theme_123",
+      paymentStatus: "paid",
+      customerId: "cus_theme_123",
+      customerEmail: "buyer@example.com",
+      paymentIntentId: "pi_theme_123",
+      currency: "usd",
+      amountSubtotal: 300,
+      amountTotal: 327,
+      amountDiscount: 0,
+      amountShipping: 0,
+      amountTax: 27,
+      automaticTaxEnabled: true,
+      automaticTaxStatus: "complete",
+      userId: "user-123",
+      unlockGranted: true,
+    });
+    expect(dbStore.get("userSettings/user-123")).toMatchObject({
+      themeSaveUnlocked: true,
+      themeSaveUnlockedBySessionId: "cs_theme_123",
     });
     await app.close();
   });
