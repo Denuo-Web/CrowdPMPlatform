@@ -424,7 +424,13 @@ export default function NodePage() {
             </Box>
           </Box>
 
-          <Card style={{ flex: "0 1 28rem", width: "100%" }}>
+          <Card
+            style={{
+              width: "100%",
+              maxWidth: "28rem",
+              minWidth: 0,
+            }}
+          >
             <Flex direction="column" gap="4">
               <Box>
                 <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
