@@ -15,6 +15,29 @@ export type DeviceSummary = {
   lastSeenAt: string | null;
 } & Record<string, unknown>;
 
+export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
+export type NodePurchaseReceipt = {
+  sessionId: string;
+  purchaseType: "node_hardware";
+  status: "completed";
+  paymentStatus: string | null;
+  variantId: NodePurchaseVariantId | null;
+  variantLabel: string | null;
+  quantity: number;
+  currency: string;
+  unitAmount: number | null;
+  amountSubtotal: number | null;
+  amountTax: number | null;
+  amountShipping: number | null;
+  amountDiscount: number | null;
+  amountTotal: number | null;
+  completedAt: string | null;
+  customerEmail: string | null;
+  shippingName: string | null;
+  shippingAddress: Record<string, string | null> | null;
+};
+
 export type FirestoreTimestampLike = {
   toDate(): Date;
   toMillis(): number;

@@ -13,6 +13,8 @@ const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical Crowd
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
 const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
+const DEFAULT_NODE_HARDWARE_QUANTITY = 1;
+const MAX_NODE_HARDWARE_QUANTITY = 10;
 
 type PaymentCatalog = {
   productId: string;
@@ -50,6 +52,27 @@ export type NodePurchaseCheckoutSession = {
 };
 
 export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
+export type NodePurchaseReceipt = {
+  sessionId: string;
+  purchaseType: "node_hardware";
+  status: "completed";
+  paymentStatus: string | null;
+  variantId: NodePurchaseVariantId | null;
+  variantLabel: string | null;
+  quantity: number;
+  currency: string;
+  unitAmount: number | null;
+  amountSubtotal: number | null;
+  amountTax: number | null;
+  amountShipping: number | null;
+  amountDiscount: number | null;
+  amountTotal: number | null;
+  completedAt: string | null;
+  customerEmail: string | null;
+  shippingName: string | null;
+  shippingAddress: Record<string, string | null> | null;
+};
 
 type NodeHardwareVariantConfig = Pick<CheckoutProductConfig, "catalogDocId" | "productName" | "description" | "unitAmount"> & {
   label: string;
@@ -91,21 +114,21 @@ const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantC
     label: "PM2.5 + NO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + NO2",
     description: "PM2.5 node with MiCS-6814 NO2 sensor and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 38_394,
+    unitAmount: 37_500,
   },
   co2: {
     catalogDocId: "nodeHardwareCo2",
     label: "PM2.5 + CO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + CO2",
     description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
-    unitAmount: 37_899,
+    unitAmount: 37_500,
   },
   co2_no2: {
     catalogDocId: "nodeHardwareCo2No2",
     label: "PM2.5 + CO2 + NO2 node",
     productName: "CrowdPM Node Hardware - PM2.5 + CO2 + NO2",
     description: "PM2.5 node with SCD41 CO2 sensor, MiCS-6814 NO2 sensor, and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 41_293,
+    unitAmount: 40_000,
   },
 };
 
@@ -163,6 +186,18 @@ function readNodeVariantId(value: unknown): NodePurchaseVariantId | null {
     return value;
   }
   return null;
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readNodeQuantity(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_NODE_HARDWARE_QUANTITY) {
+    return null;
+  }
+  return parsed;
 }
 
 function extractExpandableId(value: string | { id: string } | null | undefined): string | null {
@@ -305,6 +340,7 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
 type CreateCheckoutSessionOptions = {
   customerEmail?: string | null;
   userId?: string;
+  quantity?: number;
   metadata?: Record<string, string>;
   sessionData?: Record<string, unknown>;
 };
@@ -315,6 +351,7 @@ async function createCheckoutSession(
 ): Promise<NodePurchaseCheckoutSession> {
   const catalog = await ensureCatalog(config);
   const { successUrl, cancelUrl } = checkoutRedirectUrls(config);
+  const quantity = options.quantity ?? DEFAULT_NODE_HARDWARE_QUANTITY;
   const metadata: Record<string, string> = {
     purchaseType: config.purchaseType,
   };
@@ -329,7 +366,7 @@ async function createCheckoutSession(
     line_items: [
       {
         price: catalog.defaultPriceId,
-        quantity: 1,
+        quantity,
       },
     ],
     mode: "payment",
@@ -377,6 +414,7 @@ async function createCheckoutSession(
     checkoutUrl: session.url,
     currency: session.currency ?? catalog.currency,
     unitAmount: catalog.unitAmount,
+    quantity,
     automaticTaxEnabled: true,
     amountSubtotal: session.amount_subtotal ?? null,
     amountTotal: session.amount_total ?? null,
@@ -401,17 +439,26 @@ async function ensureThemeSaveLocked(userId: string): Promise<void> {
 
 export async function createNodePurchaseCheckoutSession(args: {
   variantId?: NodePurchaseVariantId;
+  quantity?: number;
+  userId?: string;
+  customerEmail?: string | null;
 } = {}): Promise<NodePurchaseCheckoutSession> {
   const variantId = args.variantId ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
+  const quantity = args.quantity ?? DEFAULT_NODE_HARDWARE_QUANTITY;
   const variant = NODE_HARDWARE_VARIANTS[variantId];
   return createCheckoutSession(nodeHardwareConfigForVariant(variantId), {
+    userId: args.userId,
+    customerEmail: args.customerEmail,
+    quantity,
     metadata: {
       variantId,
       variantLabel: variant.label,
+      quantity: String(quantity),
     },
     sessionData: {
       variantId,
       variantLabel: variant.label,
+      quantity,
     },
   });
 }
@@ -469,6 +516,19 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
 }
 
 function resolveThemeUnlockUserId(
+  session: Stripe.Checkout.Session,
+  storedSession: Record<string, unknown> | null,
+): string | null {
+  const metadataUserId = readNonEmptyString(session.metadata?.userId);
+  if (metadataUserId) return metadataUserId;
+
+  const clientReferenceId = readNonEmptyString(session.client_reference_id);
+  if (clientReferenceId) return clientReferenceId;
+
+  return readNonEmptyString(storedSession?.userId);
+}
+
+function resolveNodePurchaseUserId(
   session: Stripe.Checkout.Session,
   storedSession: Record<string, unknown> | null,
 ): string | null {
@@ -541,14 +601,80 @@ async function recordCompletedSession(
 
   const variantId = readNodeVariantId(session.metadata?.variantId) ?? readNodeVariantId(storedSession?.variantId);
   const variantLabel = readNonEmptyString(session.metadata?.variantLabel) ?? readNonEmptyString(storedSession?.variantLabel);
+  const quantity = readNodeQuantity(session.metadata?.quantity)
+    ?? readNodeQuantity(storedSession?.quantity)
+    ?? DEFAULT_NODE_HARDWARE_QUANTITY;
+  const userId = resolveNodePurchaseUserId(session, storedSession);
   if (variantId) {
     payload.variantId = variantId;
   }
   if (variantLabel) {
     payload.variantLabel = variantLabel;
   }
+  payload.quantity = quantity;
+  if (userId) {
+    payload.userId = userId;
+  }
 
   await db().collection(config.sessionCollection).doc(session.id).set(payload, { merge: true });
+}
+
+function receiptFromSession(data: Record<string, unknown>): NodePurchaseReceipt | null {
+  if (data.purchaseType !== NODE_HARDWARE_BASE_CONFIG.purchaseType || data.status !== "completed") {
+    return null;
+  }
+  const sessionId = readNonEmptyString(data.sessionId);
+  if (!sessionId) {
+    return null;
+  }
+  const shippingDetails = typeof data.shippingDetails === "object" && data.shippingDetails !== null
+    ? data.shippingDetails as Record<string, unknown>
+    : null;
+  const address = typeof shippingDetails?.address === "object" && shippingDetails.address !== null
+    ? shippingDetails.address as Record<string, string | null>
+    : null;
+
+  return {
+    sessionId,
+    purchaseType: "node_hardware",
+    status: "completed",
+    paymentStatus: readNonEmptyString(data.paymentStatus),
+    variantId: readNodeVariantId(data.variantId),
+    variantLabel: readNonEmptyString(data.variantLabel),
+    quantity: readNodeQuantity(data.quantity) ?? DEFAULT_NODE_HARDWARE_QUANTITY,
+    currency: readNonEmptyString(data.currency) ?? "usd",
+    unitAmount: readFiniteNumber(data.unitAmount),
+    amountSubtotal: readFiniteNumber(data.amountSubtotal),
+    amountTax: readFiniteNumber(data.amountTax),
+    amountShipping: readFiniteNumber(data.amountShipping),
+    amountDiscount: readFiniteNumber(data.amountDiscount),
+    amountTotal: readFiniteNumber(data.amountTotal),
+    completedAt: readNonEmptyString(data.completedAt),
+    customerEmail: readNonEmptyString(data.customerEmail),
+    shippingName: readNonEmptyString(shippingDetails?.name),
+    shippingAddress: address,
+  };
+}
+
+export async function listNodePurchaseReceipts(args: {
+  userId: string;
+  limit?: number;
+}): Promise<NodePurchaseReceipt[]> {
+  const limit = Math.min(Math.max(Math.floor(args.limit ?? 20), 1), 50);
+  const snap = await db()
+    .collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection)
+    .where("userId", "==", args.userId)
+    .limit(50)
+    .get();
+  return snap.docs
+    .map((doc) => receiptFromSession(doc.data() as Record<string, unknown>))
+    .filter((receipt): receipt is NodePurchaseReceipt => Boolean(receipt))
+    .sort((a, b) => {
+      const timeA = a.completedAt ? Date.parse(a.completedAt) : 0;
+      const timeB = b.completedAt ? Date.parse(b.completedAt) : 0;
+      return timeB - timeA;
+    })
+    .slice(0, limit);
 }
 
 async function retrieveCheckoutSession(sessionId: string): Promise<Stripe.Checkout.Session> {

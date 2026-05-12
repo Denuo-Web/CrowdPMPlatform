@@ -4,8 +4,10 @@ import {
   Button,
   Callout,
   Card,
+  Checkbox,
   Flex,
   Heading,
+  Select,
   Separator,
   Tabs,
   Text,
@@ -42,8 +44,10 @@ type NodeProductVariant = {
 };
 
 const BASE_NODE_PRICE_CENTS = 35_000;
-const CO2_SENSOR_ADD_ON_CENTS = 2_899;
-const NO2_SENSOR_ADD_ON_CENTS = 2_695 + 699;
+const SENSOR_ADD_ON_PRICE_CENTS = 2_500;
+const CO2_SENSOR_ADD_ON_CENTS = SENSOR_ADD_ON_PRICE_CENTS;
+const NO2_SENSOR_ADD_ON_CENTS = SENSOR_ADD_ON_PRICE_CENTS;
+const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
@@ -93,6 +97,21 @@ const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
   },
 ];
 
+const SENSOR_ADD_ONS = [
+  {
+    id: "co2",
+    label: "CO2 sensor",
+    description: "Adds SCD41 CO2 sensing for indoor and mobile air-quality context.",
+    amountCents: CO2_SENSOR_ADD_ON_CENTS,
+  },
+  {
+    id: "no2",
+    label: "NO2 sensor",
+    description: "Adds NO2-focused vehicle-exhaust sensing with the interface board included.",
+    amountCents: NO2_SENSOR_ADD_ON_CENTS,
+  },
+] as const;
+
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -100,6 +119,13 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
 
 function formatUsd(cents: number): string {
   return USD_FORMATTER.format(cents / 100);
+}
+
+function nodeVariantIdForAddOns(includeCo2: boolean, includeNo2: boolean): NodeProductVariantId {
+  if (includeCo2 && includeNo2) return "co2_no2";
+  if (includeCo2) return "co2";
+  if (includeNo2) return "no2";
+  return "standard";
 }
 
 function Section({ title, children }: SectionProps) {
@@ -257,6 +283,79 @@ function InfoTable({ headers, rows }: TableProps) {
   );
 }
 
+function ProductGallery() {
+  const photos = ["Front", "Ports", "Mounted", "Kit"];
+  return (
+    <Flex direction="column" gap="3" style={{ minWidth: 0 }}>
+      <Box
+        style={{
+          aspectRatio: "4 / 3",
+          border: "1px solid var(--gray-a6)",
+          borderRadius: "8px",
+          background:
+            "linear-gradient(135deg, var(--gray-2), var(--gray-4) 58%, var(--accent-a3))",
+          display: "grid",
+          placeItems: "center",
+          overflow: "hidden",
+        }}
+      >
+        <Box
+          style={{
+            width: "48%",
+            maxWidth: "18rem",
+            aspectRatio: "1 / 1",
+            border: "1px solid var(--gray-a7)",
+            borderRadius: "8px",
+            background: "var(--color-panel-solid)",
+            boxShadow: "0 18px 45px var(--gray-a5)",
+            position: "relative",
+          }}
+        >
+          <Box
+            style={{
+              position: "absolute",
+              inset: "18%",
+              borderRadius: "6px",
+              border: "1px solid var(--gray-a6)",
+              background: "var(--gray-2)",
+            }}
+          />
+          <Box
+            style={{
+              position: "absolute",
+              right: "14%",
+              bottom: "14%",
+              width: "22%",
+              aspectRatio: "1 / 1",
+              borderRadius: "999px",
+              background: "var(--green-9)",
+            }}
+          />
+        </Box>
+      </Box>
+      <Flex gap="2" wrap="wrap">
+        {photos.map((label, index) => (
+          <Box
+            key={label}
+            style={{
+              flex: "1 1 5.5rem",
+              minWidth: "5.5rem",
+              aspectRatio: "1 / 1",
+              border: index === 0 ? "2px solid var(--accent-8)" : "1px solid var(--gray-a6)",
+              borderRadius: "8px",
+              background: "var(--gray-3)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <Text size="1" color="gray">{label}</Text>
+          </Box>
+        ))}
+      </Flex>
+    </Flex>
+  );
+}
+
 type CheckoutNotice = "success" | "cancelled" | null;
 
 function readCheckoutNotice(): CheckoutNotice {
@@ -272,8 +371,14 @@ export default function NodePage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(readCheckoutNotice);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
-  const [selectedVariantId, setSelectedVariantId] = useState<NodeProductVariantId>("standard");
+  const [includeCo2, setIncludeCo2] = useState(false);
+  const [includeNo2, setIncludeNo2] = useState(false);
+  const [quantity, setQuantity] = useState(1);
+  const selectedVariantId = nodeVariantIdForAddOns(includeCo2, includeNo2);
   const selectedVariant = NODE_PRODUCT_VARIANTS.find(({ id }) => id === selectedVariantId) ?? NODE_PRODUCT_VARIANTS[0];
+  const unitAddOnAmountCents = (includeCo2 ? CO2_SENSOR_ADD_ON_CENTS : 0) + (includeNo2 ? NO2_SENSOR_ADD_ON_CENTS : 0);
+  const unitTotalAmountCents = BASE_NODE_PRICE_CENTS + unitAddOnAmountCents;
+  const orderSubtotalCents = unitTotalAmountCents * quantity;
 
   useEffect(() => {
     setCheckoutNotice(readCheckoutNotice());
@@ -283,7 +388,7 @@ export default function NodePage() {
     setCheckoutError("");
     setIsStartingCheckout(true);
     try {
-      const session = await createNodePurchaseCheckoutSession(selectedVariant.id);
+      const session = await createNodePurchaseCheckoutSession(selectedVariant.id, quantity);
       window.location.assign(session.url);
       return;
     }
@@ -299,15 +404,9 @@ export default function NodePage() {
   return (
     <>
       <Flex direction="column" gap="5">
-      {/* ---- Hero ---- */}
       <Box>
-        <Flex
-          justify="between"
-          align="start"
-          gap="4"
-          wrap="wrap"
-        >
-          <Box style={{ maxWidth: "46rem" }}>
+        <Flex direction={{ initial: "column", md: "row" }} align="start" gap="5">
+          <Box style={{ flex: "1 1 34rem", minWidth: 0 }}>
             <Heading as="h1" size="5">
               Products - CrowdPM Node Hardware
             </Heading>
@@ -315,109 +414,178 @@ export default function NodePage() {
               A CrowdPM node is a small air-quality computer that measures PM2.5,
               records where and when the measurement happened, stores the reading
               locally, and uploads the data to CrowdPM when internet is available.
-              Multiple product options are available: the current PM2.5 build, a
-              CO2 add-on build, a NO2 car-exhaust build, and a combined CO2 + NO2
-              build.
             </Text>
             <Text size="2" mt="3" as="p">
-              Base price starts at {formatUsd(BASE_NODE_PRICE_CENTS)} per node with
-              US shipping included. The add-on sensor options below use the current
-              Amazon hardware prices listed on this page, and sales tax is calculated
-              at checkout from the shipping address.
+              Start with the standard PM2.5 node, then add CO2, NO2, both sensors,
+              or neither. US shipping is included; sales tax is calculated at checkout.
             </Text>
+            <Box mt="4">
+              <ProductGallery />
+            </Box>
           </Box>
 
-          <Flex direction="column" gap="2" style={{ maxWidth: "23rem", width: "100%" }}>
-            {NODE_PRODUCT_VARIANTS.map((variant) => {
-              const isSelected = variant.id === selectedVariant.id;
-              return (
-                <Card
-                  key={variant.id}
-                  style={{
-                    padding: 0,
-                    border: isSelected ? "1px solid var(--accent-8)" : "1px solid var(--gray-a5)",
-                    background: isSelected ? "var(--accent-a3)" : "var(--color-surface)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVariantId(variant.id)}
-                    aria-pressed={isSelected}
-                    style={{
-                      all: "unset",
-                      boxSizing: "border-box",
-                      cursor: "pointer",
-                      display: "block",
-                      width: "100%",
-                      padding: "0.875rem",
-                    }}
-                  >
-                    <Flex align="start" justify="between" gap="3">
-                      <Box>
-                        <Text size="2" as="div" style={{ fontWeight: 600 }}>
-                          {variant.label}
-                        </Text>
-                        <Text size="1" color="gray" as="p" mt="1">
-                          {variant.summary}
-                        </Text>
-                      </Box>
-                      <Text size="2" as="span" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-                        {formatUsd(variant.totalAmountCents)}
-                      </Text>
-                    </Flex>
-                  </button>
-                </Card>
-              );
-            })}
+          <Card style={{ flex: "0 1 28rem", width: "100%" }}>
+            <Flex direction="column" gap="4">
+              <Box>
+                <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                  Standard configuration
+                </Text>
+                <Heading as="h2" size="4" mt="1">
+                  CrowdPM Node
+                </Heading>
+                <Flex align="baseline" gap="2" mt="2" wrap="wrap">
+                  <Text as="div" size="6" weight="bold">
+                    {formatUsd(unitTotalAmountCents)}
+                  </Text>
+                  <Text size="2" color="gray">per device</Text>
+                </Flex>
+                <Text size="2" color="gray" as="p" mt="2">
+                  {selectedVariant.summary}
+                </Text>
+              </Box>
 
-            <Text size="2" as="p">
-              Selected price: {formatUsd(selectedVariant.totalAmountCents)}.
-              {" "}This option adds {formatUsd(selectedVariant.addOnAmountCents)} over the
-              {" "}{formatUsd(BASE_NODE_PRICE_CENTS)} base node.
-            </Text>
-            <Button
-              size="3"
-              onClick={() => { void handlePurchaseNode(); }}
-              disabled={isStartingCheckout}
-            >
-              {isStartingCheckout
-                ? "Opening Checkout..."
-                : `Purchase Selected Product - ${formatUsd(selectedVariant.totalAmountCents)}`}
-            </Button>
-            <Text size="1" color="gray" as="p">
-              Sold by Denuo Web LLC as a one-time hardware purchase. US shipping is
-              included, sales tax is calculated in Stripe Checkout, and selected
-              sensor add-ons are reflected in the checkout price. Node orders are
-              subject to the{" "}
-              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
-                Terms
-              </LegalDocumentLink>
-              ,{" "}
-              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
-                License
-              </LegalDocumentLink>
-              , and{" "}
-              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
-                Privacy Policy
-              </LegalDocumentLink>
-              .
-            </Text>
-            <Text size="1" color="gray" as="p">
-              You are purchasing physical CrowdPM node hardware and any expressly
-              listed related services from Denuo Web LLC. CrowdPM Platform software
-              is open-source software maintained by Denuo Web LLC and contributors.
-              Purchase of hardware does not restrict your rights under the applicable
-              open-source software license or transfer ownership of Denuo Web LLC
-              trademarks, branding, hosted infrastructure, customer accounts, or
-              proprietary business materials.
-            </Text>
-          </Flex>
+              <Separator size="4" />
+
+              <Box>
+                <Text size="2" weight="bold" as="div" mb="2">
+                  Included
+                </Text>
+                <BulletList>
+                  <ListItem>PM2.5 sensing, GPS, temperature/humidity, local storage, and battery management.</ListItem>
+                  <ListItem>US shipping and first-time setup documentation.</ListItem>
+                </BulletList>
+              </Box>
+
+              <Box>
+                <Text size="2" weight="bold" as="div" mb="2">
+                  Add-ons
+                </Text>
+                <Flex direction="column" gap="2">
+                  {SENSOR_ADD_ONS.map((addOn) => {
+                    const checked = addOn.id === "co2" ? includeCo2 : includeNo2;
+                    const setChecked = addOn.id === "co2" ? setIncludeCo2 : setIncludeNo2;
+                    return (
+                      <Box
+                        key={addOn.id}
+                        asChild
+                        style={{
+                          border: checked ? "1px solid var(--accent-8)" : "1px solid var(--gray-a6)",
+                          borderRadius: "8px",
+                          background: checked ? "var(--accent-a3)" : "var(--color-surface)",
+                          cursor: "pointer",
+                          padding: "0.75rem",
+                        }}
+                      >
+                        <label>
+                          <Flex align="start" gap="3">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(nextChecked) => setChecked(nextChecked === true)}
+                              mt="1"
+                            />
+                            <Flex justify="between" gap="3" style={{ flex: 1 }}>
+                              <Box>
+                                <Text size="2" weight="bold" as="div">{addOn.label}</Text>
+                                <Text size="1" color="gray" as="p" mt="1">{addOn.description}</Text>
+                              </Box>
+                              <Text size="2" weight="bold" style={{ whiteSpace: "nowrap" }}>
+                                +{formatUsd(addOn.amountCents)}
+                              </Text>
+                            </Flex>
+                          </Flex>
+                        </label>
+                      </Box>
+                    );
+                  })}
+                </Flex>
+              </Box>
+
+              <Flex align="center" justify="between" gap="3">
+                <Box>
+                  <Text size="2" weight="bold" as="div">
+                    Quantity
+                  </Text>
+                  <Text size="1" color="gray">Up to 10 devices per checkout</Text>
+                </Box>
+                <Box style={{ width: "7rem" }}>
+                  <Select.Root
+                    value={String(quantity)}
+                    onValueChange={(value) => setQuantity(Number(value))}
+                  >
+                    <Select.Trigger aria-label="Quantity" />
+                    <Select.Content>
+                      {NODE_QUANTITY_OPTIONS.map((option) => (
+                        <Select.Item key={option} value={String(option)}>
+                          {option}
+                        </Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select.Root>
+                </Box>
+              </Flex>
+
+              <Box
+                style={{
+                  borderTop: "1px solid var(--gray-a5)",
+                  paddingTop: "var(--space-3)",
+                }}
+              >
+                <Flex justify="between" gap="3">
+                  <Text size="2" color="gray">Base node</Text>
+                  <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
+                </Flex>
+                <Flex justify="between" gap="3" mt="1">
+                  <Text size="2" color="gray">Selected add-ons</Text>
+                  <Text size="2">{unitAddOnAmountCents === 0 ? "$0.00" : `+${formatUsd(unitAddOnAmountCents)}`}</Text>
+                </Flex>
+                <Flex justify="between" gap="3" mt="1">
+                  <Text size="2" color="gray">Quantity</Text>
+                  <Text size="2">x {quantity}</Text>
+                </Flex>
+                <Separator size="4" my="3" />
+                <Flex justify="between" align="center" gap="3">
+                  <Text size="3" weight="bold">Subtotal</Text>
+                  <Text as="div" size="5" weight="bold">{formatUsd(orderSubtotalCents)}</Text>
+                </Flex>
+                <Text size="1" color="gray" as="p" mt="1">
+                  Sales tax is calculated in Stripe Checkout.
+                </Text>
+              </Box>
+
+              <Button
+                size="3"
+                onClick={() => { void handlePurchaseNode(); }}
+                disabled={isStartingCheckout}
+              >
+                {isStartingCheckout
+                  ? "Opening Checkout..."
+                  : `Checkout - ${formatUsd(orderSubtotalCents)}`}
+              </Button>
+
+              <Text size="1" color="gray" as="p">
+                Sold by Denuo Web LLC as a one-time hardware purchase. Orders are
+                subject to the{" "}
+                <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                  Terms
+                </LegalDocumentLink>
+                ,{" "}
+                <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                  License
+                </LegalDocumentLink>
+                , and{" "}
+                <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                  Privacy Policy
+                </LegalDocumentLink>
+                .
+              </Text>
+            </Flex>
+          </Card>
         </Flex>
 
         {checkoutNotice === "success" ? (
           <Callout.Root color="green" variant="surface" mt="4">
             <Callout.Text>
-              Checkout completed. Stripe will email the receipt for your node purchase.
+              Checkout completed. Stripe will email a receipt. Signed-in purchases also appear in the dashboard.
             </Callout.Text>
           </Callout.Root>
         ) : null}
@@ -439,22 +607,21 @@ export default function NodePage() {
 
       <Separator size="4" />
 
-      <Section title="Available Product Options">
+      <Section title="Configuration Options">
         <Text size="2" color="gray" as="p">
-          CrowdPM currently sells one standard PM2.5 node and three sensor-expanded
-          options. The add-on amounts below use the Amazon prices for the listed
-          sensor hardware and, where required, the extra interface board needed to
-          make the sensor compatible with the Raspberry Pi Zero 2 W.
+          Each order starts with the standard PM2.5 node. Add CO2, NO2, both
+          sensors, or neither; the selected configuration applies to every device
+          in the checkout quantity.
         </Text>
 
         <InfoTable
-          headers={["Option", "Added hardware", "Added price", "Total price"]}
-          rows={NODE_PRODUCT_VARIANTS.map((variant) => [
-            variant.label,
-            variant.addedHardware,
-            variant.addOnAmountCents === 0 ? "Included in base build" : `+${formatUsd(variant.addOnAmountCents)}`,
-            formatUsd(variant.totalAmountCents),
-          ])}
+          headers={["Configuration", "What it adds", "Price"]}
+          rows={[
+            ["Standard node", NODE_PRODUCT_VARIANTS[0].addedHardware, formatUsd(BASE_NODE_PRICE_CENTS)],
+            ["CO2 add-on", "SCD41 CO2 sensor", `+${formatUsd(CO2_SENSOR_ADD_ON_CENTS)}`],
+            ["NO2 add-on", "MiCS-6814 NO2 module + ADS1115 ADC", `+${formatUsd(NO2_SENSOR_ADD_ON_CENTS)}`],
+            ["Quantity", "1 to 10 devices per checkout", "Applied at checkout"],
+          ]}
         />
 
         <Callout.Root color="blue" variant="surface">
@@ -571,8 +738,8 @@ export default function NodePage() {
         <Text size="2" color="gray" as="p">
           This page focuses on the standard CrowdPM mobile node prototype: a
           Raspberry Pi Zero 2 W, PM2.5 sensor, GPS, temperature/humidity sensor,
-          local setup controls, and integrated battery management. Optional build
-          variants add CO2 sensing, NO2 vehicle-exhaust sensing, or both.
+          local setup controls, and integrated battery management. Optional
+          add-ons can include CO2 sensing, NO2 vehicle-exhaust sensing, or both.
         </Text>
         <Text size="1" color="gray" as="p">
           As an Amazon Associate I earn from qualifying purchases. Hardware part

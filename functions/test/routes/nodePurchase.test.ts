@@ -33,9 +33,36 @@ function makeDocRef(path: string) {
   };
 }
 
+function makeQueryRef(
+  collectionName: string,
+  filters: Array<{ field: string; value: unknown }> = [],
+  queryLimit = Number.POSITIVE_INFINITY,
+) {
+  return {
+    where: vi.fn((field: string, op: string, value: unknown) => {
+      if (op !== "==") throw new Error(`unsupported op ${op}`);
+      return makeQueryRef(collectionName, [...filters, { field, value }], queryLimit);
+    }),
+    limit: vi.fn((limit: number) => makeQueryRef(collectionName, filters, limit)),
+    get: vi.fn(async () => {
+      const prefix = `${collectionName}/`;
+      const docs = Array.from(dbStore.entries())
+        .filter(([path, data]) => path.startsWith(prefix)
+          && filters.every((filter) => data[filter.field] === filter.value))
+        .slice(0, queryLimit)
+        .map(([path, data]) => ({
+          id: path.slice(prefix.length),
+          data: () => ({ ...data }),
+        }));
+      return { docs };
+    }),
+  };
+}
+
 const mockDb = {
   collection: vi.fn((name: string) => ({
     doc: (id: string) => makeDocRef(`${name}/${id}`),
+    where: (field: string, op: string, value: unknown) => makeQueryRef(name).where(field, op, value),
   })),
 };
 
@@ -181,6 +208,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         purchaseType: "node_hardware",
         variantId: "standard",
         variantLabel: "PM2.5 standard node",
+        quantity: "1",
       },
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
@@ -202,6 +230,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_123",
       currency: "usd",
       unitAmount: 35000,
+      quantity: 1,
       automaticTaxEnabled: true,
       amountSubtotal: 35000,
       amountTotal: 35000,
@@ -222,8 +251,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
       mode: "payment",
       currency: "usd",
-      amount_subtotal: 37899,
-      amount_total: 37899,
+      amount_subtotal: 37500,
+      amount_total: 37500,
     });
     const app = await buildApp();
 
@@ -245,7 +274,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
-        unit_amount: 37899,
+        unit_amount: 37500,
         tax_behavior: "exclusive",
       },
     });
@@ -260,24 +289,85 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         purchaseType: "node_hardware",
         variantId: "co2",
         variantLabel: "PM2.5 + CO2 node",
+        quantity: "1",
       },
     }));
     expect(dbStore.get("paymentCatalog/nodeHardwareCo2")).toMatchObject({
       productId: "prod_node_co2_123",
       defaultPriceId: "price_node_co2_123",
       currency: "usd",
-      unitAmount: 37899,
+      unitAmount: 37500,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
     expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
       sessionId: "cs_node_co2_123",
       purchaseType: "node_hardware",
-      unitAmount: 37899,
-      amountSubtotal: 37899,
-      amountTotal: 37899,
+      unitAmount: 37500,
+      quantity: 1,
+      amountSubtotal: 37500,
+      amountTotal: 37500,
       variantId: "co2",
       variantLabel: "PM2.5 + CO2 node",
+    });
+    await app.close();
+  });
+
+  it("attaches signed-in buyer metadata and checkout quantity to node purchases", async () => {
+    mocks.productsCreate.mockResolvedValueOnce({
+      id: "prod_node_no2_123",
+      default_price: "price_node_no2_123",
+    });
+    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
+      id: "cs_node_no2_qty_123",
+      url: "https://checkout.stripe.com/c/pay/cs_node_no2_qty_123",
+      mode: "payment",
+      currency: "usd",
+      amount_subtotal: 75_000,
+      amount_total: 75_000,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "no2",
+        quantity: 2,
+      },
+      headers: {
+        authorization: "Bearer ok",
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith(expect.objectContaining({
+      line_items: [
+        {
+          price: "price_node_no2_123",
+          quantity: 2,
+        },
+      ],
+      customer_email: "buyer@example.com",
+      client_reference_id: "user-123",
+      metadata: {
+        purchaseType: "node_hardware",
+        userId: "user-123",
+        variantId: "no2",
+        variantLabel: "PM2.5 + NO2 node",
+        quantity: "2",
+      },
+    }));
+    expect(dbStore.get("nodePurchaseSessions/cs_node_no2_qty_123")).toMatchObject({
+      userId: "user-123",
+      customerEmail: "buyer@example.com",
+      variantId: "no2",
+      variantLabel: "PM2.5 + NO2 node",
+      unitAmount: 37_500,
+      quantity: 2,
+      amountSubtotal: 75_000,
+      amountTotal: 75_000,
     });
     await app.close();
   });
@@ -395,6 +485,126 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       message: "invalid request",
     });
     expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects a node checkout quantity above ten", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        variantId: "standard",
+        quantity: 11,
+      },
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "invalid_request",
+      message: "invalid request",
+    });
+    expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("lists completed hardware receipts for the signed-in buyer", async () => {
+    dbStore.set("nodePurchaseSessions/cs_old", {
+      sessionId: "cs_old",
+      status: "completed",
+      purchaseType: "node_hardware",
+      userId: "user-123",
+      paymentStatus: "paid",
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
+      quantity: 1,
+      currency: "usd",
+      unitAmount: 35_000,
+      amountSubtotal: 35_000,
+      amountTax: 3_150,
+      amountShipping: 0,
+      amountDiscount: 0,
+      amountTotal: 38_150,
+      completedAt: "2026-01-01T00:00:00.000Z",
+      customerEmail: "buyer@example.com",
+      shippingDetails: {
+        name: "Buyer Example",
+        address: {
+          city: "Seattle",
+          country: "US",
+          line1: "123 Pike St",
+          line2: null,
+          postalCode: "98101",
+          state: "WA",
+        },
+      },
+    });
+    dbStore.set("nodePurchaseSessions/cs_new", {
+      sessionId: "cs_new",
+      status: "completed",
+      purchaseType: "node_hardware",
+      userId: "user-123",
+      paymentStatus: "paid",
+      variantId: "co2_no2",
+      variantLabel: "PM2.5 + CO2 + NO2 node",
+      quantity: 3,
+      currency: "usd",
+      unitAmount: 40_000,
+      amountSubtotal: 120_000,
+      amountTax: 10_800,
+      amountShipping: 0,
+      amountDiscount: 0,
+      amountTotal: 130_800,
+      completedAt: "2026-02-01T00:00:00.000Z",
+      customerEmail: "buyer@example.com",
+    });
+    dbStore.set("nodePurchaseSessions/cs_pending", {
+      sessionId: "cs_pending",
+      status: "created",
+      purchaseType: "node_hardware",
+      userId: "user-123",
+    });
+    dbStore.set("nodePurchaseSessions/cs_other", {
+      sessionId: "cs_other",
+      status: "completed",
+      purchaseType: "node_hardware",
+      userId: "user-456",
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/node-purchase/receipts",
+      headers: {
+        authorization: "Bearer ok",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      expect.objectContaining({
+        sessionId: "cs_new",
+        status: "completed",
+        variantId: "co2_no2",
+        quantity: 3,
+        amountTotal: 130_800,
+      }),
+      expect.objectContaining({
+        sessionId: "cs_old",
+        status: "completed",
+        variantId: "standard",
+        quantity: 1,
+        amountTotal: 38_150,
+        shippingAddress: expect.objectContaining({
+          city: "Seattle",
+          state: "WA",
+        }),
+      }),
+    ]);
     await app.close();
   });
 
@@ -746,6 +956,7 @@ describe("POST /v1/payments/stripe/webhook", () => {
       purchaseType: "node_hardware",
       variantId: "standard",
       variantLabel: "PM2.5 standard node",
+      quantity: 1,
       amountDiscount: 0,
       amountShipping: 0,
       amountTax: 3150,

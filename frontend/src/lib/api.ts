@@ -17,6 +17,8 @@ import type {
   IngestPoint,
   MeasurementRecord,
   ModerationState,
+  NodePurchaseReceipt,
+  NodePurchaseVariantId,
   PublicBatchDetail,
   PublicBatchSummary,
   SmokeTestCleanupResponse,
@@ -122,6 +124,8 @@ export type {
   FirestoreTimestampLike,
   MeasurementRecord,
   ModerationState,
+  NodePurchaseReceipt,
+  NodePurchaseVariantId,
   PublicBatchDetail,
   PublicBatchSummary,
   UserSettings,
@@ -135,22 +139,25 @@ export type CheckoutRedirectSession = {
   url: string;
 };
 
-export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
-
 export async function listDevices(): Promise<DeviceSummary[]> {
   return requestJson<DeviceSummary[]>("/v1/devices");
 }
 
 export async function createNodePurchaseCheckoutSession(
   variantId: NodePurchaseVariantId = "standard",
+  quantity = 1,
 ): Promise<CheckoutRedirectSession> {
   return requestJson<CheckoutRedirectSession>("/v1/node-purchase/checkout-session", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ variantId }),
+    body: JSON.stringify({ variantId, quantity }),
   });
+}
+
+export async function listNodePurchaseReceipts(): Promise<NodePurchaseReceipt[]> {
+  return requestJson<NodePurchaseReceipt[]>("/v1/node-purchase/receipts");
 }
 
 export async function createThemeSaveCheckoutSession(): Promise<CheckoutRedirectSession> {
