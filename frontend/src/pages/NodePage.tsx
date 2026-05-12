@@ -27,6 +27,21 @@ type TableProps = {
   rows: ReactNode[][];
 };
 
+type NodeProductVariantId = "standard" | "co2" | "no2" | "co2_no2";
+
+type NodeProductVariant = {
+  id: NodeProductVariantId;
+  label: string;
+  summary: string;
+  addedHardware: string;
+  addOnAmountCents: number;
+  totalAmountCents: number;
+};
+
+const BASE_NODE_PRICE_CENTS = 35_000;
+const CO2_SENSOR_ADD_ON_CENTS = 2_899;
+const NO2_SENSOR_ADD_ON_CENTS = 2_695 + 699;
+
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
 const DHT22_URL = "https://www.amazon.com/dp/B0DSW7D3S9?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=8a2b4c580bdeb37c7affe8f834a72a28&language=en_US&ref_=as_li_ss_tl";
@@ -36,6 +51,53 @@ const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&t
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
 const PISUGAR_3_PLUS_URL = "https://www.amazon.com/PiSugar-Plus-Pwnagotchi-Management-Raspberry/dp/B0FBK89B8H?crid=LFBH2KAF10OE&dib=eyJ2IjoiMSJ9.L0Ud_TUpDnpSJdO5W3nbRsP6KDdvl9mBzCTXI1Wgu8N8TErLSyNRjB761bzndZGqn8-A8kN77bnyCNm25h_AtH8fbGcUDaW2gupHScAfR8t7ylwXTTgwRxWWtJXzMZ6r4ew80IZaX6eRtLnMMl14zg.0HpvF_Oc66MzhahEEWzs9yCISfYWDvDd3YIgQQlW6BQ&dib_tag=se&keywords=PiSugar2+Plus+5000+mAh&qid=1778400315&s=electronics&sprefix=pisugar2+plus+5000+mah%2Celectronics%2C161&sr=1-3&linkCode=ll2&tag=lipbalm01-20&linkId=c7d788c8d0b545684e272d2ae0c677cf&language=en_US&ref_=as_li_ss_tl";
+const CO2_SENSOR_URL = "https://www.amazon.com/HiLetgo-Temperature-Humidity-Communication-Monitoring/dp/B0CDWXWCS5?psc=1&pd_rd_w=blPda&content-id=amzn1.sym.e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_p=e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_r=59515EY9GQNTR9T545T5&pd_rd_wg=8fbmW&pd_rd_r=74728aef-4573-4948-b457-68178961b213&sp_csd=d2lkZ2V0TmFtZT1zcF9kZXRhaWxfdGhlbWF0aWM%3D&linkCode=ll2&tag=lipbalm01-20&linkId=ea274a4ca23462d3503110f5d7ac5e4f&language=en_US&ref_=as_li_ss_tl";
+const NO2_SENSOR_URL = "https://www.amazon.com/dp/B0BG2YZP5L?&linkCode=ll2&tag=lipbalm01-20&linkId=6bbc3169ef4e30f4e28a1ea88660826b&language=en_US&ref_=as_li_ss_tl";
+const ADS1115_URL = "https://www.amazon.com/ADS1115-4-Channel-Converter-Arduino-Raspberry/dp/B0FLNDLX8K?crid=3RYX9FG87U6CM&dib=eyJ2IjoiMSJ9.vSXpQFCIOGW8Td7egqghItKea7rWhgp1u88Hzd4_30ya41b80qvopTqt3nuXewJ-SJaiqILg_eRk14OZIhExEVDLoudgGQxwK3jhWd3XiCOz7cdguU674-vANvudUPOfYFBAcCd16OGBGkvGHNFvB-b_Pboa5cdXyi5LdZc22Le5DO0pwdY0HJEkVrt37HJJeTtz0D8L421WubLPedN57g.BK5SdzZVxNfpMmMqtuSJL_oKs1QRxyNdLfNicsYlwZA&dib_tag=se&keywords=ADS1115&qid=1778541032&sprefix=ads1115%2Caps%2C416&xpid=wwbj2redDMdny&linkCode=ll2&tag=lipbalm01-20&linkId=ba8f1b74761bdb64217b8ea538d62d01&language=en_US&ref_=as_li_ss_tl";
+
+const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
+  {
+    id: "standard",
+    label: "PM2.5 standard node",
+    summary: "Current shipped build with PMS5003, GPS, temperature/humidity, local storage, and battery management.",
+    addedHardware: "No additional gas sensor hardware",
+    addOnAmountCents: 0,
+    totalAmountCents: BASE_NODE_PRICE_CENTS,
+  },
+  {
+    id: "no2",
+    label: "PM2.5 + NO2 node",
+    summary: "Adds a MiCS-6814 NO2 / vehicle-exhaust module and an ADS1115 ADC for Pi-compatible readout.",
+    addedHardware: "MiCS-6814 NO2 module + ADS1115 ADC",
+    addOnAmountCents: NO2_SENSOR_ADD_ON_CENTS,
+    totalAmountCents: BASE_NODE_PRICE_CENTS + NO2_SENSOR_ADD_ON_CENTS,
+  },
+  {
+    id: "co2",
+    label: "PM2.5 + CO2 node",
+    summary: "Adds an SCD41 CO2 sensor that also reports temperature and humidity over I2C.",
+    addedHardware: "SCD41 CO2 sensor",
+    addOnAmountCents: CO2_SENSOR_ADD_ON_CENTS,
+    totalAmountCents: BASE_NODE_PRICE_CENTS + CO2_SENSOR_ADD_ON_CENTS,
+  },
+  {
+    id: "co2_no2",
+    label: "PM2.5 + CO2 + NO2 node",
+    summary: "Combines the CO2 add-on with the NO2 / car-exhaust add-on in one mobile node.",
+    addedHardware: "SCD41 CO2 sensor + MiCS-6814 NO2 module + ADS1115 ADC",
+    addOnAmountCents: CO2_SENSOR_ADD_ON_CENTS + NO2_SENSOR_ADD_ON_CENTS,
+    totalAmountCents: BASE_NODE_PRICE_CENTS + CO2_SENSOR_ADD_ON_CENTS + NO2_SENSOR_ADD_ON_CENTS,
+  },
+];
+
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+function formatUsd(cents: number): string {
+  return USD_FORMATTER.format(cents / 100);
+}
 
 function Section({ title, children }: SectionProps) {
   return (
@@ -207,6 +269,8 @@ export default function NodePage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(readCheckoutNotice);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<NodeProductVariantId>("standard");
+  const selectedVariant = NODE_PRODUCT_VARIANTS.find(({ id }) => id === selectedVariantId) ?? NODE_PRODUCT_VARIANTS[0];
 
   useEffect(() => {
     setCheckoutNotice(readCheckoutNotice());
@@ -216,7 +280,7 @@ export default function NodePage() {
     setCheckoutError("");
     setIsStartingCheckout(true);
     try {
-      const session = await createNodePurchaseCheckoutSession();
+      const session = await createNodePurchaseCheckoutSession(selectedVariant.id);
       window.location.assign(session.url);
       return;
     }
@@ -242,31 +306,86 @@ export default function NodePage() {
         >
           <Box style={{ maxWidth: "46rem" }}>
             <Heading as="h1" size="5">
-              CrowdPM Node Hardware
+              Products - CrowdPM Node Hardware
             </Heading>
             <Text size="3" color="gray" mt="2" as="p">
               A CrowdPM node is a small air-quality computer that measures PM2.5,
               records where and when the measurement happened, stores the reading
               locally, and uploads the data to CrowdPM when internet is available.
+              Multiple product options are available: the current PM2.5 build, a
+              CO2 add-on build, a NO2 car-exhaust build, and a combined CO2 + NO2
+              build.
             </Text>
             <Text size="2" mt="3" as="p">
-              Price: $350 per node with US shipping included. Sales tax is calculated
+              Base price starts at {formatUsd(BASE_NODE_PRICE_CENTS)} per node with
+              US shipping included. The add-on sensor options below use the current
+              Amazon hardware prices listed on this page, and sales tax is calculated
               at checkout from the shipping address.
             </Text>
           </Box>
 
-          <Flex direction="column" gap="2" style={{ maxWidth: "19rem" }}>
+          <Flex direction="column" gap="2" style={{ maxWidth: "23rem", width: "100%" }}>
+            {NODE_PRODUCT_VARIANTS.map((variant) => {
+              const isSelected = variant.id === selectedVariant.id;
+              return (
+                <Card
+                  key={variant.id}
+                  style={{
+                    padding: 0,
+                    border: isSelected ? "1px solid var(--accent-8)" : "1px solid var(--gray-a5)",
+                    background: isSelected ? "var(--accent-a3)" : "var(--color-surface)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVariantId(variant.id)}
+                    aria-pressed={isSelected}
+                    style={{
+                      all: "unset",
+                      boxSizing: "border-box",
+                      cursor: "pointer",
+                      display: "block",
+                      width: "100%",
+                      padding: "0.875rem",
+                    }}
+                  >
+                    <Flex align="start" justify="between" gap="3">
+                      <Box>
+                        <Text size="2" as="div" style={{ fontWeight: 600 }}>
+                          {variant.label}
+                        </Text>
+                        <Text size="1" color="gray" as="p" mt="1">
+                          {variant.summary}
+                        </Text>
+                      </Box>
+                      <Text size="2" as="span" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {formatUsd(variant.totalAmountCents)}
+                      </Text>
+                    </Flex>
+                  </button>
+                </Card>
+              );
+            })}
+
+            <Text size="2" as="p">
+              Selected price: {formatUsd(selectedVariant.totalAmountCents)}.
+              {" "}This option adds {formatUsd(selectedVariant.addOnAmountCents)} over the
+              {" "}{formatUsd(BASE_NODE_PRICE_CENTS)} base node.
+            </Text>
             <Button
               size="3"
               onClick={() => { void handlePurchaseNode(); }}
               disabled={isStartingCheckout}
             >
-              {isStartingCheckout ? "Opening Checkout..." : "Purchase Node - $350"}
+              {isStartingCheckout
+                ? "Opening Checkout..."
+                : `Purchase Selected Product - ${formatUsd(selectedVariant.totalAmountCents)}`}
             </Button>
             <Text size="1" color="gray" as="p">
               Sold by Denuo Web, LLC as a one-time hardware purchase. US shipping is
-              included, sales tax is calculated in Stripe Checkout, and node orders
-              are subject to the{" "}
+              included, sales tax is calculated in Stripe Checkout, and selected
+              sensor add-ons are reflected in the checkout price. Node orders are
+              subject to the{" "}
               <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
                 Terms
               </LegalDocumentLink>
@@ -308,12 +427,40 @@ export default function NodePage() {
 
       <Separator size="4" />
 
+      <Section title="Available Product Options">
+        <Text size="2" color="gray" as="p">
+          CrowdPM currently sells one standard PM2.5 node and three sensor-expanded
+          options. The add-on amounts below use the Amazon prices for the listed
+          sensor hardware and, where required, the extra interface board needed to
+          make the sensor compatible with the Raspberry Pi Zero 2 W.
+        </Text>
+
+        <InfoTable
+          headers={["Option", "Added hardware", "Added price", "Total price"]}
+          rows={NODE_PRODUCT_VARIANTS.map((variant) => [
+            variant.label,
+            variant.addedHardware,
+            variant.addOnAmountCents === 0 ? "Included in base build" : `+${formatUsd(variant.addOnAmountCents)}`,
+            formatUsd(variant.totalAmountCents),
+          ])}
+        />
+
+        <Callout.Root color="blue" variant="surface">
+          <Callout.Text>
+            For batches captured with extra gas sensors, the map can later add a
+            pollutant dropdown so viewers can switch between PM2.5, NO2, CO2,
+            and similar channels.
+          </Callout.Text>
+        </Callout.Root>
+      </Section>
+
       {/* ---- Recommended Prototype ---- */}
       <Section title="Recommended Prototype Hardware">
         <Text size="2" color="gray" as="p">
           This page focuses on the standard CrowdPM mobile node prototype: a
           Raspberry Pi Zero 2 W, PM2.5 sensor, GPS, temperature/humidity sensor,
-          local setup controls, and integrated battery management.
+          local setup controls, and integrated battery management. Optional build
+          variants add CO2 sensing, NO2 vehicle-exhaust sensing, or both.
         </Text>
         <Text size="1" color="gray" as="p">
           As an Amazon Associate I earn from qualifying purchases. Hardware part
@@ -335,6 +482,18 @@ export default function NodePage() {
             [
               <PartLink key="dht22" href={DHT22_URL}>DHT22</PartLink>,
               "Temperature and humidity sensor",
+            ],
+            [
+              <PartLink key="co2-sensor" href={CO2_SENSOR_URL}>HiLetgo SCD41 CO2 sensor</PartLink>,
+              "Optional CO2 add-on over I2C. Also reports temperature and humidity, so it can supplement the DHT22 in an expanded build.",
+            ],
+            [
+              <PartLink key="no2-sensor" href={NO2_SENSOR_URL}>MiCS-6814 NO2 / exhaust sensor module</PartLink>,
+              "Optional NO2-focused gas add-on sourced from an automobile-exhaust style air-quality module.",
+            ],
+            [
+              <PartLink key="ads1115" href={ADS1115_URL}>ADS1115 ADC</PartLink>,
+              "Required when using the MiCS-6814 add-on because the Pi Zero 2 W does not provide native analog input pins.",
             ],
             [
               <PartLink key="gps-featherwing" href={GPS_FEATHERWING_URL}>Adafruit Ultimate GPS FeatherWing</PartLink>,
@@ -487,6 +646,61 @@ DHT22:
               ["4.7 Ω", "4.7 ohms", "Incorrect; far too low"],
             ]}
           />
+        </Subsection>
+
+        <Subsection title="Optional CO2 Sensor (SCD41)">
+          <Text size="2" color="gray" as="p">
+            The SCD41 CO2 add-on is the cleanest extra sensor option for the Pi
+            Zero 2 W because it speaks I2C directly. Wire it to the Raspberry Pi
+            I2C bus and keep the module in free airflow, away from the PMS5003
+            exhaust and away from the Pi&apos;s warmest surfaces.
+          </Text>
+
+          <InfoTable
+            headers={["SCD41 Pin", "Raspberry Pi Connection", "Physical Pin"]}
+            rows={[
+              ["VIN / VCC", "3.3 V", "Pin 1"],
+              ["GND", "GND", "Pin 6 or 9"],
+              ["SDA", "GPIO2 / SDA1", "Pin 3"],
+              ["SCL", "GPIO3 / SCL1", "Pin 5"],
+            ]}
+          />
+        </Subsection>
+
+        <Subsection title="Optional NO2 Sensor (MiCS-6814 + ADS1115)">
+          <Text size="2" color="gray" as="p">
+            The Amazon MiCS-6814 boards expose analog gas channels, so the Pi
+            Zero 2 W needs an ADS1115 ADC in between. Use the oxidizing / NO2
+            output channel from the gas board and read it through an ADS1115
+            input. This is the extra hardware included in the NO2 product option.
+          </Text>
+
+          <InfoTable
+            headers={["ADS1115 Pin", "Raspberry Pi Connection", "Physical Pin"]}
+            rows={[
+              ["VDD", "3.3 V", "Pin 1"],
+              ["GND", "GND", "Pin 6 or 9"],
+              ["SDA", "GPIO2 / SDA1", "Pin 3"],
+              ["SCL", "GPIO3 / SCL1", "Pin 5"],
+              ["ADDR", "GND for default I2C address", "Pin 6 or 9"],
+            ]}
+          />
+
+          <InfoTable
+            headers={["MiCS-6814 Signal", "Connect To"]}
+            rows={[
+              ["VCC", "5 V, physical pin 2 or 4"],
+              ["GND", "Raspberry Pi GND"],
+              ["NO2 / OX analog output", "ADS1115 A0"],
+            ]}
+          />
+
+          <Text size="2" color="gray" as="p">
+            Board labels vary a little between Amazon sellers. Look for the
+            oxidizing output, often marked <InlineCode>OX</InlineCode>,
+            <InlineCode>NO2</InlineCode>, or a similar analog-output label, and
+            route that channel into the ADS1115.
+          </Text>
         </Subsection>
       </Section>
 
