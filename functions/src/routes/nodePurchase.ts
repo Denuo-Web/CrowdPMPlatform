@@ -2,12 +2,20 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { extractClientIp } from "../lib/http.js";
 import { httpError } from "../lib/httpError.js";
-import { getRequestUser, rateLimitGuard, requestUserId, requireUserGuard } from "../lib/routeGuards.js";
+import {
+  getOptionalRequestUser,
+  getRequestUser,
+  optionalUserGuard,
+  rateLimitGuard,
+  requestUserId,
+  requireUserGuard,
+} from "../lib/routeGuards.js";
 import {
   confirmThemeSaveCheckoutSession,
   createNodePurchaseCheckoutSession,
   createThemeSaveCheckoutSession,
   handleStripeWebhook,
+  listNodePurchaseReceipts,
 } from "../services/nodePurchase.js";
 
 type RequestWithRawBody = {
@@ -16,6 +24,7 @@ type RequestWithRawBody = {
 
 const nodeCheckoutBodySchema = z.object({
   variantId: z.enum(["standard", "co2", "no2", "co2_no2"]).optional(),
+  quantity: z.number().int().min(1).max(10).optional(),
 }).strict();
 
 const confirmThemeCheckoutBodySchema = z.object({
@@ -36,6 +45,7 @@ function rawBodyAsString(req: FastifyRequest): string {
 export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
   app.post("/v1/node-purchase/checkout-session", {
     preHandler: [
+      optionalUserGuard(),
       rateLimitGuard((req) => `node-purchase:checkout:ip:${requestIp(req)}`, 30, 60_000),
       rateLimitGuard("node-purchase:checkout:global", 1_000, 60_000),
     ],
@@ -44,10 +54,24 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
     }
+    const user = getOptionalRequestUser(req);
     return createNodePurchaseCheckoutSession({
       variantId: parsed.data.variantId,
+      quantity: parsed.data.quantity,
+      userId: user?.uid,
+      customerEmail: user?.email ?? null,
     });
   });
+
+  app.get("/v1/node-purchase/receipts", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `node-purchase:receipts:user:${requestUserId(req)}`, 60, 60_000),
+      rateLimitGuard("node-purchase:receipts:global", 2_000, 60_000),
+    ],
+  }, async (req) => listNodePurchaseReceipts({
+    userId: requestUserId(req),
+  }));
 
   app.post("/v1/theme-purchase/checkout-session", {
     preHandler: [

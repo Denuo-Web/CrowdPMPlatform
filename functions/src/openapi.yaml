@@ -36,13 +36,12 @@ paths:
         purchase. Checkout collects a US shipping address, applies Stripe Tax
         based on that destination, and charges the selected hardware variant.
         The standard PM2.5 node starts at a $350 base price with shipping
-        included, while optional CO2 and NO2 sensor add-ons increase the final
-        pre-tax amount. The purchase covers physical node hardware and expressly
-        listed related services; it does not transfer proprietary rights in
-        CrowdPM Platform software or restrict rights under applicable open-source
-        licenses. The API lazily provisions the backing Stripe product + price
-        for each variant the first time that variant is requested, then reuses
-        the stored identifiers on later requests.
+        included, while optional CO2 and NO2 sensor add-ons are $25 each before
+        tax. The selected quantity can be 1 through 10 devices. If a valid
+        bearer token is supplied, the completed hardware receipt is tied to that
+        account. The API lazily provisions the backing Stripe product + price for
+        each variant the first time that variant is requested, then reuses the
+        stored identifiers on later requests.
       security: []
       requestBody:
         required: false
@@ -65,6 +64,26 @@ paths:
           description: Stripe or application configuration is missing.
         '502':
           description: Stripe returned an upstream error.
+  /v1/node-purchase/receipts:
+    get:
+      operationId: listNodePurchaseReceipts
+      summary: List signed-in user's node hardware receipts
+      description: Returns completed CrowdPM node hardware purchase receipts tied to the signed-in account.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Completed node hardware receipts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NodePurchaseReceipt'
+        '401':
+          description: Missing or invalid bearer token.
+        '429':
+          description: Rate limited.
   /v1/theme-purchase/checkout-session:
     post:
       operationId: createThemeSaveCheckoutSession
@@ -914,6 +933,86 @@ components:
             - co2
             - co2_no2
           description: Selected CrowdPM hardware product variant.
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 1
+          description: Number of devices to purchase in this checkout.
+    NodePurchaseReceipt:
+      type: object
+      required:
+        - sessionId
+        - purchaseType
+        - status
+        - quantity
+        - currency
+      properties:
+        sessionId:
+          type: string
+          description: Stripe Checkout session identifier.
+        purchaseType:
+          type: string
+          enum: [node_hardware]
+        status:
+          type: string
+          enum: [completed]
+        paymentStatus:
+          type: string
+          nullable: true
+        variantId:
+          type: string
+          nullable: true
+          enum:
+            - standard
+            - no2
+            - co2
+            - co2_no2
+        variantLabel:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10
+        currency:
+          type: string
+          example: usd
+        unitAmount:
+          type: integer
+          nullable: true
+          description: Per-device pre-tax price in the smallest currency unit.
+        amountSubtotal:
+          type: integer
+          nullable: true
+        amountTax:
+          type: integer
+          nullable: true
+        amountShipping:
+          type: integer
+          nullable: true
+        amountDiscount:
+          type: integer
+          nullable: true
+        amountTotal:
+          type: integer
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        customerEmail:
+          type: string
+          nullable: true
+        shippingName:
+          type: string
+          nullable: true
+        shippingAddress:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+            nullable: true
     DeviceStatus:
       type: string
       enum:

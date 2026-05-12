@@ -40,6 +40,18 @@ export function requireUserGuard(options?: RequireUserOptions): preHandlerHookHa
   };
 }
 
+export function optionalUserGuard(options?: RequireUserOptions): preHandlerHookHandler {
+  return async (req) => {
+    const rawAuthorization = req.headers.authorization;
+    const authorization = Array.isArray(rawAuthorization) ? rawAuthorization[0] ?? "" : rawAuthorization ?? "";
+    if (!authorization.startsWith("Bearer ") || authorization.slice(7).trim().length === 0) {
+      return;
+    }
+    const user = await requireUser(req, options);
+    (req as GuardedRequest).user = user;
+  };
+}
+
 export function requirePermissionGuard(permission: Permission): preHandlerHookHandler {
   return async (req) => {
     const user = await requireUser(req);
@@ -56,6 +68,10 @@ export function getRequestUser(req: FastifyRequest): DecodedIdToken {
     throw httpError(401, "unauthorized", "Authentication required");
   }
   return user;
+}
+
+export function getOptionalRequestUser(req: FastifyRequest): DecodedIdToken | null {
+  return (req as GuardedRequest).user ?? null;
 }
 
 export function requestUserId(req: FastifyRequest): string {

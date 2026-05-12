@@ -7,11 +7,13 @@ import {
   deleteBatch,
   listBatches,
   listDevices,
+  listNodePurchaseReceipts,
   revokeDevice,
   updateBatchVisibility,
   type BatchSummary,
   type BatchVisibility,
   type DeviceSummary,
+  type NodePurchaseReceipt,
 } from "../lib/api";
 import { APP_ROUTES } from "../lib/appRoutes";
 import { logError } from "../lib/logger";
@@ -35,6 +37,30 @@ function describeStatus(status?: string | null): { label: string; tone: "green" 
   return { label: status ?? "Unknown", tone: "red" };
 }
 
+function formatReceiptMoney(cents: number | null, currency: string | null | undefined): string {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) {
+    return "—";
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: (currency ?? "usd").toUpperCase(),
+  }).format(cents / 100);
+}
+
+function formatReceiptDate(value: string | null): string {
+  if (!value) return "—";
+  const millis = Date.parse(value);
+  return Number.isNaN(millis) ? "—" : new Date(millis).toLocaleString();
+}
+
+function formatShippingLocation(receipt: NodePurchaseReceipt): string {
+  const address = receipt.shippingAddress;
+  const city = address?.city?.trim();
+  const state = address?.state?.trim();
+  if (city && state) return `${city}, ${state}`;
+  return city || state || "—";
+}
+
 export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, onOpenThemeModal, refreshToken = 0 }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
@@ -53,6 +79,9 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
   const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
   const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
   const [batchPageIndex, setBatchPageIndex] = useState(0);
+  const [receipts, setReceipts] = useState<NodePurchaseReceipt[]>([]);
+  const [isLoadingReceipts, setIsLoadingReceipts] = useState(false);
+  const [receiptsError, setReceiptsError] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const activationUrl = useMemo(() => buildActivationLink(), []);
@@ -100,12 +129,35 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
     }
   }, [user]);
 
+  const refreshReceipts = useCallback(async () => {
+    if (!user) {
+      setReceipts([]);
+      setReceiptsError(null);
+      return;
+    }
+    setIsLoadingReceipts(true);
+    setReceiptsError(null);
+    try {
+      const next = await listNodePurchaseReceipts();
+      setReceipts(next);
+    }
+    catch (err) {
+      setReceipts([]);
+      setReceiptsError(err instanceof Error ? err.message : "Unable to load hardware receipts");
+    }
+    finally {
+      setIsLoadingReceipts(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     void refreshDevices();
     void refreshBatches();
-  }, [refreshBatches, refreshDevices, refreshToken]);
+    void refreshReceipts();
+  }, [refreshBatches, refreshDevices, refreshReceipts, refreshToken]);
 
   const ownedCount = useMemo(() => devices.length, [devices]);
+  const completedReceiptCount = useMemo(() => receipts.length, [receipts.length]);
   const activeCount = useMemo(
     () => devices.filter((device) => describeStatus(device.registryStatus ?? device.status).tone === "green").length,
     [devices],
@@ -381,14 +433,90 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
               <Text size="2" color="gray">Active</Text>
               <Heading size="6">{activeCount}</Heading>
             </Flex>
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Hardware orders</Text>
+              <Heading size="6">{completedReceiptCount}</Heading>
+            </Flex>
           </Flex>
-          <Button variant="soft" onClick={refreshDevices} disabled={isLoadingDevices}>
-            <ReloadIcon /> {isLoadingDevices ? "Refreshing" : "Refresh"}
+          <Button
+            variant="soft"
+            onClick={() => { void Promise.all([refreshDevices(), refreshReceipts()]); }}
+            disabled={isLoadingDevices || isLoadingReceipts}
+          >
+            <ReloadIcon /> {isLoadingDevices || isLoadingReceipts ? "Refreshing" : "Refresh"}
           </Button>
         </Flex>
         {devicesError ? (
           <Text mt="3" color="tomato">{devicesError}</Text>
         ) : null}
+      </Card>
+
+      <Card>
+        <Flex direction="column" gap="3">
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Box>
+              <Heading as="h3" size="4">Hardware receipts</Heading>
+              <Text color="gray">Completed node purchases tied to this signed-in account.</Text>
+            </Box>
+            <Button variant="soft" onClick={refreshReceipts} disabled={isLoadingReceipts}>
+              <ReloadIcon /> {isLoadingReceipts ? "Refreshing" : "Refresh"}
+            </Button>
+          </Flex>
+          <Separator my="2" size="4" />
+          {receiptsError ? (
+            <Callout.Root color="tomato">
+              <Callout.Text>{receiptsError}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+          {receipts.length === 0 ? (
+            <Text color="gray" style={{ fontStyle: "italic" }}>
+              {isLoadingReceipts ? "Loading receipts…" : "No completed hardware purchases for this account."}
+            </Text>
+          ) : (
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Configuration</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Qty</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Total</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Ship to</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Payment</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {receipts.map((receipt) => (
+                  <Table.Row key={receipt.sessionId}>
+                    <Table.Cell>
+                      <Flex direction="column" gap="1">
+                        <Text>{formatReceiptDate(receipt.completedAt)}</Text>
+                        <Text size="1" color="gray" style={{ fontFamily: "monospace" }}>
+                          {receipt.sessionId}
+                        </Text>
+                      </Flex>
+                    </Table.Cell>
+                    <Table.Cell>{receipt.variantLabel ?? "CrowdPM Node Hardware"}</Table.Cell>
+                    <Table.Cell>{receipt.quantity}</Table.Cell>
+                    <Table.Cell>
+                      <Flex direction="column" gap="1">
+                        <Text weight="medium">{formatReceiptMoney(receipt.amountTotal, receipt.currency)}</Text>
+                        <Text size="1" color="gray">
+                          Tax {formatReceiptMoney(receipt.amountTax, receipt.currency)}
+                        </Text>
+                      </Flex>
+                    </Table.Cell>
+                    <Table.Cell>{formatShippingLocation(receipt)}</Table.Cell>
+                    <Table.Cell>
+                      <Badge color={receipt.paymentStatus === "paid" ? "green" : "gray"} variant="soft">
+                        {receipt.paymentStatus ?? "completed"}
+                      </Badge>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          )}
+        </Flex>
       </Card>
 
       <Card id="user-settings">
