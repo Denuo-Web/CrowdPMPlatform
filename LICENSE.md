@@ -1,52 +1,30 @@
 # License
 
-"Crowd PM Platform" is dual-licensed under the terms of both the GNU Affero General Public License (AGPL) v3.0 and a separate Commercial License for users who require the software for commercial use.
+Copyright © 2025–2026 Denuo Web LLC and contributors.
 
-## Section 1: GNU Affero General Public License (AGPL) v3.0
+CrowdPM Platform is licensed under the GNU Affero General Public License version 3.0 or later, except where another license is expressly stated.
 
-The open-source version of "Crowd PM Platform" is available under the terms of the GNU Affero General Public License (AGPL) v3.0. A copy of the AGPL v3.0 can be found below or you can visit [GNU AGPL License](https://www.gnu.org/licenses/agpl-3.0.html) to see the full text.
+Commercial licensing may be available from Denuo Web LLC for portions of CrowdPM Platform owned by, assigned to, or otherwise licensed to Denuo Web LLC for that purpose. Contributor-owned portions remain subject to their applicable license terms unless separate written permission has been obtained.
 
-### Key Provisions of AGPL v3.0:
-- You may copy, distribute, and modify the software as long as you track changes/dates in source files.
-- Any modifications to or software including (via compiler) AGPL-licensed code must also be made available under the AGPL along with build & install instructions.
+CrowdPM Platform is a networked web application. Users interacting with a deployed modified version should be offered access to the corresponding source code as required by AGPLv3-or-later.
 
-### Network Use:
-- If you run a modified program on a server and let other users communicate with it there, your server must also allow them to download the source code corresponding to the modified version running there.
+See AUTHORS.md for contributor attribution and NOTICE.md for public software notices.
 
-## Section 2: Commercial License
+## GNU Affero General Public License Version 3
 
-For individuals or entities wishing to incorporate "Crowd PM Platform" into commercial ventures, such as by creating proprietary software or services based on "Crowd PM Platform," a separate Commercial License is required.
+CrowdPM Platform is a crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client.
 
-### Key Provisions of the Commercial License:
-- Provides rights to use, modify, and integrate "Crowd PM Platform" into commercial products without the obligations of the AGPL.
-- Includes support and updates as per the terms negotiated in the license agreement.
+Copyright © 2025–2026 Denuo Web LLC and contributors.
 
-### Obtaining a Commercial License:
-- To inquire about obtaining a commercial license, please contact Denuo Web, LLC at [license@denuoweb.com](mailto:license@denuoweb.com) for more details on pricing and terms.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-## Choice of License
-
-The choice of license depends on your use case:
-- If you are using "Crowd PM Platform" for open-source applications and are willing to comply with the AGPL, you do not need a commercial license.
-- If you intend to use "Crowd PM Platform" for proprietary applications, you are required to obtain a commercial license.
-
-## Questions?
-If you have any questions about which license is right for you, please contact us at [license@denuoweb.com](mailto:license@denuoweb.com).
-
-    Crowd PM Platform is a crowd-sourced PM2.5 air quality monitoring stack combining Firebase microservices with a WebGL Google Maps client. 
-    
-    Copyright (C) 2025 Denuo Web LLC
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
 
 
                     GNU AFFERO GENERAL PUBLIC LICENSE

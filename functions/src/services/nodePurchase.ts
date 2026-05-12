@@ -9,7 +9,7 @@ const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_TAX_CODE = "txcd_99999999";
 
 const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
-const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "Price includes US shipping. Applicable sales tax is calculated at checkout.";
+const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.";
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
 const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
@@ -83,7 +83,7 @@ const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantC
     catalogDocId: "nodeHardware",
     label: "PM2.5 standard node",
     productName: "CrowdPM Node Hardware",
-    description: "Node hardware purchase with US shipping included.",
+    description: "Physical node hardware purchase with US shipping included.",
     unitAmount: 35_000,
   },
   no2: {

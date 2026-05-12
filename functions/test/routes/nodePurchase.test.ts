@@ -146,7 +146,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
 
     expect(mocks.productsCreate).toHaveBeenCalledWith({
       name: "CrowdPM Node Hardware",
-      description: "Node hardware purchase with US shipping included.",
+      description: "Physical node hardware purchase with US shipping included.",
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
@@ -174,7 +174,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
           message: "We currently ship CrowdPM nodes only to addresses in the United States.",
         },
         submit: {
-          message: "Price includes US shipping. Applicable sales tax is calculated at checkout.",
+          message: "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.",
         },
       },
       metadata: {

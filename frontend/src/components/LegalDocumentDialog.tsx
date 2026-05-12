@@ -17,7 +17,7 @@ type LegalDocumentLinkProps = {
 };
 
 const LAST_UPDATED = "May 11, 2026";
-const COMPANY_NAME = "Denuo Web, LLC";
+const COMPANY_NAME = "Denuo Web LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
 const COMPANY_MAILING_ADDRESS = "1292 High Street PMB 222, Eugene, OR 97401";
@@ -162,6 +162,16 @@ function TermsOfService() {
           shipping included, and optional sensor add-ons increase the one-time hardware price for
           the selected configuration. Applicable sales tax is calculated during checkout from the
           shipping address.
+        </P>
+        <P>
+          You are purchasing physical CrowdPM node hardware and any expressly listed related services
+          from {COMPANY_NAME}. CrowdPM Platform software is open-source software maintained by{" "}
+          {COMPANY_NAME} and contributors. Purchase of hardware does not restrict your rights
+          under the applicable open-source software license.
+        </P>
+        <P>
+          Purchase of a node does not transfer ownership of {COMPANY_NAME} trademarks, branding,
+          hosted infrastructure, customer accounts, or proprietary business materials.
         </P>
         <P>
           CrowdPM may also offer one-time digital expansion purchases processed through Stripe
@@ -441,16 +451,17 @@ function LicenseTerms() {
 
       <Section title="1. Source Code">
         <P>
-          CrowdPM source code is available in the{" "}
+          CrowdPM Platform is open-source software maintained by {COMPANY_NAME} and contributors.
+          Source code is available in the{" "}
           <ExternalLink href={PROJECT_LINKS.repository} color="iris" highContrast>
             Denuo-Web/CrowdPMPlatform repository
           </ExternalLink>{" "}
-          and is dual-licensed under the GNU Affero General Public License version 3.0 or later and a
-          separate commercial license from {COMPANY_NAME}.
+          under the GNU Affero General Public License version 3.0 or later unless another license is
+          expressly stated.
         </P>
         <P>
-          The AGPL option lets you copy, modify, run, and distribute covered code if you comply with
-          the AGPL, including its source availability requirements for modified network services.
+          The AGPL lets you copy, modify, run, and distribute covered code if you comply with the
+          AGPL, including its source availability requirements for modified network services.
           Review the{" "}
           <ExternalLink href={PROJECT_LINKS.agpl3} color="iris" highContrast>
             GNU AGPL v3.0
@@ -461,12 +472,24 @@ function LicenseTerms() {
           </ExternalLink>{" "}
           for the complete terms.
         </P>
+        <P>
+          Attribution and public notices are available in{" "}
+          <ExternalLink href={PROJECT_LINKS.authorsFile} color="iris" highContrast>
+            AUTHORS.md
+          </ExternalLink>{" "}
+          and{" "}
+          <ExternalLink href={PROJECT_LINKS.noticeFile} color="iris" highContrast>
+            NOTICE.md
+          </ExternalLink>.
+        </P>
       </Section>
 
       <Section title="2. Commercial License">
         <P>
-          Organizations or individuals that want proprietary terms, private modifications, custom
-          support, or rights outside the AGPL may need a separate commercial license. Contact{" "}
+          Commercial licensing may be available from {COMPANY_NAME} for portions of CrowdPM Platform
+          owned by, assigned to, or otherwise licensed to {COMPANY_NAME} for that purpose.
+          Contributor-owned portions remain subject to their applicable license terms unless separate
+          written permission has been obtained. Contact{" "}
           <Link href={`mailto:${COMPANY_LICENSE_EMAIL}`} color="iris" highContrast>
             {COMPANY_LICENSE_EMAIL}
           </Link>{" "}
@@ -486,13 +509,16 @@ function LicenseTerms() {
 
       <Section title="4. Hardware and Embedded Software">
         <P>
-          Buying CrowdPM node hardware transfers ownership of the physical device only. It does not
-          transfer ownership of CrowdPM source code, firmware, trademarks, datasets, hosted service
-          features, or third-party software included with or used by the device.
+          Buying CrowdPM node hardware transfers ownership of the physical device only. Purchase of
+          hardware does not restrict your rights under the applicable open-source software license,
+          and it does not transfer ownership of CrowdPM source code, firmware, {COMPANY_NAME}
+          trademarks or branding, hosted infrastructure, customer accounts, proprietary business
+          materials, datasets, hosted service features, or third-party software included with or used
+          by the device.
         </P>
         <P>
           Any CrowdPM firmware, setup scripts, examples, or application code included with a node are
-          licensed under the applicable repository license or separate written commercial license.
+          licensed under the applicable repository license unless a separate written license applies.
           Third-party hardware, firmware, operating system packages, and libraries remain subject to
           their own terms.
         </P>

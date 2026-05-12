@@ -7,8 +7,8 @@ info:
     Error responses use a normalized JSON format with a required `error` field and
     optional `message`.
   license:
-    name: Proprietary
-    url: https://crowdpmplatform.web.app
+    name: AGPL-3.0-or-later
+    url: https://github.com/Denuo-Web/CrowdPMPlatform/blob/main/LICENSE.md
 servers:
   - url: https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi
     description: Deployed Firebase Functions API
@@ -37,9 +37,12 @@ paths:
         based on that destination, and charges the selected hardware variant.
         The standard PM2.5 node starts at a $350 base price with shipping
         included, while optional CO2 and NO2 sensor add-ons increase the final
-        pre-tax amount. The API lazily provisions the backing Stripe product +
-        price for each variant the first time that variant is requested, then
-        reuses the stored identifiers on later requests.
+        pre-tax amount. The purchase covers physical node hardware and expressly
+        listed related services; it does not transfer proprietary rights in
+        CrowdPM Platform software or restrict rights under applicable open-source
+        licenses. The API lazily provisions the backing Stripe product + price
+        for each variant the first time that variant is requested, then reuses
+        the stored identifiers on later requests.
       security: []
       requestBody:
         required: false

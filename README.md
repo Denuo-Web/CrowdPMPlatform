@@ -19,6 +19,12 @@ The project has two supported environments:
 | Scripts | `scripts/` | Local device emulator, deployed-device helpers, and workspace packaging utilities. |
 | Firebase config | `firebase.json`, `firestore.rules`, `storage.rules` | Emulator ports, Hosting rewrites, deploy targets, and security rules. |
 
+## Project History
+
+CrowdPM Platform originated as an Oregon State University EECS Capstone project proposed by Jaron Rosenau / Denuo Web LLC. The project is now maintained and operated by Denuo Web LLC.
+
+The repository includes contributions from multiple project contributors. See AUTHORS.md and the Git commit history for attribution.
+
 ## Quick Start
 
 Use Node 24 before running project commands:
@@ -111,3 +117,15 @@ firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
 ```
 
 Deploy Firestore indexes and Firestore or Storage rules only when those files changed and have been reviewed.
+
+## License
+
+CrowdPM Platform is licensed under GNU AGPLv3-or-later unless otherwise stated.
+
+Copyright © 2025–2026 Denuo Web LLC and contributors.
+
+The hosted service, hardware node sales, support, fulfillment, and related commercial services are operated by Denuo Web LLC.
+
+Commercial licensing may be available from Denuo Web LLC for portions of the project owned by, assigned to, or otherwise licensed to Denuo Web LLC for that purpose. Contributor-owned portions remain subject to their applicable license terms unless separate written permission has been obtained.
+
+See LICENSE.md, NOTICE.md, AUTHORS.md, CONTRIBUTING.md, and CLA.md.
