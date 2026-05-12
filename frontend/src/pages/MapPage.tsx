@@ -47,6 +47,8 @@ const MAX_PERSISTED_MAP_ZOOM = 22;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
 const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
 const MAP_PANEL_BLUR = "blur(12px)";
+const MAP_PANEL_SECTION_BORDER = "1px solid var(--gray-a5)";
+const MAP_FLOATING_PANEL_TOP = "max(calc(env(safe-area-inset-top, 0px) + 72px), var(--space-4))";
 const MAP_VIEWPORT_BACKGROUND =
   "radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--accent-8) 20%, transparent), transparent 55%), "
   + "radial-gradient(100% 100% at 100% 0%, color-mix(in srgb, var(--gray-7) 14%, transparent), transparent 60%), "
@@ -973,6 +975,7 @@ export default function MapPage({
     user,
   ]);
   const canStartExport = isExportSectionVisible && !isExporting && !exportDisabledReason;
+  const shouldShowMeasurementSection = rows.length > 0 || Boolean(selectedBatchKey && isLoadingBatch);
 
   useEffect(() => {
     if (isAnonymousHeroState || isMapViewportActivated) return;
@@ -1241,14 +1244,18 @@ export default function MapPage({
       <div
         style={{
           position: "absolute",
-          top: "var(--space-4)",
+          top: MAP_FLOATING_PANEL_TOP,
           right: "var(--space-4)",
           zIndex: 110,
           display: "flex",
           flexDirection: "column",
-          gap: "var(--space-3)",
+          gap: "var(--space-2)",
           maxWidth: 360,
           width: "calc(100% - var(--space-8))",
+          maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 88px)",
+          overflowY: "auto",
+          paddingBottom: "var(--space-2)",
+          scrollbarWidth: "thin",
         }}
       >
         {/* Error banner */}
@@ -1271,13 +1278,14 @@ export default function MapPage({
         {/* Batch selector */}
         <div
           style={{
-            padding: "var(--space-4)",
+            padding: "var(--space-3)",
             borderRadius: "var(--radius-3)",
             background: MAP_PANEL_BACKGROUND,
             backdropFilter: MAP_PANEL_BLUR,
             WebkitBackdropFilter: MAP_PANEL_BLUR,
             border: MAP_PANEL_BORDER,
             boxShadow: "var(--shadow-3)",
+            color: "var(--gray-12)",
           }}
         >
           <label style={{ display: "block", marginBottom: 6, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
@@ -1351,230 +1359,217 @@ export default function MapPage({
               </Select.Content>
             </Select.Root>
           </div>
-        </div>
-
-        {/* Video export card (when a specific batch is selected) */}
-        {isExportSectionVisible ? (
-          <div
-            style={{
-              padding: "var(--space-4)",
-              borderRadius: "var(--radius-3)",
-              background: MAP_PANEL_BACKGROUND,
-              backdropFilter: MAP_PANEL_BLUR,
-              WebkitBackdropFilter: MAP_PANEL_BLUR,
-              border: MAP_PANEL_BORDER,
-              boxShadow: "var(--shadow-3)",
-              color: "var(--gray-12)",
-            }}
-          >
-            <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-              Create a video of this pollution data
-            </p>
-            {exportDisabledReason ? (
-              <p style={{ margin: "6px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                {exportDisabledReason}
-              </p>
-            ) : isExporting ? (
-              <div style={{ marginTop: 8 }}>
-                <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  {exportStatus ?? "Exporting..."}
-                </p>
-                <div
-                  style={{
-                    marginTop: 6,
-                    height: 4,
-                    borderRadius: 2,
-                    background: "var(--gray-a5)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${Math.round(exportProgress * 100)}%`,
-                      height: "100%",
-                      background: "var(--accent-9)",
-                      borderRadius: 2,
-                      transition: "width 0.2s ease",
-                    }}
-                  />
-                </div>
-              </div>
-            ) : renderedVideoUrl ? (
-              <div style={{ marginTop: 8 }}>
-                <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--accent-11)" }}>
-                  {exportStatus ?? "Video ready!"}
-                </p>
-                <div style={{ display: "flex", gap: "var(--space-2)", marginTop: 8, flexWrap: "wrap" }}>
-                  <a
-                    href={renderedVideoUrl}
-                    download={renderedVideoName ?? "export.webm"}
-                    style={{
-                      display: "inline-block",
-                      padding: "var(--space-1) var(--space-3)",
-                      borderRadius: "var(--radius-2)",
-                      background: "var(--accent-9)",
-                      color: "var(--accent-contrast)",
-                      fontWeight: 600,
-                      fontSize: "var(--font-size-1)",
-                      textDecoration: "none",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Download
-                  </a>
-                  <button
-                    type="button"
-                    onClick={handleRenderVideo}
-                    style={{
-                      padding: "var(--space-1) var(--space-3)",
-                      borderRadius: "var(--radius-2)",
-                      border: "1px solid var(--gray-a6)",
-                      background: "transparent",
-                      color: "var(--gray-12)",
-                      fontSize: "var(--font-size-1)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Regenerate Video
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ marginTop: 8 }}>
-                <p style={{ margin: "0 0 8px", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  Create a video flythrough of the pollution data from your measurement devices selected batch
-                </p>
-                <button
-                  type="button"
-                  onClick={handleRenderVideo}
-                  disabled={!canStartExport}
-                  style={{
-                    padding: "var(--space-1) var(--space-3)",
-                    borderRadius: "var(--radius-2)",
-                    border: "none",
-                    background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
-                    color: canStartExport ? "var(--accent-contrast)" : "var(--gray-11)",
-                    fontWeight: 600,
-                    fontSize: "var(--font-size-1)",
-                    cursor: canStartExport ? "pointer" : "not-allowed",
-                  }}
-                >
-                  Create Video Now
-                </button>
-              </div>
-            )}
-            {exportError ? (
-              <p style={{ margin: "8px 0 0", fontSize: "var(--font-size-1)", color: "#f87171" }}>
-                {exportError}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Detail / timeline panel */}
-        {rows.length ? (
-          <div
-            style={{
-              padding: "var(--space-3)",
-              borderRadius: "var(--radius-3)",
-              background: MAP_PANEL_BACKGROUND,
-              backdropFilter: MAP_PANEL_BLUR,
-              WebkitBackdropFilter: MAP_PANEL_BLUR,
-              border: MAP_PANEL_BORDER,
-              boxShadow: "var(--shadow-3)",
-              color: "var(--gray-12)",
-            }}
-          >
-            {isShowingAllPublic24h ? (
-              <>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-                  All public data — last 24 hours
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                  <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> batches.
-                  Click any point to drill in.
-                </p>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "var(--space-3)",
-                  }}
-                >
-                  <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                    Timeline
-                  </label>
-                  <span style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)", whiteSpace: "nowrap" }}>
-                    {rows.length} measurements
-                  </span>
-                </div>
-                <input
-                  id="measurement-slider"
-                  type="range"
-                  min={0}
-                  max={rows.length - 1}
-                  step={1}
-                  value={selectedIndex}
-                  onChange={(e) => handleTimelineIndexChange(Number(e.target.value))}
-                  style={{ width: "100%", marginTop: 4 }}
-                />
-                <div
-                  style={{
-                    marginTop: "var(--space-2)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "var(--space-3)",
-                    color: "var(--gray-11)",
-                    fontSize: "var(--font-size-1)",
-                  }}
-                >
-                  <label htmlFor="ball-tracking-toggle" style={{ cursor: "pointer", fontWeight: 500 }}>
-                    {trackBall ? "Track Node Mode" : "Free Mode"}
-                  </label>
-                  <Switch
-                    id="ball-tracking-toggle"
-                    checked={trackBall}
-                    onCheckedChange={setTrackBall}
-                  />
-                </div>
-                {selectedPoint ? (
-                  <div style={{ marginTop: 8 }}>
+          {shouldShowMeasurementSection || isExportSectionVisible ? (
+            <div
+              style={{
+                marginTop: "var(--space-3)",
+                paddingTop: "var(--space-3)",
+                borderTop: MAP_PANEL_SECTION_BORDER,
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-3)",
+              }}
+            >
+              {rows.length ? (
+                isShowingAllPublic24h ? (
+                  <div>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-                      {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                      All public data — last 24 hours
                     </p>
-                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                      PM2.5: <strong>{selectedPoint.value} {selectedPoint.unit || "µg/m³"}</strong>
-                    </p>
-                    <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                      {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
-                      {selectedPoint.precision != null ? ` · ±${selectedPoint.precision}m` : ""}
+                    <p style={{ margin: "4px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                      <strong>{rows.length}</strong> measurements across <strong>{allModeBatchCount}</strong> batches.
+                      Click any point to drill in.
                     </p>
                   </div>
-                ) : null}
-              </>
-            )}
-          </div>
-        ) : selectedBatchKey && isLoadingBatch ? (
-          <div
-            style={{
-              padding: "var(--space-3)",
-              borderRadius: "var(--radius-3)",
-              background: MAP_PANEL_BACKGROUND,
-              backdropFilter: MAP_PANEL_BLUR,
-              WebkitBackdropFilter: MAP_PANEL_BLUR,
-              border: MAP_PANEL_BORDER,
-              color: "var(--gray-11)",
-              fontSize: "var(--font-size-2)",
-            }}
-          >
-            Loading measurements…
-          </div>
-        ) : null}
+                ) : (
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "var(--space-3)",
+                      }}
+                    >
+                      <label htmlFor="measurement-slider" style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                        Timeline
+                      </label>
+                      <span style={{ fontSize: "var(--font-size-1)", color: "var(--gray-11)", whiteSpace: "nowrap" }}>
+                        {rows.length} measurements
+                      </span>
+                    </div>
+                    <input
+                      id="measurement-slider"
+                      type="range"
+                      min={0}
+                      max={rows.length - 1}
+                      step={1}
+                      value={selectedIndex}
+                      onChange={(e) => handleTimelineIndexChange(Number(e.target.value))}
+                      style={{ width: "100%", marginTop: 4 }}
+                    />
+                    <div
+                      style={{
+                        marginTop: "var(--space-2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "var(--space-3)",
+                        color: "var(--gray-11)",
+                        fontSize: "var(--font-size-1)",
+                      }}
+                    >
+                      <label htmlFor="ball-tracking-toggle" style={{ cursor: "pointer", fontWeight: 500 }}>
+                        {trackBall ? "Track Node Mode" : "Free Mode"}
+                      </label>
+                      <Switch
+                        id="ball-tracking-toggle"
+                        checked={trackBall}
+                        onCheckedChange={setTrackBall}
+                      />
+                    </div>
+                    {selectedPoint ? (
+                      <div style={{ marginTop: 8 }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
+                          {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                          PM2.5: <strong>{selectedPoint.value} {selectedPoint.unit || "µg/m³"}</strong>
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                          {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
+                          {selectedPoint.precision != null ? ` · ±${selectedPoint.precision}m` : ""}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              ) : selectedBatchKey && isLoadingBatch ? (
+                <div
+                  style={{
+                    color: "var(--gray-11)",
+                    fontSize: "var(--font-size-2)",
+                  }}
+                >
+                  Loading measurements…
+                </div>
+              ) : null}
+
+              {isExportSectionVisible ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "var(--space-2)",
+                    paddingTop: shouldShowMeasurementSection ? "var(--space-3)" : 0,
+                    borderTop: shouldShowMeasurementSection ? MAP_PANEL_SECTION_BORDER : "none",
+                  }}
+                >
+                  {isExporting ? (
+                    <>
+                      <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                        {exportStatus ?? "Exporting..."}
+                      </p>
+                      <div
+                        style={{
+                          height: 4,
+                          borderRadius: 2,
+                          background: "var(--gray-a5)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${Math.round(exportProgress * 100)}%`,
+                            height: "100%",
+                            background: "var(--accent-9)",
+                            borderRadius: 2,
+                            transition: "width 0.2s ease",
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                        {renderedVideoUrl ? (
+                          <>
+                            <a
+                              href={renderedVideoUrl}
+                              download={renderedVideoName ?? "export.webm"}
+                              style={{
+                                display: "inline-block",
+                                padding: "var(--space-1) var(--space-3)",
+                                borderRadius: "var(--radius-2)",
+                                background: "var(--accent-9)",
+                                color: "var(--accent-contrast)",
+                                fontWeight: 600,
+                                fontSize: "var(--font-size-1)",
+                                textDecoration: "none",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Download Video
+                            </a>
+                            <button
+                              type="button"
+                              onClick={handleRenderVideo}
+                              style={{
+                                padding: "var(--space-1) var(--space-3)",
+                                borderRadius: "var(--radius-2)",
+                                border: "1px solid var(--gray-a6)",
+                                background: "transparent",
+                                color: "var(--gray-12)",
+                                fontSize: "var(--font-size-1)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Regenerate Video
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleRenderVideo}
+                            disabled={!canStartExport}
+                            style={{
+                              padding: "var(--space-1) var(--space-3)",
+                              borderRadius: "var(--radius-2)",
+                              border: "none",
+                              background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
+                              color: canStartExport ? "var(--accent-contrast)" : "var(--gray-11)",
+                              fontWeight: 600,
+                              fontSize: "var(--font-size-1)",
+                              cursor: canStartExport ? "pointer" : "not-allowed",
+                            }}
+                          >
+                            Create Video Now
+                          </button>
+                        )}
+                      </div>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "var(--font-size-1)",
+                          color: renderedVideoUrl ? "var(--accent-11)" : "var(--gray-11)",
+                        }}
+                      >
+                        {renderedVideoUrl
+                          ? (exportStatus ?? "Your video is ready to download.")
+                          : (exportDisabledReason ?? "Create a video flythrough from the selected measurement batch.")}
+                      </p>
+                    </>
+                  )}
+                  {exportError ? (
+                    <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "#f87171" }}>
+                      {exportError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
       <Dialog.Root open={isBatchBrowserOpen} onOpenChange={setBatchBrowserOpen}>
         <Dialog.Content
