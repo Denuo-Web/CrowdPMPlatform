@@ -67,10 +67,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     if (errorBody) {
       try {
         const parsed = JSON.parse(errorBody) as { error?: unknown; message?: unknown };
-        const parsedMessage = typeof parsed.error === "string"
-          ? parsed.error
-          : typeof parsed.message === "string"
-            ? parsed.message
+        const parsedMessage = typeof parsed.message === "string"
+          ? parsed.message
+          : typeof parsed.error === "string"
+            ? parsed.error
             : null;
         if (parsedMessage) {
           throw new Error(parsedMessage);
@@ -156,6 +156,20 @@ export async function createNodePurchaseCheckoutSession(
 export async function createThemeSaveCheckoutSession(): Promise<CheckoutRedirectSession> {
   return requestJson<CheckoutRedirectSession>("/v1/theme-purchase/checkout-session", {
     method: "POST",
+  });
+}
+
+export async function confirmThemeSaveCheckoutSession(sessionId: string): Promise<{
+  confirmed: true;
+  sessionId: string;
+  unlockGranted: true;
+}> {
+  return requestJson("/v1/theme-purchase/confirm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sessionId }),
   });
 }
 

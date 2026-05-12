@@ -3,7 +3,12 @@ import { z } from "zod";
 import { extractClientIp } from "../lib/http.js";
 import { httpError } from "../lib/httpError.js";
 import { getRequestUser, rateLimitGuard, requestUserId, requireUserGuard } from "../lib/routeGuards.js";
-import { createNodePurchaseCheckoutSession, createThemeSaveCheckoutSession, handleStripeWebhook } from "../services/nodePurchase.js";
+import {
+  confirmThemeSaveCheckoutSession,
+  createNodePurchaseCheckoutSession,
+  createThemeSaveCheckoutSession,
+  handleStripeWebhook,
+} from "../services/nodePurchase.js";
 
 type RequestWithRawBody = {
   rawBody?: Buffer | string;
@@ -11,6 +16,10 @@ type RequestWithRawBody = {
 
 const nodeCheckoutBodySchema = z.object({
   variantId: z.enum(["standard", "co2", "no2", "co2_no2"]).optional(),
+}).strict();
+
+const confirmThemeCheckoutBodySchema = z.object({
+  sessionId: z.string().trim().min(1),
 }).strict();
 
 function requestIp(req: FastifyRequest): string {
@@ -51,6 +60,24 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
     userId: requestUserId(req),
     customerEmail: getRequestUser(req).email ?? null,
   }));
+
+  app.post("/v1/theme-purchase/confirm", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `theme-purchase:confirm:user:${requestUserId(req)}`, 20, 60_000),
+      rateLimitGuard((req) => `theme-purchase:confirm:ip:${requestIp(req)}`, 40, 60_000),
+      rateLimitGuard("theme-purchase:confirm:global", 1_000, 60_000),
+    ],
+  }, async (req) => {
+    const parsed = confirmThemeCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+    return confirmThemeSaveCheckoutSession({
+      sessionId: parsed.data.sessionId,
+      userId: requestUserId(req),
+    });
+  });
 
   app.post("/v1/payments/stripe/webhook", {
     preHandler: [
