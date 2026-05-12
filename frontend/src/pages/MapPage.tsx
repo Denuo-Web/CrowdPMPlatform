@@ -653,6 +653,41 @@ export default function MapPage({
     userScopedSelectionKey,
   ]);
 
+  useEffect(() => {
+    if (isAuthLoading || !selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return;
+    if (measurementQuery.isFetching || measurementQuery.isLoading || !measurementQuery.isError) return;
+    if (!isTerminalBatchError(measurementQuery.error)) return;
+
+    setSelectedBatchKey("");
+    setIndexOverride(0);
+    safeLocalStorageRemove(
+      userScopedSelectionKey,
+      { context: "map:selected-batch:clear-terminal-error", userId: user?.uid }
+    );
+
+    const cached = getCachedBatch();
+    if (cached) {
+      const cachedKey = encodeBatchKey(cached.summary.deviceId, cached.summary.batchId);
+      if (cachedKey === selectedBatchKey) {
+        safeLocalStorageRemove(
+          userScopedCacheKey,
+          { context: "map:cache:clear-terminal-error", userId: user?.uid }
+        );
+      }
+    }
+  }, [
+    getCachedBatch,
+    isAuthLoading,
+    measurementQuery.error,
+    measurementQuery.isError,
+    measurementQuery.isFetching,
+    measurementQuery.isLoading,
+    selectedBatchKey,
+    user?.uid,
+    userScopedCacheKey,
+    userScopedSelectionKey,
+  ]);
+
   // // Reset override when data changes
   // useEffect(() => {
   //   setIndexOverride(null);
