@@ -548,12 +548,15 @@ export default function App() {
 
       <main
         id="main-content"
-        style={{
-          minHeight: "100vh",
-          height: activeTab === "map" ? "100dvh" : "100dvh",
-          overflowY: activeTab === "map" ? "hidden" : "auto",
-          WebkitOverflowScrolling: activeTab === "map" ? undefined : "touch",
-        }}
+        style={activeTab === "map"
+          ? {
+            minHeight: "100vh",
+            height: "100dvh",
+            overflowY: "hidden",
+          }
+          : {
+            minHeight: "100vh",
+          }}
       >
         {activeTab === "map" ? (
           /* Full-bleed map — fills the entire viewport */
@@ -579,7 +582,7 @@ export default function App() {
           /* All other tabs get the branded header + content layout */
           <Box
             style={{
-              minHeight: "100dvh",
+              minHeight: "100vh",
               backgroundColor: "var(--color-surface)",
               backgroundImage:
                 "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
