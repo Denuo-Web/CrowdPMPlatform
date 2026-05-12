@@ -7,6 +7,7 @@ import { withRateLimitsEnabled } from "../helpers/rateLimitEnv.js";
 const mocks = vi.hoisted(() => ({
   productsCreate: vi.fn(),
   checkoutSessionsCreate: vi.fn(),
+  checkoutSessionsRetrieve: vi.fn(),
   constructEvent: vi.fn(),
   rateLimitOrThrow: vi.fn(),
   requireUser: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("stripe", () => ({
     checkout = {
       sessions: {
         create: mocks.checkoutSessionsCreate,
+        retrieve: mocks.checkoutSessionsRetrieve,
       },
     };
 
@@ -91,6 +93,7 @@ beforeEach(() => {
 
   mocks.productsCreate.mockReset();
   mocks.checkoutSessionsCreate.mockReset();
+  mocks.checkoutSessionsRetrieve.mockReset();
   mocks.constructEvent.mockReset();
   mocks.rateLimitOrThrow.mockReset();
   mocks.requireUser.mockReset();
@@ -460,7 +463,7 @@ describe("POST /v1/theme-purchase/checkout-session", () => {
         purchaseType: "theme_save_unlock",
         userId: "user-123",
       },
-      success_url: "https://crowdpmplatform.web.app/?themeCheckout=success",
+      success_url: "https://crowdpmplatform.web.app/?themeCheckout=success&themeCheckoutSessionId={CHECKOUT_SESSION_ID}",
       cancel_url: "https://crowdpmplatform.web.app/?themeCheckout=cancelled",
     });
     expect(dbStore.get("paymentCatalog/themeSaveUnlock")).toMatchObject({
@@ -526,6 +529,130 @@ describe("POST /v1/theme-purchase/checkout-session", () => {
       message: "Theme saving is already unlocked for this account.",
     });
     expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+describe("POST /v1/theme-purchase/confirm", () => {
+  it("finalizes a paid theme checkout session for the signed-in account", async () => {
+    dbStore.set("themeSavePurchaseSessions/cs_theme_123", {
+      sessionId: "cs_theme_123",
+      status: "created",
+      userId: "user-123",
+      purchaseType: "theme_save_unlock",
+    });
+    mocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_theme_123",
+      mode: "payment",
+      payment_status: "paid",
+      customer: "cus_theme_123",
+      customer_details: {
+        email: "buyer@example.com",
+      },
+      customer_email: "buyer@example.com",
+      payment_intent: "pi_theme_123",
+      automatic_tax: {
+        enabled: true,
+        status: "complete",
+      },
+      metadata: {
+        purchaseType: "theme_save_unlock",
+        userId: "user-123",
+      },
+      client_reference_id: "user-123",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 27,
+      },
+      currency: "usd",
+      amount_subtotal: 300,
+      amount_total: 327,
+      url: null,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/theme-purchase/confirm",
+      payload: {
+        sessionId: "cs_theme_123",
+      },
+      headers: {
+        authorization: "Bearer ok",
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.6",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      confirmed: true,
+      sessionId: "cs_theme_123",
+      unlockGranted: true,
+    });
+    expect(mocks.checkoutSessionsRetrieve).toHaveBeenCalledWith("cs_theme_123");
+    expect(dbStore.get("themeSavePurchaseSessions/cs_theme_123")).toMatchObject({
+      sessionId: "cs_theme_123",
+      status: "completed",
+      purchaseType: "theme_save_unlock",
+      paymentStatus: "paid",
+      userId: "user-123",
+      unlockGranted: true,
+    });
+    expect(dbStore.get("userSettings/user-123")).toMatchObject({
+      themeSaveUnlocked: true,
+      themeSaveUnlockedBySessionId: "cs_theme_123",
+    });
+    await app.close();
+  });
+
+  it("rejects confirming another account's theme checkout session", async () => {
+    dbStore.set("themeSavePurchaseSessions/cs_theme_456", {
+      sessionId: "cs_theme_456",
+      status: "created",
+      userId: "other-user",
+      purchaseType: "theme_save_unlock",
+    });
+    mocks.checkoutSessionsRetrieve.mockResolvedValue({
+      id: "cs_theme_456",
+      mode: "payment",
+      payment_status: "paid",
+      metadata: {
+        purchaseType: "theme_save_unlock",
+        userId: "other-user",
+      },
+      client_reference_id: "other-user",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 27,
+      },
+      currency: "usd",
+      amount_subtotal: 300,
+      amount_total: 327,
+      url: null,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/theme-purchase/confirm",
+      payload: {
+        sessionId: "cs_theme_456",
+      },
+      headers: {
+        authorization: "Bearer ok",
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({
+      error: "theme_save_forbidden",
+      message: "This theme save checkout does not belong to the signed-in account.",
+    });
+    expect(dbStore.get("userSettings/user-123")).toBeUndefined();
     await app.close();
   });
 });

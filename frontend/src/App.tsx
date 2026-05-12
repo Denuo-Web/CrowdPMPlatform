@@ -8,7 +8,12 @@ import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { logWarning } from "./lib/logger";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
-import { createThemeSaveCheckoutSession, type IngestSmokeTestCleanupResponse, type IngestSmokeTestResponse } from "./lib/api";
+import {
+  confirmThemeSaveCheckoutSession,
+  createThemeSaveCheckoutSession,
+  type IngestSmokeTestCleanupResponse,
+  type IngestSmokeTestResponse,
+} from "./lib/api";
 import {
   Theme,
   Box,
@@ -111,7 +116,14 @@ function clearThemeCheckoutNoticeFromUrl() {
   if (typeof window === "undefined") return;
   const nextUrl = new URL(window.location.href);
   nextUrl.searchParams.delete("themeCheckout");
+  nextUrl.searchParams.delete("themeCheckoutSessionId");
   window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+}
+
+function readThemeCheckoutSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  const sessionId = new URLSearchParams(window.location.search).get("themeCheckoutSessionId");
+  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
 }
 
 export default function App() {
@@ -122,6 +134,7 @@ export default function App() {
     ? getDeepLinkedAppTab(window.location.pathname)
     : null;
   const initialThemeCheckoutNotice = readThemeCheckoutNotice();
+  const initialThemeCheckoutSessionId = readThemeCheckoutSessionId();
   const [tab, setTab] = useState<AppTab>(initialDeepLinkedTab ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
@@ -130,6 +143,7 @@ export default function App() {
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
   const [isThemeModalOpen, setThemeModalOpen] = useState(Boolean(initialThemeCheckoutNotice));
   const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(initialThemeCheckoutNotice);
+  const [themeCheckoutSessionId, setThemeCheckoutSessionId] = useState<string | null>(initialThemeCheckoutSessionId);
   const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
@@ -161,11 +175,12 @@ export default function App() {
   const closeThemeModal = useCallback(() => {
     setThemeModalOpen(false);
     setThemeDraft(null);
-    if (themeCheckoutNotice) {
+    if (themeCheckoutNotice || themeCheckoutSessionId) {
       setThemeCheckoutNotice(null);
+      setThemeCheckoutSessionId(null);
       clearThemeCheckoutNoticeFromUrl();
     }
-  }, [themeCheckoutNotice]);
+  }, [themeCheckoutNotice, themeCheckoutSessionId]);
 
   const handleThemeModalOpenChange = useCallback((next: boolean) => {
     if (next) {
@@ -346,6 +361,7 @@ export default function App() {
         open={isThemeModalOpen}
         onOpenChange={handleThemeModalOpenChange}
         checkoutNotice={themeCheckoutNotice}
+        checkoutSessionId={themeCheckoutSessionId}
         theme={activeTheme}
         onThemeChange={setThemeDraft}
         onThemeSaved={() => setThemeDraft(null)}
@@ -659,6 +675,7 @@ type ThemePreferencesModalProps = {
   open: boolean;
   onOpenChange: (next: boolean) => void;
   checkoutNotice: ThemeCheckoutNotice;
+  checkoutSessionId: string | null;
   theme: UserThemeSettings;
   onThemeChange: (next: UserThemeSettings) => void;
   onThemeSaved: () => void;
@@ -668,6 +685,7 @@ function ThemePreferencesModal({
   open,
   onOpenChange,
   checkoutNotice,
+  checkoutSessionId,
   theme,
   onThemeChange,
   onThemeSaved,
@@ -677,8 +695,9 @@ function ThemePreferencesModal({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [isConfirmingCheckout, setIsConfirmingCheckout] = useState(false);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
-  const controlsDisabled = isLoading || isSaving || isStartingCheckout;
+  const controlsDisabled = isLoading || isSaving || isStartingCheckout || isConfirmingCheckout;
   const hasUnsavedChanges = JSON.stringify(theme) !== JSON.stringify(settings.theme);
   const saveDisabled = controlsDisabled || !user || !settings.themeSaveUnlocked || !hasUnsavedChanges;
   const unlockDisabled = controlsDisabled || !user || settings.themeSaveUnlocked;
@@ -700,11 +719,37 @@ function ThemePreferencesModal({
   }, [checkoutNotice, open, settings.themeSaveUnlocked]);
 
   useEffect(() => {
-    if (!open || checkoutNotice !== "success" || !user) return;
-    void refresh().catch((err) => {
-      setError(err instanceof Error ? err.message : "Unable to refresh theme entitlements.");
-    });
-  }, [checkoutNotice, open, refresh, user]);
+    if (!open || checkoutNotice !== "success" || !user) {
+      setIsConfirmingCheckout(false);
+      return;
+    }
+    let isCancelled = false;
+    setIsConfirmingCheckout(true);
+    void (async () => {
+      try {
+        if (checkoutSessionId) {
+          await confirmThemeSaveCheckoutSession(checkoutSessionId);
+        }
+        await refresh();
+      }
+      catch (err) {
+        if (isCancelled) return;
+        if (err instanceof Error && err.message === "theme_save_pending") {
+          setError("Theme purchase is still processing. Please try again in a moment.");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Unable to refresh theme entitlements.");
+      }
+      finally {
+        if (!isCancelled) {
+          setIsConfirmingCheckout(false);
+        }
+      }
+    })();
+    return () => {
+      isCancelled = true;
+    };
+  }, [checkoutNotice, checkoutSessionId, open, refresh, user]);
 
   const handleSave = async () => {
     if (!user) {

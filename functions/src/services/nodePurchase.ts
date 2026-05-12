@@ -228,9 +228,13 @@ function isCurrentCatalog(catalog: PaymentCatalog, config: CheckoutProductConfig
 
 function checkoutRedirectUrls(config: CheckoutProductConfig): { successUrl: string; cancelUrl: string } {
   const baseUrl = normalizeBaseUrl(getPublicAppBaseUrl());
+  const successUrl = `${baseUrl}${config.successPath}?${config.successQueryParam}${config.purchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType
+    ? "&themeCheckoutSessionId={CHECKOUT_SESSION_ID}"
+    : ""}`;
+  const cancelUrl = `${baseUrl}${config.successPath}?${config.cancelQueryParam}`;
   return {
-    successUrl: `${baseUrl}${config.successPath}?${config.successQueryParam}`,
-    cancelUrl: `${baseUrl}${config.successPath}?${config.cancelQueryParam}`,
+    successUrl,
+    cancelUrl,
   };
 }
 
@@ -420,6 +424,12 @@ export async function createThemeSaveCheckoutSession(args: {
   return createCheckoutSession(THEME_SAVE_UNLOCK_CONFIG, args);
 }
 
+export type ConfirmThemeSaveCheckoutSessionResult = {
+  confirmed: true;
+  sessionId: string;
+  unlockGranted: true;
+};
+
 type StripeWebhookArgs = {
   signature: string;
   rawBody: string;
@@ -432,12 +442,13 @@ type ResolvedPurchase = {
 
 async function resolvePurchase(session: Stripe.Checkout.Session): Promise<ResolvedPurchase> {
   const metadataPurchaseType = readNonEmptyString(session.metadata?.purchaseType);
+  const themeSnap = await db().collection(THEME_SAVE_UNLOCK_CONFIG.sessionCollection).doc(session.id).get();
+  const themeStoredSession = themeSnap.exists ? (themeSnap.data() as Record<string, unknown>) : null;
 
-  if (metadataPurchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType) {
-    const snap = await db().collection(THEME_SAVE_UNLOCK_CONFIG.sessionCollection).doc(session.id).get();
+  if (metadataPurchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType || themeSnap.exists) {
     return {
       config: THEME_SAVE_UNLOCK_CONFIG,
-      storedSession: snap.exists ? (snap.data() as Record<string, unknown>) : null,
+      storedSession: themeStoredSession,
     };
   }
 
@@ -454,11 +465,7 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
     };
   }
 
-  const themeSnap = await db().collection(THEME_SAVE_UNLOCK_CONFIG.sessionCollection).doc(session.id).get();
-  return {
-    config: THEME_SAVE_UNLOCK_CONFIG,
-    storedSession: themeSnap.exists ? (themeSnap.data() as Record<string, unknown>) : null,
-  };
+  throw httpError(404, "purchase_session_not_found", "Checkout session is not recognized.");
 }
 
 function resolveThemeUnlockUserId(
@@ -474,11 +481,15 @@ function resolveThemeUnlockUserId(
   return readNonEmptyString(storedSession?.userId);
 }
 
+function isThemeCheckoutSessionCompleted(session: Stripe.Checkout.Session): boolean {
+  return session.mode === "payment" && session.payment_status === "paid";
+}
+
 async function recordCompletedSession(
   config: CheckoutProductConfig,
   storedSession: Record<string, unknown> | null,
   session: Stripe.Checkout.Session,
-  event: Stripe.Event,
+  event?: Stripe.Event,
 ): Promise<void> {
   const shippingDetails = session.collected_information?.shipping_details ?? null;
   const completedAt = new Date().toISOString();
@@ -486,8 +497,6 @@ async function recordCompletedSession(
     sessionId: session.id,
     status: "completed",
     purchaseType: config.purchaseType,
-    eventId: event.id,
-    eventCreatedAt: new Date(event.created * 1000).toISOString(),
     completedAt,
     mode: session.mode,
     paymentStatus: session.payment_status ?? null,
@@ -510,6 +519,10 @@ async function recordCompletedSession(
       }
       : null,
   };
+  if (event) {
+    payload.eventId = event.id;
+    payload.eventCreatedAt = new Date(event.created * 1000).toISOString();
+  }
 
   if (config.purchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType) {
     const userId = resolveThemeUnlockUserId(session, storedSession);
@@ -536,6 +549,50 @@ async function recordCompletedSession(
   }
 
   await db().collection(config.sessionCollection).doc(session.id).set(payload, { merge: true });
+}
+
+async function retrieveCheckoutSession(sessionId: string): Promise<Stripe.Checkout.Session> {
+  try {
+    return await getStripeClient().checkout.sessions.retrieve(sessionId);
+  }
+  catch (err) {
+    const message = err instanceof Error && err.message.trim().length > 0
+      ? err.message
+      : "Unable to retrieve the Stripe Checkout session.";
+    throw httpError(502, "stripe_error", message);
+  }
+}
+
+export async function confirmThemeSaveCheckoutSession(args: {
+  sessionId: string;
+  userId: string;
+}): Promise<ConfirmThemeSaveCheckoutSessionResult> {
+  const sessionId = readNonEmptyString(args.sessionId);
+  if (!sessionId) {
+    throw httpError(400, "invalid_request", "sessionId is required.");
+  }
+
+  const session = await retrieveCheckoutSession(sessionId);
+  const { config, storedSession } = await resolvePurchase(session);
+  if (config.purchaseType !== THEME_SAVE_UNLOCK_CONFIG.purchaseType) {
+    throw httpError(400, "invalid_request", "Checkout session is not a theme save unlock purchase.");
+  }
+
+  const sessionUserId = resolveThemeUnlockUserId(session, storedSession);
+  if (!sessionUserId || sessionUserId !== args.userId) {
+    throw httpError(403, "theme_save_forbidden", "This theme save checkout does not belong to the signed-in account.");
+  }
+
+  if (!isThemeCheckoutSessionCompleted(session)) {
+    throw httpError(409, "theme_save_pending", "Theme purchase is still processing. Please try again in a moment.");
+  }
+
+  await recordCompletedSession(config, storedSession, session);
+  return {
+    confirmed: true,
+    sessionId,
+    unlockGranted: true,
+  };
 }
 
 export async function handleStripeWebhook({ signature, rawBody }: StripeWebhookArgs): Promise<{ received: true }> {
