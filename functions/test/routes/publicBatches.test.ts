@@ -1,74 +1,66 @@
+import { gzipSync } from "node:zlib";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publicBatchesRoutes } from "../../src/routes/publicBatches.js";
 import { toHttpError } from "../../src/lib/httpError.js";
 
 type BatchRecord = {
-  deviceId: string;
-  batchId: string;
+  id: string;
   data: Record<string, unknown>;
 };
 
 let batchRecords = new Map<string, BatchRecord>();
-let deviceNames = new Map<string, string>();
-let storagePayloads = new Map<string, unknown>();
+let storagePayloads = new Map<string, Buffer>();
 
-function batchKey(deviceId: string, batchId: string): string {
-  return `${deviceId}/${batchId}`;
+function gzipPayload(payload: unknown): Buffer {
+  return gzipSync(Buffer.from(JSON.stringify(payload), "utf8"));
 }
 
-function makeBatchQueryDoc(record: BatchRecord) {
-  return {
-    id: record.batchId,
-    data: () => ({ ...record.data, deviceId: record.deviceId }),
-    ref: {
-      parent: {
-        parent: { id: record.deviceId },
-      },
+function makeQuery() {
+  const filters: Array<{ field: string; value: unknown }> = [];
+  let limitValue: number | null = null;
+  const query = {
+    where: vi.fn((field: string, _op: string, value: unknown) => {
+      filters.push({ field, value });
+      return query;
+    }),
+    orderBy: vi.fn(() => query),
+    limit: vi.fn((value: number) => {
+      limitValue = value;
+      return query;
+    }),
+    get: async () => {
+      let records = Array.from(batchRecords.values())
+        .filter((record) => filters.every((filter) => record.data[filter.field] === filter.value))
+        .sort((a, b) => String(b.data.processedAt).localeCompare(String(a.data.processedAt)));
+      if (limitValue !== null) {
+        records = records.slice(0, limitValue);
+      }
+      return {
+        docs: records.map((record) => ({
+          id: record.id,
+          data: () => record.data,
+          get: (field: string) => record.data[field],
+        })),
+      };
     },
   };
+  return query;
 }
 
 const mockDb = {
-  collectionGroup: vi.fn(() => {
-    const filters: Array<{ field: string; value: unknown }> = [];
-    const query = {
-      where: vi.fn((field: string, _op: string, value: unknown) => {
-        filters.push({ field, value });
-        return query;
-      }),
-      orderBy: vi.fn(() => query),
-      limit: vi.fn(() => query),
-      get: async () => {
-        const docs = Array.from(batchRecords.values())
-          .filter((record) => filters.every((filter) => record.data[filter.field] === filter.value))
-          .map((record) => makeBatchQueryDoc(record));
-        return { docs };
-      },
-    };
-    return query;
-  }),
   collection: vi.fn((name: string) => {
-    if (name !== "devices") throw new Error(`unexpected collection ${name}`);
+    if (name !== "batches") throw new Error(`unexpected collection ${name}`);
     return {
-      doc: (deviceId: string) => ({
-        get: async () => ({
-          exists: deviceNames.has(deviceId),
-          id: deviceId,
-          get: (field: string) => (field === "name" ? deviceNames.get(deviceId) : undefined),
-        }),
-        collection: (child: string) => {
-          if (child !== "batches") throw new Error(`unexpected child ${child}`);
+      where: (...args: [string, string, unknown]) => makeQuery().where(...args),
+      doc: (id: string) => ({
+        get: async () => {
+          const record = batchRecords.get(id);
           return {
-            doc: (batchId: string) => ({
-              get: async () => {
-                const record = batchRecords.get(batchKey(deviceId, batchId));
-                return {
-                  exists: Boolean(record),
-                  data: () => (record ? { ...record.data, deviceId: record.deviceId } : {}),
-                };
-              },
-            }),
+            id,
+            exists: Boolean(record),
+            data: () => record?.data ?? {},
+            get: (field: string) => record?.data[field],
           };
         },
       }),
@@ -81,7 +73,7 @@ const mockBucket = {
     download: async () => {
       const payload = storagePayloads.get(path);
       if (!payload) throw new Error("missing payload");
-      return [Buffer.from(JSON.stringify(payload), "utf8")];
+      return [payload];
     },
   })),
 };
@@ -103,73 +95,47 @@ async function buildApp() {
   return app;
 }
 
+function seedBatch(id: string, overrides?: Record<string, unknown>) {
+  const storagePath = `ingest/v2/user-1/device-1/${id}.json.gz`;
+  batchRecords.set(id, {
+    id,
+    data: {
+      batchId: id,
+      deviceId: "device-1",
+      deviceNameSnapshot: "North",
+      storagePath,
+      count: 1,
+      processedAt: "2024-01-02T00:00:00.000Z",
+      visibility: "public",
+      moderationState: "approved",
+      ...overrides,
+    },
+  });
+  storagePayloads.set(storagePath, gzipPayload({
+    points: [{
+      device_id: "device-1",
+      pollutant: "pm25",
+      value: 11,
+      unit: "\u00b5g/m\u00b3",
+      lat: 45,
+      lon: -122,
+      timestamp: "2024-01-02T00:00:00.000Z",
+    }],
+  }));
+}
+
 beforeEach(() => {
-  batchRecords = new Map([
-    [
-      batchKey("device-1", "batch-approved"),
-      {
-        deviceId: "device-1",
-        batchId: "batch-approved",
-        data: {
-          path: "ingest/device-1/batch-approved.json",
-          count: 1,
-          processedAt: "2024-01-02T00:00:00.000Z",
-          visibility: "public",
-          moderationState: "approved",
-        },
-      },
-    ],
-    [
-      batchKey("device-1", "batch-private"),
-      {
-        deviceId: "device-1",
-        batchId: "batch-private",
-        data: {
-          path: "ingest/device-1/batch-private.json",
-          count: 1,
-          processedAt: "2024-01-03T00:00:00.000Z",
-          visibility: "private",
-          moderationState: "approved",
-        },
-      },
-    ],
-    [
-      batchKey("device-2", "batch-quarantined"),
-      {
-        deviceId: "device-2",
-        batchId: "batch-quarantined",
-        data: {
-          path: "ingest/device-2/batch-quarantined.json",
-          count: 1,
-          processedAt: "2024-01-04T00:00:00.000Z",
-          visibility: "public",
-          moderationState: "quarantined",
-        },
-      },
-    ],
-  ]);
-
-  deviceNames = new Map([
-    ["device-1", "North"],
-    ["device-2", "South"],
-  ]);
-
-  storagePayloads = new Map([
-    [
-      "ingest/device-1/batch-approved.json",
-      {
-        points: [{
-          device_id: "device-1",
-          pollutant: "pm25",
-          value: 11,
-          unit: "\u00b5g/m\u00b3",
-          lat: 45,
-          lon: -122,
-          timestamp: "2024-01-02T00:00:00.000Z",
-        }],
-      },
-    ],
-  ]);
+  batchRecords = new Map();
+  storagePayloads = new Map();
+  seedBatch("batch-approved");
+  seedBatch("batch-private", { visibility: "private", processedAt: "2024-01-03T00:00:00.000Z" });
+  seedBatch("batch-quarantined", {
+    deviceId: "device-2",
+    deviceNameSnapshot: "South",
+    visibility: "public",
+    moderationState: "quarantined",
+    processedAt: "2024-01-04T00:00:00.000Z",
+  });
 });
 
 afterEach(() => {
@@ -177,7 +143,7 @@ afterEach(() => {
 });
 
 describe("GET /v1/public/batches", () => {
-  it("returns only approved public batches", async () => {
+  it("returns only approved public root batches", async () => {
     const app = await buildApp();
 
     const res = await app.inject({ method: "GET", url: "/v1/public/batches" });
@@ -199,7 +165,7 @@ describe("GET /v1/public/batches", () => {
 });
 
 describe("GET /v1/public/batches/:deviceId/:batchId", () => {
-  it("returns detail for approved public batches", async () => {
+  it("returns gzipped detail for approved public batches", async () => {
     const app = await buildApp();
 
     const res = await app.inject({ method: "GET", url: "/v1/public/batches/device-1/batch-approved" });
@@ -210,7 +176,7 @@ describe("GET /v1/public/batches/:deviceId/:batchId", () => {
       deviceId: "device-1",
       visibility: "public",
       moderationState: "approved",
-      points: expect.any(Array),
+      points: [expect.objectContaining({ value: 11 })],
     }));
     await app.close();
   });

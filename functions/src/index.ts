@@ -5,7 +5,6 @@ import rateLimit from "fastify-rate-limit";
 import { Readable } from "node:stream";
 import { app as adminApp } from "./lib/fire.js";
 import { devicesRoutes } from "./routes/devices.js";
-import { measurementsRoutes } from "./routes/measurements.js";
 import { adminRoutes } from "./routes/admin.js";
 import { adminSubmissionsRoutes } from "./routes/adminSubmissions.js";
 import { adminUsersRoutes } from "./routes/adminUsers.js";
@@ -78,7 +77,6 @@ const apiSetup = (async () => {
 
   api.get("/health", async () => ({ ok: true }));
   await api.register(devicesRoutes);
-  await api.register(measurementsRoutes);
   await api.register(adminRoutes);
   await api.register(adminSubmissionsRoutes);
   await api.register(adminUsersRoutes);

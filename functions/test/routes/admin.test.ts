@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   dbSet: vi.fn(),
   dbDelete: vi.fn(),
   dbGet: vi.fn(),
-  recursiveDelete: vi.fn(),
-  deleteFiles: vi.fn(),
+  batchDelete: vi.fn(),
+  bucketFileDelete: vi.fn(),
 }));
 
 type DeviceDoc = {
@@ -21,37 +21,53 @@ type DeviceDoc = {
 };
 
 let deviceDocs = new Map<string, DeviceDoc>();
+let batchDocs = new Map<string, Record<string, unknown>>();
 
 const mockDb = {
-  collection: vi.fn(() => ({
-    doc: (id: string) => ({
-      set: mocks.dbSet,
-      delete: mocks.dbDelete,
-      get: async () => {
-        const entry = deviceDocs.get(id);
-        return {
-          exists: entry?.exists ?? false,
-          data: () => entry?.data ?? {},
-        };
-      },
-    }),
-  })),
+  collection: vi.fn((name: string) => {
+    if (name === "devices") {
+      return {
+        doc: (id: string) => ({
+          set: mocks.dbSet,
+          delete: mocks.dbDelete,
+          get: async () => {
+            const entry = deviceDocs.get(id);
+            return {
+              exists: entry?.exists ?? false,
+              data: () => entry?.data ?? {},
+            };
+          },
+        }),
+      };
+    }
+    if (name === "batches") {
+      return {
+        where: (_field: string, _op: string, deviceId: string) => ({
+          get: async () => ({
+            docs: Array.from(batchDocs.entries())
+              .filter(([, data]) => data.deviceId === deviceId)
+              .map(([id, data]) => ({
+                id,
+                data: () => data,
+                ref: { delete: async () => mocks.batchDelete(id) },
+              })),
+          }),
+        }),
+      };
+    }
+    throw new Error(`unexpected collection ${name}`);
+  }),
 };
 
 const mockBucket = {
-  deleteFiles: mocks.deleteFiles,
-};
-
-const mockApp = {
-  firestore: () => ({
-    recursiveDelete: mocks.recursiveDelete,
-  }),
+  file: vi.fn(() => ({
+    delete: mocks.bucketFileDelete,
+  })),
 };
 
 vi.mock("../../src/lib/fire.js", () => ({
   db: () => mockDb,
   bucket: () => mockBucket,
-  app: () => mockApp,
 }));
 
 vi.mock("../../src/services/ingestSmokeTestService.js", () => ({
@@ -97,9 +113,10 @@ beforeEach(() => {
   mocks.dbSet.mockReset();
   mocks.dbDelete.mockReset();
   mocks.dbGet.mockReset();
-  mocks.recursiveDelete.mockReset();
-  mocks.deleteFiles.mockReset();
+  mocks.batchDelete.mockReset();
+  mocks.bucketFileDelete.mockReset();
   deviceDocs = new Map<string, DeviceDoc>();
+  batchDocs = new Map<string, Record<string, unknown>>();
 
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
@@ -115,15 +132,15 @@ beforeEach(() => {
     accepted: true,
     batchId: "batch-1",
     deviceId: "device-1",
-    storagePath: "ingest/device-1/batch-1.json",
+    storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
     visibility: "private",
     payload: { points: [] },
     points: [],
     seededDeviceId: "device-1",
     seededDeviceIds: ["device-1"],
   });
-  mocks.recursiveDelete.mockResolvedValue(undefined);
-  mocks.deleteFiles.mockResolvedValue(undefined);
+  mocks.batchDelete.mockResolvedValue(undefined);
+  mocks.bucketFileDelete.mockResolvedValue(undefined);
   mocks.dbDelete.mockResolvedValue(undefined);
 });
 
@@ -240,6 +257,10 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
   it("happy path clears device data", async () => {
     const app = await buildApp();
     deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
+    batchDocs.set("batch-1", {
+      deviceId: "device-1",
+      storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -254,8 +275,8 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
       clearedDeviceIds: ["device-1"],
       failedDeletions: [],
     });
-    expect(mocks.recursiveDelete).toHaveBeenCalled();
-    expect(mocks.deleteFiles).toHaveBeenCalledWith({ prefix: "ingest/device-1/" });
+    expect(mocks.bucketFileDelete).toHaveBeenCalledWith({ ignoreNotFound: true });
+    expect(mocks.batchDelete).toHaveBeenCalledWith("batch-1");
     expect(mocks.dbDelete).toHaveBeenCalled();
     await app.close();
   });
@@ -284,7 +305,11 @@ describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
   it("partial failures return 207 with failedDeletions", async () => {
     const app = await buildApp();
     deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
-    mocks.recursiveDelete.mockRejectedValue(new Error("firestore failed"));
+    batchDocs.set("batch-1", {
+      deviceId: "device-1",
+      storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
+    });
+    mocks.batchDelete.mockRejectedValue(new Error("firestore failed"));
 
     const res = await app.inject({
       method: "POST",

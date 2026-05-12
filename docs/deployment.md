@@ -124,8 +124,8 @@ Manual checks:
 - Start a node checkout and confirm Stripe Checkout only accepts US shipping addresses and shows tax added on top of the `$350` node price for a jurisdiction where the Stripe account has an active tax registration.
 - If Checkout shows `$0.00` tax with a valid address, inspect the Stripe transaction tax breakdown. `taxability_reason=not_collecting` means the account is not registered to collect tax in that jurisdiction.
 - Run or replay one known ingest flow and confirm a `202` response.
-- Confirm raw storage under `ingest/<deviceId>/<batchId>.json`.
-- Confirm Firestore batch metadata and measurement rows were written.
+- Confirm gzipped storage under `ingest/v2/<ownerUserId>/<deviceId>/<batchId>.json.gz`.
+- Confirm Firestore batch metadata was written under `batches/{batchId}`.
 - Check early Cloud Logging entries for `crowdpmApi` and `ingestGateway`.
 
 ## Rollback

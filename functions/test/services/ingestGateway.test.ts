@@ -104,7 +104,7 @@ describe("ingestGatewayHandler", () => {
         accepted: true,
         batchId: "batch-1",
         deviceId: "device-123",
-        storagePath: "ingest/device-123/batch-1.json",
+        storagePath: "ingest/v2/user-123/device-123/batch-1.json.gz",
         visibility: "private",
       })),
     };

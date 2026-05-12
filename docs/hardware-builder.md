@@ -30,7 +30,7 @@ ACTIVATION_URL=https://<hosting-site>/activate
 6. Call `POST /device/access-token` with DPoP proofs signed by `Kl`.
 7. Send measurement batches to `INGEST_URL` with the access token and a DPoP proof signed by `Kl`.
 
-CrowdPM stores raw JSON in Cloud Storage and processes accepted points into Firestore.
+CrowdPM stores accepted batches as gzipped JSON in Cloud Storage and writes one Firestore metadata document for each batch.
 
 ## Endpoint Contract
 

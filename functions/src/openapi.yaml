@@ -3,7 +3,7 @@ info:
   title: CrowdPM API
   version: 1.0.0
   description: >
-    API used by CrowdPM to manage devices and retrieve pollution measurements.
+    API used by CrowdPM to manage devices and retrieve PM2.5 ingest batches.
     Error responses use a normalized JSON format with a required `error` field and
     optional `message`.
   license:
@@ -457,70 +457,6 @@ paths:
           description: Missing credentials or MFA requirement not satisfied.
         '404':
           description: Session not found.
-  /v1/measurements:
-    get:
-      operationId: getDeviceMeasurements
-      summary: Query measurements
-      description: >
-        Returns measurements for a device within an inclusive time window. Missing or invalid
-        parameters result in an empty array. Only authenticated callers who own the device
-        (via `ownerUserIds`) may retrieve its data.
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: device_id
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Identifier of the device being queried.
-        - name: pollutant
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [pm25]
-            default: pm25
-          description: Pollutant filter. Only `pm25` is currently supported.
-        - name: t0
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: Inclusive start timestamp in ISO-8601 format.
-        - name: t1
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date-time
-          description: Inclusive end timestamp in ISO-8601 format.
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 5000
-            default: 2000
-          description: >
-            Maximum number of measurements to return. Higher values may be truncated.
-      responses:
-        '200':
-          description: Matching measurements.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Measurement'
-        '400':
-          description: Invalid combination of query parameters. Currently returns an empty array.
-        '401':
-          description: Missing or invalid bearer token.
-        '403':
-          description: Caller does not have access to the requested device.
   /v1/admin/devices/{id}/suspend:
     post:
       operationId: suspendDevice
@@ -793,7 +729,7 @@ paths:
       operationId: listBatches
       summary: List recent ingest batches
       description: >
-        Returns the most recent batches for each device the authenticated caller owns (up to 50 per device).
+        Returns the most recent batches owned by the authenticated caller.
       security:
         - BearerAuth: []
       responses:
@@ -838,7 +774,7 @@ paths:
         '401':
           description: Missing or invalid bearer token.
         '403':
-          description: Caller does not own the referenced device.
+          description: Caller does not own the referenced batch.
         '404':
           description: Device or batch not found, or payload unavailable.
   /v1/user/settings:
@@ -1138,56 +1074,6 @@ components:
         id:
           type: string
           description: Newly generated device identifier.
-    Measurement:
-      type: object
-      description: Individual measurement captured for a device.
-      properties:
-        id:
-          type: string
-          description: Measurement document identifier.
-        deviceId:
-          type: string
-          description: Device identifier.
-        pollutant:
-          type: string
-          enum: [pm25]
-        value:
-          type: number
-          format: float
-        unit:
-          type: string
-          nullable: true
-          description: Units reported by the sensor (for example `µg/m³`).
-        lat:
-          type: number
-          format: double
-        lon:
-          type: number
-          format: double
-        altitude:
-          type: number
-          format: double
-          nullable: true
-        precision:
-          type: integer
-          nullable: true
-          description: Sensor precision indicator when provided.
-        timestamp:
-          type: string
-          format: date-time
-          description: Measurement timestamp in ISO-8601 format.
-        flags:
-          type: integer
-          nullable: true
-          description: Optional quality flags bitmask.
-      required:
-        - id
-        - deviceId
-        - pollutant
-        - value
-        - lat
-        - lon
-        - timestamp
     IngestPoint:
       type: object
       required:
@@ -1293,6 +1179,7 @@ components:
           type: string
         storagePath:
           type: string
+          description: Cloud Storage object path for the gzipped batch payload.
         payload:
           $ref: '#/components/schemas/IngestBody'
         points:

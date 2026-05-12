@@ -1,62 +1,22 @@
 {
   "indexes": [
     {
-      "collectionGroup": "rows",
-      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "batches",
+      "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "deviceId",
-          "order": "ASCENDING"
+          "fieldPath": "ownerUserIds",
+          "arrayConfig": "CONTAINS"
         },
         {
-          "fieldPath": "pollutant",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "rows",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "deviceId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "rows",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "pollutant",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
+          "fieldPath": "processedAt",
+          "order": "DESCENDING"
         }
       ]
     },
     {
       "collectionGroup": "batches",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "visibility",
@@ -74,7 +34,7 @@
     },
     {
       "collectionGroup": "batches",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "visibility",
@@ -88,7 +48,7 @@
     },
     {
       "collectionGroup": "batches",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "moderationState",
@@ -109,10 +69,6 @@
         {
           "order": "DESCENDING",
           "queryScope": "COLLECTION"
-        },
-        {
-          "order": "DESCENDING",
-          "queryScope": "COLLECTION_GROUP"
         }
       ]
     }
