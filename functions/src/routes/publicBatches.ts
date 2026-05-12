@@ -8,7 +8,7 @@ import { httpError } from "../lib/httpError.js";
 import { normalizeTimestamp, normalizeVisibility, parseDeviceId } from "../lib/httpValidation.js";
 import { normalizeModerationState } from "../lib/moderation.js";
 import { rateLimitGuard, requestParam } from "../lib/routeGuards.js";
-import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
+import { decodeBatchPayload } from "../services/batchPayloads.js";
 
 const PUBLIC_BATCH_LIST_MAX_LIMIT = 500;
 const listQuerySchema = z.object({
@@ -27,36 +27,15 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function pickDeviceId(doc: firestore.QueryDocumentSnapshot): string {
-  const data = doc.data();
-  if (typeof data.deviceId === "string" && data.deviceId.trim().length > 0) {
-    return data.deviceId;
-  }
-  return doc.ref.parent.parent?.id ?? "";
-}
-
-async function loadDeviceNameMap(deviceIds: string[]): Promise<Map<string, string>> {
-  const uniqueIds = Array.from(new Set(deviceIds.filter((id) => id.length > 0)));
-  if (!uniqueIds.length) return new Map();
-  const snaps = await Promise.all(uniqueIds.map((id) => db().collection("devices").doc(id).get()));
-  const out = new Map<string, string>();
-  snaps.forEach((snap) => {
-    if (!snap.exists) return;
-    const name = snap.get("name");
-    if (typeof name === "string" && name.trim().length > 0) {
-      out.set(snap.id, name);
-    }
-  });
-  return out;
-}
-
-function serializeSummary(doc: firestore.QueryDocumentSnapshot, deviceNameById: Map<string, string>): PublicBatchSummary {
-  const data = doc.data();
-  const deviceId = pickDeviceId(doc);
+function serializeSummary(doc: firestore.QueryDocumentSnapshot | firestore.DocumentSnapshot): PublicBatchSummary {
+  const data = doc.data() ?? {};
+  const deviceId = asString(data.deviceId);
   return {
     batchId: doc.id,
     deviceId,
-    deviceName: deviceNameById.get(deviceId) ?? null,
+    deviceName: typeof data.deviceNameSnapshot === "string" && data.deviceNameSnapshot.trim().length > 0
+      ? data.deviceNameSnapshot
+      : null,
     count: asNumber(data.count),
     processedAt: normalizeTimestamp(data.processedAt),
     visibility: "public",
@@ -86,15 +65,14 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const limit = parsed.data.limit ?? 50;
-    const snap = await db().collectionGroup("batches")
+    const snap = await db().collection("batches")
       .where("visibility", "==", "public")
       .where("moderationState", "==", "approved")
       .orderBy("processedAt", "desc")
       .limit(limit)
       .get();
 
-    const deviceNameMap = await loadDeviceNameMap(snap.docs.map((doc) => pickDeviceId(doc)));
-    return snap.docs.map((doc) => serializeSummary(doc, deviceNameMap));
+    return snap.docs.map((doc) => serializeSummary(doc));
   });
 
   app.get<{ Params: { deviceId: string; batchId: string } }>("/v1/public/batches/:deviceId/:batchId", {
@@ -110,32 +88,27 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
       throw httpError(400, "invalid_batch_id", "batchId is required");
     }
 
-    const batchRef = db().collection("devices").doc(deviceId).collection("batches").doc(batchId);
-    const [batchSnap, deviceSnap] = await Promise.all([
-      batchRef.get(),
-      db().collection("devices").doc(deviceId).get(),
-    ]);
+    const batchRef = db().collection("batches").doc(batchId);
+    const batchSnap = await batchRef.get();
     if (!batchSnap.exists) {
       throw httpError(404, "not_found", "Batch not found.");
     }
 
     const batchData = batchSnap.data() ?? {};
+    if (batchData.deviceId !== deviceId) {
+      throw httpError(404, "not_found", "Batch not found.");
+    }
     const { moderationState } = ensurePublicApproved(batchData);
 
-    const path = asString(batchData.path);
-    if (!path) {
+    const storagePath = asString(batchData.storagePath);
+    if (!storagePath) {
       throw httpError(404, "not_found", "Batch payload unavailable.");
     }
 
     let points: PublicBatchDetail["points"];
     try {
-      const [buf] = await bucket().file(path).download();
-      const parsed = IngestBatchSchema.safeParse(JSON.parse(buf.toString("utf8")));
-      if (!parsed.success) {
-        app.log.error({ batchId, deviceId, issues: parsed.error.flatten() }, "invalid batch payload");
-        throw httpError(500, "invalid_batch", "Stored batch payload is invalid.");
-      }
-      points = parsed.data.points;
+      const [buf] = await bucket().file(storagePath).download();
+      points = decodeBatchPayload(buf, storagePath).points;
     }
     catch (err) {
       app.log.error({ err, batchId, deviceId }, "failed to read public batch payload");
@@ -143,11 +116,8 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return {
-      batchId,
-      deviceId,
-      deviceName: typeof deviceSnap.get("name") === "string" ? deviceSnap.get("name") : null,
+      ...serializeSummary(batchSnap),
       count: asNumber(batchData.count, points.length),
-      processedAt: normalizeTimestamp(batchData.processedAt),
       visibility: "public",
       moderationState,
       points,

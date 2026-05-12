@@ -2,7 +2,7 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Denuo-Web/CrowdPMPlatform)
 
-CrowdPM is a TypeScript/Firebase platform for crowd-sourced PM2.5 measurements. It pairs sensor nodes with Firebase users, accepts DPoP-bound ingest batches, stores raw payloads for audit, processes measurements into Firestore, and renders public or owned batches on a React/WebGL map.
+CrowdPM is a TypeScript/Firebase platform for crowd-sourced PM2.5 measurements. It pairs sensor nodes with Firebase users, accepts DPoP-bound ingest batches, stores compressed payloads in Cloud Storage, tracks batch metadata in Firestore, and renders public or owned batches on a React/WebGL map.
 
 The project has two supported environments:
 
@@ -85,16 +85,16 @@ pnpm device:simulate:osu -- --count 20 --minutes 36
 
 ## API And Data Flow
 
-Primary Fastify routes are exported through the `crowdpmApi` HTTPS Function. The ingest gateway is a separate HTTPS Function because it preserves raw payloads before processing.
+Primary Fastify routes are exported through the `crowdpmApi` HTTPS Function. The ingest gateway is a separate HTTPS Function for DPoP-bound device upload and batch persistence.
 
 - Pairing: `POST /device/start`, `/device/token`, `/device/register`, `/device/access-token`
 - Activation UI support: `GET /v1/device-activation`, `POST /v1/device-activation/authorize`
-- User APIs: `/v1/devices`, `/v1/measurements`, `/v1/batches`, `/v1/user/settings`
+- User APIs: `/v1/devices`, `/v1/batches`, `/v1/user/settings`
 - Public data: `/v1/public/batches`
 - Admin and moderation: `/v1/admin/*`
 - Ingest gateway: `POST /ingestGateway`
 
-Raw ingest batches are stored in Cloud Storage at `ingest/{deviceId}/{batchId}.json`. Processed measurements are stored in Firestore under `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`, with batch metadata under `devices/{deviceId}/batches/{batchId}`.
+Ingest batches are stored as gzipped JSON in Cloud Storage at `ingest/v2/{ownerUserId}/{deviceId}/{batchId}.json.gz`. Firestore stores one metadata document per batch at `batches/{batchId}`; individual measurement points are not duplicated into Firestore.
 
 ## Documentation
 

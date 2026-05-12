@@ -53,7 +53,7 @@ describe("IngestSmokeTestService", () => {
       accepted: true,
       batchId: "batch-1",
       deviceId: plan.primaryDeviceId,
-      storagePath: "ingest/scoped-device-1/batch-1.json",
+      storagePath: "ingest/v2/user-1/scoped-device-1/batch-1.json.gz",
       visibility: "public" as BatchVisibility,
     };
     const ingestMock = vi.fn(async () => ingestResult);

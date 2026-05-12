@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { app as getFirebaseApp, bucket, db } from "../lib/fire.js";
+import { bucket, db } from "../lib/fire.js";
 import { authorizeSmokeTestUser, getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
 import { type SmokeTestBody } from "../services/smokeTest.js";
 import { userOwnsDevice } from "../lib/deviceOwnership.js";
@@ -75,27 +75,23 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     const cleared: string[] = [];
     const failures: Array<{ deviceId: string; stage: string; message: string }> = [];
     for (const deviceId of allowedIds) {
-      const ref = db().collection("devices").doc(deviceId);
       try {
-        await getFirebaseApp().firestore().recursiveDelete(ref);
+        const batchSnap = await db().collection("batches").where("deviceId", "==", deviceId).get();
+        await Promise.all(batchSnap.docs.map(async (doc) => {
+          const data = doc.data();
+          const storagePath = typeof data.storagePath === "string" ? data.storagePath : null;
+          if (storagePath) {
+            await bucket().file(storagePath).delete({ ignoreNotFound: true });
+          }
+          await doc.ref.delete();
+        }));
       }
       catch (err) {
-        req.log.warn({ err, deviceId }, "failed to recursively delete Firestore data");
+        req.log.warn({ err, deviceId }, "failed to delete batch data");
         failures.push({
           deviceId,
-          stage: "firestore",
-          message: err instanceof Error ? err.message : "failed to delete firestore data",
-        });
-      }
-      try {
-        await bucket().deleteFiles({ prefix: `ingest/${deviceId}/` });
-      }
-      catch (err) {
-        req.log.warn({ err, deviceId }, "failed to delete storage files");
-        failures.push({
-          deviceId,
-          stage: "storage",
-          message: err instanceof Error ? err.message : "failed to delete storage files",
+          stage: "batches",
+          message: err instanceof Error ? err.message : "failed to delete batch data",
         });
       }
       try {

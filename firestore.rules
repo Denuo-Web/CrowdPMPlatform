@@ -13,19 +13,13 @@ service cloud.firestore {
         device.data.ownerUserIds.hasAny([authedUid()]);
     }
 
-    function canReadDevice(deviceId) {
-      return hasDeviceAccess(get(/databases/$(db)/documents/devices/$(deviceId)));
-    }
-
     match /devices/{deviceId} {
       allow read: if hasDeviceAccess(resource);
       allow write: if false;
-      match /measures/{bucket} {
-        allow read: if canReadDevice(deviceId);
-        allow write: if false;
-        match /rows/{doc} { allow read: if canReadDevice(deviceId); allow write: if false; }
-      }
-      match /batches/{batchId} { allow read: if false; allow write: if false; }
+    }
+
+    match /batches/{batchId} {
+      allow read, write: if false;
     }
   }
 }

@@ -5,11 +5,13 @@ import {
   DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
 } from "../lib/batchVisibility.js";
+import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { IngestPayload } from "../lib/validation.js";
 import { processIngestBatch } from "./ingestBatchProcessor.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
+import { buildBatchStoragePath, encodeBatchPayload } from "./batchPayloads.js";
 
 export type IngestBody = SharedIngestBody;
 
@@ -82,7 +84,7 @@ export class IngestService {
   async ingest(request: IngestRequest): Promise<IngestResult> {
     const db = this.deps.getDb();
     const bucket = this.deps.getBucket();
-    const { parsedBody, canonicalRawBody } = this.normalizeIngestPayload(request.rawBody);
+    const parsedBody = this.normalizeIngestPayload(request.rawBody);
     const payloadDeviceId = parsedBody.device_id || parsedBody.points?.[0]?.device_id;
     const deviceId = request.deviceId || payloadDeviceId;
     if (!deviceId) {
@@ -97,35 +99,73 @@ export class IngestService {
     if (!devSnap.exists) {
       throw new IngestServiceError("device_forbidden", "device not allowed", 403);
     }
+    const devData = devSnap.data() ?? {};
     const status = normalizeStatus(devSnap.get("status"), (value) => value.toUpperCase());
     const registryStatus = normalizeStatus(devSnap.get("registryStatus"), (value) => value.toLowerCase());
     if (isForbiddenDevice(status, registryStatus)) {
       throw new IngestServiceError("device_forbidden", "device not allowed", 403);
+    }
+    const ownerUserIds = normalizeOwnerIds(devData);
+    const accIdRaw = devSnap.get("accId");
+    const accId = typeof accIdRaw === "string" && accIdRaw.trim().length > 0
+      ? accIdRaw.trim()
+      : null;
+    const effectiveOwnerUserIds = ownerUserIds.length
+      ? ownerUserIds
+      : accId
+        ? [accId]
+        : [];
+    const ownerUserId = accId && effectiveOwnerUserIds.includes(accId)
+      ? accId
+      : effectiveOwnerUserIds[0] ?? null;
+    if (!ownerUserId || !effectiveOwnerUserIds.length) {
+      throw new IngestServiceError("device_forbidden", "device owner unavailable", 403);
+    }
+
+    const mismatchedPoint = parsedBody.points.find((point) => point.device_id !== deviceId);
+    if (mismatchedPoint) {
+      throw new IngestServiceError("invalid_payload", "all points must match the device_id in the request", 400);
     }
 
     const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
     const visibility = normalizeVisibility(request.visibility, ownerDefaultVisibility ?? DEFAULT_BATCH_VISIBILITY);
 
     const batchId = crypto.randomUUID();
-    const path = `ingest/${deviceId}/${batchId}.json`;
-    await bucket.file(path).save(canonicalRawBody, { contentType: "application/json" });
+    const storagePath = buildBatchStoragePath({ ownerUserId, deviceId, batchId });
+    const batchPayload = { ...parsedBody, device_id: deviceId };
+    const encoded = encodeBatchPayload(batchPayload);
+    await bucket.file(storagePath).save(encoded.buffer, {
+      contentType: "application/gzip",
+      metadata: {
+        metadata: {
+          crowdpmSchemaVersion: "2",
+          crowdpmContentEncoding: "gzip",
+        },
+      },
+    });
 
     const processed = await this.deps.processIngestBatch({
       deviceId,
       batchId,
-      path,
+      storagePath,
+      compressedBytes: encoded.buffer.byteLength,
       visibility,
-      payload: parsedBody,
+      payload: batchPayload,
+      ownerUserId,
+      ownerUserIds: effectiveOwnerUserIds,
+      deviceName: typeof devSnap.get("name") === "string" && devSnap.get("name").trim().length > 0
+        ? devSnap.get("name").trim()
+        : null,
     });
 
     await this.deps.updateDeviceLastSeen(deviceId, db).catch((err) => {
       console.error({ err, deviceId }, "failed to update device last seen");
     });
 
-    return { accepted: true, batchId, deviceId, storagePath: path, visibility: processed.visibility };
+    return { accepted: true, batchId, deviceId, storagePath, visibility: processed.visibility };
   }
 
-  private normalizeIngestPayload(rawBody: string): { parsedBody: IngestPayload; canonicalRawBody: string } {
+  private normalizeIngestPayload(rawBody: string): IngestPayload {
     let parsedJson: unknown;
     try {
       parsedJson = JSON.parse(rawBody);
@@ -139,10 +179,7 @@ export class IngestService {
       throw new IngestServiceError("invalid_payload", "invalid ingest payload", 400);
     }
 
-    return {
-      parsedBody: parsed.data,
-      canonicalRawBody: JSON.stringify(parsed.data),
-    };
+    return parsed.data;
   }
 }
 

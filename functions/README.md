@@ -46,20 +46,19 @@ Stripe Checkout can still show `$0.00` tax for a valid US address when the Strip
 - `GET /health`
 - Pairing: `POST /device/start`, `/device/token`, `/device/register`, `/device/access-token`
 - Activation: `GET /v1/device-activation`, `POST /v1/device-activation/authorize`
-- User APIs: `/v1/devices`, `/v1/measurements`, `/v1/batches`, `/v1/user/settings`
+- User APIs: `/v1/devices`, `/v1/batches`, `/v1/user/settings`
 - Public APIs: `/v1/public/batches`
 - Admin APIs: `/v1/admin/devices/:id/suspend`, `/v1/admin/ingest-smoke-test`, `/v1/admin/submissions`, `/v1/admin/users`
 
-`ingestGateway` is a separate HTTPS Function that validates device access tokens and DPoP proofs, stores raw JSON, and invokes the shared ingest processor.
+`ingestGateway` is a separate HTTPS Function that validates device access tokens and DPoP proofs, stores gzipped batch payloads, and writes batch metadata.
 
 The OpenAPI document lives at `src/openapi.yaml`.
 
 ## Data Layout
 
 - Firestore device records: `devices/{deviceId}`
-- Firestore measurements: `devices/{deviceId}/measures/{hourBucket}/rows/{doc}`
-- Firestore batch metadata: `devices/{deviceId}/batches/{batchId}`
-- Raw ingest payloads: Cloud Storage `ingest/{deviceId}/{batchId}.json`
+- Firestore batch metadata: `batches/{batchId}`
+- Gzipped ingest payloads: Cloud Storage `ingest/v2/{ownerUserId}/{deviceId}/{batchId}.json.gz`
 
 ## Tests
 

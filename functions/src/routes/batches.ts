@@ -1,29 +1,75 @@
 import type { BatchDetail, BatchSummary } from "@crowdpm/types";
+import type { firestore } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { bucket } from "../lib/fire.js";
-import { IngestBatch as IngestBatchSchema } from "../lib/validation.js";
-import type { IngestBatch } from "../lib/validation.js";
-import { loadOwnedDeviceDocs } from "../lib/deviceOwnership.js";
+import { bucket, db } from "../lib/fire.js";
 import { normalizeModerationState } from "../lib/moderation.js";
 import { timestampToMillis } from "../lib/time.js";
 import { httpError } from "../lib/httpError.js";
-import { normalizeTimestamp, normalizeVisibility } from "../lib/httpValidation.js";
+import { normalizeTimestamp, normalizeVisibility, parseDeviceId } from "../lib/httpValidation.js";
 import { hasPermission } from "../lib/rbac.js";
 import {
   getRequestUser,
-  requestParam,
   rateLimitGuard,
-  requireDeviceOwnerGuard,
+  requestParam,
   requireUserGuard,
   requestUserId,
 } from "../lib/routeGuards.js";
+import { decodeBatchPayload } from "../services/batchPayloads.js";
 
 const OWNED_BATCH_LIST_LIMIT = 50;
 const OWNED_BATCH_LIST_MAX_LIMIT = 500;
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(OWNED_BATCH_LIST_MAX_LIMIT).optional(),
 });
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function batchOwnerIds(data: firestore.DocumentData | undefined): string[] {
+  if (!data || !Array.isArray(data.ownerUserIds)) return [];
+  return data.ownerUserIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+}
+
+function userOwnsBatch(data: firestore.DocumentData | undefined, userId: string): boolean {
+  return Boolean(userId && batchOwnerIds(data).includes(userId));
+}
+
+function serializeSummary(id: string, data: firestore.DocumentData | undefined): BatchSummary {
+  return {
+    batchId: id,
+    deviceId: asString(data?.deviceId),
+    deviceName: typeof data?.deviceNameSnapshot === "string" && data.deviceNameSnapshot.trim().length > 0
+      ? data.deviceNameSnapshot
+      : null,
+    count: asNumber(data?.count),
+    processedAt: normalizeTimestamp(data?.processedAt),
+    visibility: normalizeVisibility(data?.visibility),
+    moderationState: normalizeModerationState(data?.moderationState),
+  };
+}
+
+async function loadBatch(deviceId: string, batchId: string): Promise<{
+  ref: firestore.DocumentReference;
+  snap: firestore.DocumentSnapshot;
+  data: firestore.DocumentData;
+}> {
+  const ref = db().collection("batches").doc(batchId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw httpError(404, "not_found", "Batch not found.");
+  }
+  const data = snap.data() ?? {};
+  if (data.deviceId !== deviceId) {
+    throw httpError(404, "not_found", "Batch not found.");
+  }
+  return { ref, snap, data };
+}
 
 export const batchesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/batches", {
@@ -40,48 +86,23 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
 
     const user = getRequestUser(req);
     const canViewQuarantined = hasPermission(user, "submissions.read_all");
-    const { collection: devices, docs: seen } = await loadOwnedDeviceDocs(user.uid);
     const limit = parsedQuery.data.limit ?? OWNED_BATCH_LIST_LIMIT;
+    const snap = await db().collection("batches")
+      .where("ownerUserIds", "array-contains", user.uid)
+      .orderBy("processedAt", "desc")
+      .limit(limit)
+      .get();
 
-    const summaries = await Promise.all(
-      Array.from(seen.entries()).map(async ([deviceId, deviceData]) => {
-        const deviceName = typeof deviceData?.name === "string" ? deviceData.name : null;
-        const batchSnap = await devices.doc(deviceId).collection("batches")
-          .orderBy("processedAt", "desc")
-          .limit(limit)
-          .get();
-
-        return batchSnap.docs
-          .map((doc) => {
-            const data = doc.data() as {
-              count?: unknown;
-              processedAt?: unknown;
-              visibility?: unknown;
-              moderationState?: unknown;
-            } | undefined;
-            const moderationState = normalizeModerationState(data?.moderationState);
-            if (!canViewQuarantined && moderationState === "quarantined") {
-              return null;
-            }
-            const count = typeof data?.count === "number" ? data.count : 0;
-            const processedAt = normalizeTimestamp(data?.processedAt);
-            const visibility = normalizeVisibility(data?.visibility);
-            return {
-              batchId: doc.id,
-              deviceId,
-              deviceName,
-              count,
-              processedAt,
-              visibility,
-              moderationState,
-            } as BatchSummary;
-          })
-          .filter((summary): summary is BatchSummary => Boolean(summary));
+    return snap.docs
+      .map((doc) => {
+        const data = doc.data();
+        const moderationState = normalizeModerationState(data.moderationState);
+        if (!canViewQuarantined && moderationState === "quarantined") {
+          return null;
+        }
+        return serializeSummary(doc.id, data);
       })
-    );
-
-    return summaries
-      .flat()
+      .filter((summary): summary is BatchSummary => Boolean(summary))
       .sort((a, b) => {
         const timeA = timestampToMillis(a.processedAt) ?? 0;
         const timeB = timestampToMillis(b.processedAt) ?? 0;
@@ -95,64 +116,44 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `batches:detail:${requestUserId(req)}`, 60, 60_000),
       rateLimitGuard((req) => `batches:detail:device:${requestParam(req, "deviceId")}`, 120, 60_000),
       rateLimitGuard("batches:detail:global", 1_000, 60_000),
-      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
     ],
   }, async (req) => {
-    const { deviceId, batchId } = req.params;
+    const deviceId = parseDeviceId(req.params.deviceId, "deviceId");
+    const batchId = typeof req.params.batchId === "string" ? req.params.batchId.trim() : "";
+    if (!batchId) {
+      throw httpError(400, "invalid_batch_id", "batchId is required");
+    }
+
     const user = getRequestUser(req);
     const canViewQuarantined = hasPermission(user, "submissions.read_all");
-    const devSnap = req.deviceDoc;
-    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
-
-    const batchRef = devSnap.ref.collection("batches").doc(batchId);
-    const batchSnap = await batchRef.get();
-    if (!batchSnap.exists) {
-      throw httpError(404, "not_found", "Batch not found.");
+    const { data } = await loadBatch(deviceId, batchId);
+    if (!userOwnsBatch(data, user.uid)) {
+      throw httpError(403, "forbidden", "You do not have access to this batch.");
     }
-    const batchData = batchSnap.data() as {
-      path?: unknown;
-      count?: unknown;
-      processedAt?: unknown;
-      visibility?: unknown;
-      moderationState?: unknown;
-    } | undefined;
-    const moderationState = normalizeModerationState(batchData?.moderationState);
+    const moderationState = normalizeModerationState(data.moderationState);
     if (!canViewQuarantined && moderationState === "quarantined") {
       throw httpError(404, "not_found", "Batch not found.");
     }
-    const path = typeof batchData?.path === "string" ? batchData.path : null;
-    if (!path) {
+    const storagePath = asString(data.storagePath);
+    if (!storagePath) {
       throw httpError(404, "not_found", "Batch payload unavailable.");
     }
 
-    let points: IngestBatch["points"];
+    let points: BatchDetail["points"];
     try {
-      const [buf] = await bucket().file(path).download();
-      const parsed = IngestBatchSchema.safeParse(JSON.parse(buf.toString("utf8")));
-      if (!parsed.success) {
-        app.log.error({ batchId, deviceId, issues: parsed.error.flatten() }, "invalid batch payload");
-        throw httpError(500, "invalid_batch", "Stored batch payload is invalid.");
-      }
-      points = parsed.data.points;
+      const [buf] = await bucket().file(storagePath).download();
+      points = decodeBatchPayload(buf, storagePath).points;
     }
     catch (err) {
       app.log.error({ err, batchId, deviceId }, "failed to read batch payload");
       throw httpError(500, "storage_error", "Unable to read batch payload.");
     }
 
-    const processedAt = normalizeTimestamp(batchData?.processedAt);
-    const count = typeof batchData?.count === "number" ? batchData.count : points.length;
-    const visibility = normalizeVisibility(batchData?.visibility);
-
     const response: BatchDetail = {
-      batchId,
-      deviceId,
-      deviceName: typeof devSnap.get("name") === "string" ? devSnap.get("name") : null,
-      count,
-      processedAt,
-      points,
-      visibility,
+      ...serializeSummary(batchId, data),
+      count: asNumber(data.count, points.length),
       moderationState,
+      points,
     };
     return response;
   });
@@ -163,49 +164,34 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `batches:update:${requestUserId(req)}`, 30, 60_000),
       rateLimitGuard((req) => `batches:update:device:${requestParam(req, "deviceId")}`, 60, 60_000),
       rateLimitGuard("batches:update:global", 1_000, 60_000),
-      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
     ],
   }, async (req) => {
-    const { deviceId, batchId } = req.params;
-    const devSnap = req.deviceDoc;
-    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
+    const deviceId = parseDeviceId(req.params.deviceId, "deviceId");
+    const batchId = typeof req.params.batchId === "string" ? req.params.batchId.trim() : "";
+    if (!batchId) {
+      throw httpError(400, "invalid_batch_id", "batchId is required");
+    }
 
     const visibility = normalizeVisibility(req.body?.visibility, null);
     if (!visibility) {
       throw httpError(400, "invalid_visibility", "visibility must be 'public' or 'private'.");
     }
 
-    const batchRef = devSnap.ref.collection("batches").doc(batchId);
-    const batchSnap = await batchRef.get();
-    if (!batchSnap.exists) {
-      throw httpError(404, "not_found", "Batch not found.");
+    const user = getRequestUser(req);
+    const { ref, data } = await loadBatch(deviceId, batchId);
+    if (!userOwnsBatch(data, user.uid)) {
+      throw httpError(403, "forbidden", "You do not have access to this batch.");
     }
 
-    const batchData = batchSnap.data() as {
-      count?: unknown;
-      processedAt?: unknown;
-      moderationState?: unknown;
-    } | undefined;
-
-    await batchRef.set({
+    await ref.set({
       visibility,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     }, { merge: true });
 
-    const processedAt = normalizeTimestamp(batchData?.processedAt);
-    const count = typeof batchData?.count === "number" ? batchData.count : 0;
-    const moderationState = normalizeModerationState(batchData?.moderationState);
-
-    const response: BatchSummary = {
-      batchId,
-      deviceId,
-      deviceName: typeof devSnap.get("name") === "string" ? devSnap.get("name") : null,
-      count,
-      processedAt,
+    return {
+      ...serializeSummary(batchId, data),
       visibility,
-      moderationState,
     };
-    return response;
   });
 
   app.delete<{ Params: { deviceId: string; batchId: string } }>("/v1/batches/:deviceId/:batchId", {
@@ -214,32 +200,32 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `batches:delete:${requestUserId(req)}`, 20, 60_000),
       rateLimitGuard((req) => `batches:delete:device:${requestParam(req, "deviceId")}`, 40, 60_000),
       rateLimitGuard("batches:delete:global", 500, 60_000),
-      requireDeviceOwnerGuard((req) => requestParam(req, "deviceId")),
     ],
   }, async (req) => {
-    const { deviceId, batchId } = req.params;
-    const devSnap = req.deviceDoc;
-    if (!devSnap) throw httpError(404, "not_found", "Device not found.");
-
-    const batchRef = devSnap.ref.collection("batches").doc(batchId);
-    const batchSnap = await batchRef.get();
-    if (!batchSnap.exists) {
-      throw httpError(404, "not_found", "Batch not found.");
+    const deviceId = parseDeviceId(req.params.deviceId, "deviceId");
+    const batchId = typeof req.params.batchId === "string" ? req.params.batchId.trim() : "";
+    if (!batchId) {
+      throw httpError(400, "invalid_batch_id", "batchId is required");
     }
 
-    const batchData = batchSnap.data() as { path?: unknown } | undefined;
-    const path = typeof batchData?.path === "string" ? batchData.path : null;
-    if (path) {
+    const user = getRequestUser(req);
+    const { ref, data } = await loadBatch(deviceId, batchId);
+    if (!userOwnsBatch(data, user.uid)) {
+      throw httpError(403, "forbidden", "You do not have access to this batch.");
+    }
+
+    const storagePath = asString(data.storagePath);
+    if (storagePath) {
       try {
-        await bucket().file(path).delete({ ignoreNotFound: true });
+        await bucket().file(storagePath).delete({ ignoreNotFound: true });
       }
       catch (err) {
-        app.log.error({ err, batchId, deviceId, path }, "failed to delete batch payload");
+        app.log.error({ err, batchId, deviceId, storagePath }, "failed to delete batch payload");
         throw httpError(500, "storage_error", "Unable to delete batch payload.");
       }
     }
 
-    await batchRef.delete();
+    await ref.delete();
     return { status: "deleted", deviceId, batchId };
   });
 };

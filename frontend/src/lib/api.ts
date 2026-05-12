@@ -180,13 +180,6 @@ export async function confirmThemeSaveCheckoutSession(sessionId: string): Promis
   });
 }
 
-export async function fetchMeasurements(q: {
-  device_id: string; pollutant?: "pm25"; t0: string; t1: string; limit?: number;
-}): Promise<MeasurementRecord[]> {
-  const qs = new URLSearchParams(Object.entries(q).map(([k,v])=>[k,String(v)]));
-  return requestJson<MeasurementRecord[]>(`/v1/measurements?${qs}`);
-}
-
 export async function listBatches(limit?: number): Promise<BatchSummary[]> {
   const qs = new URLSearchParams();
   if (typeof limit === "number" && Number.isFinite(limit)) {

@@ -9,88 +9,71 @@ const mocks = vi.hoisted(() => ({
 }));
 
 type BatchRecord = {
-  deviceId: string;
-  batchId: string;
+  id: string;
   data: Record<string, unknown>;
 };
 
-type DeviceRecord = {
-  name?: string;
-};
-
 let batchRecords = new Map<string, BatchRecord>();
-let deviceRecords = new Map<string, DeviceRecord>();
 
-function batchKey(deviceId: string, batchId: string): string {
-  return `${deviceId}/${batchId}`;
+function makeQuery() {
+  const filters: Array<{ field: string; value: unknown }> = [];
+  let limitValue: number | null = null;
+  const query = {
+    where: vi.fn((field: string, _op: string, value: unknown) => {
+      filters.push({ field, value });
+      return query;
+    }),
+    orderBy: vi.fn(() => query),
+    limit: vi.fn((value: number) => {
+      limitValue = value;
+      return query;
+    }),
+    get: async () => {
+      let records = Array.from(batchRecords.values())
+        .filter((record) => filters.every((filter) => record.data[filter.field] === filter.value))
+        .sort((a, b) => String(b.data.processedAt).localeCompare(String(a.data.processedAt)));
+      if (limitValue !== null) records = records.slice(0, limitValue);
+      return {
+        docs: records.map((record) => ({
+          id: record.id,
+          data: () => record.data,
+          get: (field: string) => record.data[field],
+        })),
+      };
+    },
+  };
+  return query;
 }
 
-function makeBatchQueryDoc(record: BatchRecord) {
+function makeDoc(id: string) {
   return {
-    id: record.batchId,
-    data: () => ({ ...record.data, deviceId: record.deviceId }),
-    ref: {
-      parent: {
-        parent: { id: record.deviceId },
-      },
+    get: async () => {
+      const record = batchRecords.get(id);
+      return {
+        id,
+        exists: Boolean(record),
+        data: () => record?.data ?? {},
+        get: (field: string) => record?.data[field],
+      };
+    },
+    set: async (payload: Record<string, unknown>, options?: { merge?: boolean }) => {
+      const existing = batchRecords.get(id);
+      const nextData = options?.merge
+        ? { ...(existing?.data ?? {}), ...payload }
+        : { ...payload };
+      batchRecords.set(id, { id, data: nextData });
     },
   };
 }
 
 const mockDb = {
-  collectionGroup: vi.fn(() => {
-    const query = {
-      where: vi.fn(() => query),
-      orderBy: vi.fn(() => query),
-      limit: vi.fn(() => query),
-      get: async () => ({ docs: Array.from(batchRecords.values()).map((record) => makeBatchQueryDoc(record)) }),
-    };
-    return query;
-  }),
   collection: vi.fn((name: string) => {
-    if (name !== "devices") throw new Error(`unexpected collection ${name}`);
+    if (name !== "batches") throw new Error(`unexpected collection ${name}`);
     return {
-      doc: (deviceId: string) => ({
-        get: async () => {
-          const device = deviceRecords.get(deviceId);
-          return {
-            id: deviceId,
-            exists: Boolean(device),
-            get: (field: string) => device?.[field as keyof DeviceRecord],
-            data: () => device ?? {},
-          };
-        },
-        collection: (child: string) => {
-          if (child !== "batches") throw new Error(`unexpected child collection ${child}`);
-          return {
-            doc: (batchId: string) => ({
-              get: async () => {
-                const record = batchRecords.get(batchKey(deviceId, batchId));
-                return {
-                  exists: Boolean(record),
-                  data: () => (record ? { ...record.data, deviceId: record.deviceId } : {}),
-                };
-              },
-              set: async (payload: Record<string, unknown>, options?: { merge?: boolean }) => {
-                const key = batchKey(deviceId, batchId);
-                const existing = batchRecords.get(key);
-                if (options?.merge && existing) {
-                  batchRecords.set(key, {
-                    ...existing,
-                    data: { ...existing.data, ...payload },
-                  });
-                  return;
-                }
-                batchRecords.set(key, {
-                  deviceId,
-                  batchId,
-                  data: { ...(existing?.data ?? {}), ...payload },
-                });
-              },
-            }),
-          };
-        },
-      }),
+      where: (...args: [string, string, unknown]) => makeQuery().where(...args),
+      orderBy: (...args: unknown[]) => makeQuery().orderBy(...args),
+      limit: (...args: [number]) => makeQuery().limit(...args),
+      doc: (id: string) => makeDoc(id),
     };
   }),
 };
@@ -125,11 +108,12 @@ beforeEach(() => {
 
   batchRecords = new Map([
     [
-      batchKey("device-1", "batch-1"),
+      "batch-1",
       {
-        deviceId: "device-1",
-        batchId: "batch-1",
+        id: "batch-1",
         data: {
+          deviceId: "device-1",
+          deviceNameSnapshot: "North",
           count: 2,
           processedAt: "2024-01-01T00:00:00.000Z",
           visibility: "public",
@@ -137,9 +121,6 @@ beforeEach(() => {
         },
       },
     ],
-  ]);
-  deviceRecords = new Map([
-    ["device-1", { name: "North" }],
   ]);
 
   mocks.requireUser.mockImplementation(async (req) => {
@@ -157,7 +138,7 @@ afterEach(() => {
 });
 
 describe("GET /v1/admin/submissions", () => {
-  it("allows moderators to list submissions", async () => {
+  it("allows moderators to list root batch submissions", async () => {
     const app = await buildApp();
 
     const res = await app.inject({
@@ -205,7 +186,7 @@ describe("GET /v1/admin/submissions", () => {
 });
 
 describe("PATCH /v1/admin/submissions/:deviceId/:batchId", () => {
-  it("allows moderators to quarantine a batch and writes audit", async () => {
+  it("allows moderators to quarantine a root batch and writes audit", async () => {
     const app = await buildApp();
 
     const res = await app.inject({
@@ -225,7 +206,7 @@ describe("PATCH /v1/admin/submissions/:deviceId/:batchId", () => {
     }));
     expect(mocks.writeModerationAudit).toHaveBeenCalledWith(expect.objectContaining({
       targetType: "submission",
-      targetId: "devices/device-1/batches/batch-1",
+      targetId: "batches/batch-1",
       action: "submission.quarantined",
     }));
     await app.close();

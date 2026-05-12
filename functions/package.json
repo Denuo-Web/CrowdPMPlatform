@@ -12,7 +12,6 @@
     "emulate": "firebase emulators:start --project crowdpm-local",
     "test": "vitest",
     "admin:grant-role": "node ./scripts/grant-role.mjs",
-    "backfill:batch-moderation": "node ./scripts/backfill-batch-moderation.mjs",
     "backfill:device-ownership": "node ./scripts/backfill-device-ownership.mjs"
   },
   "engines": {

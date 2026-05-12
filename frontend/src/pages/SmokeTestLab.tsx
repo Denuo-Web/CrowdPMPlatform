@@ -783,7 +783,7 @@ export default function SmokeTestLab({ onSmokeTestComplete, onSmokeTestCleared }
             <Text size="2">Batch <code>{smokeResult.batchId}</code> stored at <code>{smokeResult.storagePath}</code></Text>
             <Flex gap="3" wrap="wrap" mt="2">
               <Badge variant="soft">Device: {smokeResult.deviceId}</Badge>
-              <Badge variant="soft">Points inserted: {smokeResult.points?.length ?? smokeResult.payload?.points?.length ?? 0}</Badge>
+              <Badge variant="soft">Points stored: {smokeResult.points?.length ?? smokeResult.payload?.points?.length ?? 0}</Badge>
               {renderVisibilityBadge(smokeResult.visibility)}
             </Flex>
             <Button mt="3" variant="surface" onClick={() => setSmokePayload(determinePayloadForEditor(smokeResult))}>
