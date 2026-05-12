@@ -1243,7 +1243,7 @@ export default function MapPage({
           position: "absolute",
           top: "var(--space-4)",
           right: "var(--space-4)",
-          zIndex: 3,
+          zIndex: 110,
           display: "flex",
           flexDirection: "column",
           gap: "var(--space-3)",

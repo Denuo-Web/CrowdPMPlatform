@@ -161,11 +161,11 @@ export default function App() {
   const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
     ? isDarkTheme
-      ? "linear-gradient(180deg, color-mix(in srgb, white 84%, transparent) 0%, color-mix(in srgb, white 72%, transparent) 58%, color-mix(in srgb, white 42%, transparent) 100%)"
+      ? "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 96%, transparent) 0%, color-mix(in srgb, var(--color-panel-solid) 88%, transparent) 58%, color-mix(in srgb, var(--color-panel-solid) 60%, transparent) 100%)"
       : "linear-gradient(180deg, color-mix(in srgb, white 96%, transparent) 0%, color-mix(in srgb, white 88%, transparent) 58%, color-mix(in srgb, white 56%, transparent) 100%)"
     : "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
-  const mapHeaderForegroundColor = activeTab === "map" && isDarkTheme ? "#111111" : "var(--gray-12)";
-  const airQualityNetworkColor = activeTab === "map" && isDarkTheme ? "#000000" : "var(--gray-11)";
+  const mapHeaderForegroundColor = "var(--gray-12)";
+  const airQualityNetworkColor = "var(--gray-11)";
 
   const openAuthDialog = (mode: AuthMode) => {
     setAuthMode(mode);
