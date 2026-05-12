@@ -517,6 +517,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const defaultCenterLat = defaultCenter?.lat;
   const defaultCenterLng = defaultCenter?.lng;
   const syncOverlayRef = useRef<((options?: { forceCenter?: boolean }) => void) | null>(null);
+  const hasRenderableData = data.length > 0;
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -673,6 +674,10 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         map.addListener("heading_changed", markUserControl)
       ];
 
+      if (!currentSeries.length) {
+        return;
+      }
+
       type MapWithCapabilities = google.maps.Map & {
         getMapCapabilities?: () => { isWebGLOverlayViewAvailable?: boolean };
       };
@@ -733,7 +738,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       if (overlayRef.current === localOverlay) overlayRef.current = null;
       if (mapRef.current === localMap) mapRef.current = null;
     };
-  }, [interleaved, defaultCenterLat, defaultCenterLng]);
+  }, [defaultCenterLat, defaultCenterLng, hasRenderableData, interleaved]);
 
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
