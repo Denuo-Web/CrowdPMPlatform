@@ -576,7 +576,7 @@ export default function App() {
             }}
           >
             <Suspense fallback={tabPanelFallback}>
-              <MapPage key={`map:${userScopedKey}`} />
+              <MapPage key={`map:${userScopedKey}`} mapAppearance={activeTheme.appearance} />
             </Suspense>
           </Box>
         ) : (
