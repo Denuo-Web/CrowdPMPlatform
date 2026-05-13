@@ -3,6 +3,7 @@ import type { firestore } from "firebase-admin";
 import { db } from "../lib/fire.js";
 import { revokeTokensForDevice } from "./deviceTokens.js";
 import { toDate } from "../lib/time.js";
+import { decrementActiveDeviceCount, writeDeviceWithQuota } from "./accountEntitlements.js";
 
 type DocumentData = firestore.DocumentData;
 
@@ -64,20 +65,27 @@ export async function registerDevice(args: {
   const deviceId = crypto.randomUUID();
   const createdAt = new Date();
   const ownerIds = [args.accountId];
-  await db().collection("devices").doc(deviceId).set({
-    accId: args.accountId,
-    ownerUserIds: ownerIds,
-    model: args.model,
-    version: args.version,
-    status: "ACTIVE",
-    registryStatus: "active",
-    createdAt,
-    lastSeenAt: null,
-    pubKlJwk: args.pubKlJwk,
-    pubKlThumbprint: args.pubKlThumbprint,
-    keThumbprint: args.keThumbprint,
-    pairingDeviceCode: args.pairingDeviceCode,
-    fingerprint: args.fingerprint ?? null,
+  const targetDb = db();
+  await writeDeviceWithQuota({
+    userId: args.accountId,
+    targetDb,
+    now: createdAt,
+    deviceRef: targetDb.collection("devices").doc(deviceId),
+    deviceData: {
+      accId: args.accountId,
+      ownerUserIds: ownerIds,
+      model: args.model,
+      version: args.version,
+      status: "ACTIVE",
+      registryStatus: "active",
+      createdAt,
+      lastSeenAt: null,
+      pubKlJwk: args.pubKlJwk,
+      pubKlThumbprint: args.pubKlThumbprint,
+      keThumbprint: args.keThumbprint,
+      pairingDeviceCode: args.pairingDeviceCode,
+      fingerprint: args.fingerprint ?? null,
+    },
   });
   return { deviceId, createdAt, pubKlJwk: args.pubKlJwk };
 }
@@ -93,6 +101,16 @@ export async function updateDeviceLastSeen(deviceId: string, targetDb: firestore
 }
 
 export async function revokeDevice(deviceId: string, initiatedBy: string, reason?: string): Promise<void> {
+  const targetDb = db();
+  const existing = await targetDb.collection("devices").doc(deviceId).get();
+  const data = existing.data() ?? {};
+  const ownerUserIds = Array.isArray(data.ownerUserIds)
+    ? data.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+    : (typeof data.accId === "string" && data.accId.length > 0 ? [data.accId] : []);
+  const currentStatus = typeof data.status === "string" ? data.status.toUpperCase() : "";
+  const currentRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : "";
+  const wasActive = currentStatus !== "REVOKED" && currentStatus !== "SUSPENDED"
+    && currentRegistryStatus !== "revoked" && currentRegistryStatus !== "suspended";
   const updates: Record<string, unknown> = {
     status: "REVOKED",
     registryStatus: "revoked",
@@ -102,6 +120,12 @@ export async function revokeDevice(deviceId: string, initiatedBy: string, reason
   if (reason) {
     updates.revocationReason = reason;
   }
-  await db().collection("devices").doc(deviceId).set(updates, { merge: true });
+  await targetDb.collection("devices").doc(deviceId).set(updates, { merge: true });
+  if (wasActive) {
+    await Promise.all(ownerUserIds.map((userId) => decrementActiveDeviceCount({
+      userId,
+      targetDb,
+    })));
+  }
   await revokeTokensForDevice(deviceId);
 }

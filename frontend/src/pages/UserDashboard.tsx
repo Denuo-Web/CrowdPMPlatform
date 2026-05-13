@@ -4,6 +4,9 @@ import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
 import { InternalNewTabAnchor } from "../components/InternalLink";
 import {
+  confirmSubscriptionCheckoutSession,
+  createBillingPortalSession,
+  createSubscriptionCheckoutSession,
   deleteBatch,
   listBatches,
   listDevices,
@@ -26,6 +29,9 @@ type UserDashboardProps = {
   onRequestActivation: () => void;
   onOpenSmokeTest?: () => void;
   onOpenThemeModal: () => void;
+  subscriptionCheckoutNotice?: "success" | "cancelled" | null;
+  subscriptionCheckoutSessionId?: string | null;
+  onSubscriptionCheckoutHandled?: () => void;
   refreshToken?: number;
 };
 
@@ -61,9 +67,17 @@ function formatShippingLocation(receipt: NodePurchaseReceipt): string {
   return city || state || "—";
 }
 
-export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, onOpenThemeModal, refreshToken = 0 }: UserDashboardProps) {
+export default function UserDashboard({
+  onRequestActivation,
+  onOpenSmokeTest,
+  onOpenThemeModal,
+  subscriptionCheckoutNotice = null,
+  subscriptionCheckoutSessionId = null,
+  onSubscriptionCheckoutHandled,
+  refreshToken = 0,
+}: UserDashboardProps) {
   const { user } = useAuth();
-  const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, updateSettings } = useUserSettings();
+  const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, refresh, updateSettings } = useUserSettings();
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
   const [devicesError, setDevicesError] = useState<string | null>(null);
@@ -84,6 +98,10 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
   const [receiptsError, setReceiptsError] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
+  const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [activeCheckoutOfferId, setActiveCheckoutOfferId] = useState<"pro_monthly" | "pro_yearly" | null>(null);
+  const [isOpeningBillingPortal, setOpeningBillingPortal] = useState(false);
   const activationUrl = useMemo(() => buildActivationLink(), []);
   const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
 
@@ -156,6 +174,56 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
     void refreshReceipts();
   }, [refreshBatches, refreshDevices, refreshReceipts, refreshToken]);
 
+  useEffect(() => {
+    if (!user || !subscriptionCheckoutNotice) {
+      return;
+    }
+    let cancelled = false;
+
+    setSubscriptionError(null);
+    setSubscriptionMessage(
+      subscriptionCheckoutNotice === "cancelled"
+        ? "Subscription checkout was cancelled before it completed."
+        : "Subscription checkout completed. Refreshing account access…"
+    );
+
+    void (async () => {
+      try {
+        if (subscriptionCheckoutNotice === "success" && subscriptionCheckoutSessionId) {
+          await confirmSubscriptionCheckoutSession(subscriptionCheckoutSessionId);
+        }
+        await Promise.all([refresh(), refreshDevices(), refreshBatches()]);
+        if (!cancelled && subscriptionCheckoutNotice === "success") {
+          setSubscriptionMessage("Subscription access is now active for this account.");
+        }
+      }
+      catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Unable to refresh subscription access right now.";
+        if (subscriptionCheckoutNotice === "success") {
+          setSubscriptionError(message);
+        }
+      }
+      finally {
+        if (!cancelled) {
+          onSubscriptionCheckoutHandled?.();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    onSubscriptionCheckoutHandled,
+    refresh,
+    refreshBatches,
+    refreshDevices,
+    subscriptionCheckoutNotice,
+    subscriptionCheckoutSessionId,
+    user,
+  ]);
+
   const ownedCount = useMemo(() => devices.length, [devices]);
   const completedReceiptCount = useMemo(() => receipts.length, [receipts.length]);
   const activeCount = useMemo(
@@ -163,6 +231,10 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
     [devices],
   );
   const isSettingsBusy = isSettingsLoading || isSettingsSaving;
+  const subscription = settings.subscription;
+  const subscriptionOffers = settings.subscriptionOffers;
+  const checkoutOffers = subscriptionOffers.filter((offer) => offer.action === "checkout");
+  const researchOffer = subscriptionOffers.find((offer) => offer.offerId === "research_contact") ?? null;
   const deviceNameLookup = useMemo(() => {
     const lookup = new Map<string, string>();
     for (const device of devices) {
@@ -261,6 +333,39 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
       setSettingsLocalError(err instanceof Error ? err.message : "Unable to update user settings.");
     }
   }, [settings.interleavedRendering, updateSettings, user]);
+
+  const handleStartSubscriptionCheckout = useCallback(async (offerId: "pro_monthly" | "pro_yearly") => {
+    if (!user) {
+      setSubscriptionError("Sign in is required before starting subscription checkout.");
+      setSubscriptionMessage(null);
+      return;
+    }
+    setSubscriptionError(null);
+    setSubscriptionMessage(null);
+    setActiveCheckoutOfferId(offerId);
+    try {
+      const session = await createSubscriptionCheckoutSession(offerId);
+      window.location.assign(session.url);
+    }
+    catch (err) {
+      setSubscriptionError(err instanceof Error ? err.message : "Unable to open subscription checkout.");
+      setActiveCheckoutOfferId(null);
+    }
+  }, [user]);
+
+  const handleOpenBillingPortal = useCallback(async () => {
+    setSubscriptionError(null);
+    setSubscriptionMessage(null);
+    setOpeningBillingPortal(true);
+    try {
+      const session = await createBillingPortalSession();
+      window.location.assign(session.url);
+    }
+    catch (err) {
+      setSubscriptionError(err instanceof Error ? err.message : "Unable to open the billing portal.");
+      setOpeningBillingPortal(false);
+    }
+  }, []);
 
   const handleRevoke = useCallback(async (deviceId: string) => {
     if (!deviceId) return;
@@ -389,6 +494,102 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
         <Heading as="h2" size="5">Welcome back, {user.email ?? user.uid}</Heading>
         <Text color="gray">Monitor the devices that are registered to your CrowdPM ingest pipeline.</Text>
       </Box>
+
+      <Card>
+        <Flex direction="column" gap="3">
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Box>
+              <Heading as="h3" size="4">Subscription</Heading>
+              <Text color="gray">Plan limits, billing state, and export access for this account.</Text>
+            </Box>
+            <Badge color={subscription.planId === "free_community" ? "gray" : "green"} variant="soft">
+              {subscription.label}
+            </Badge>
+          </Flex>
+          <Separator my="2" size="4" />
+          {subscriptionError ? (
+            <Callout.Root color="tomato">
+              <Callout.Text>{subscriptionError}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+          {subscriptionMessage ? (
+            <Callout.Root color="green">
+              <Callout.Text>{subscriptionMessage}</Callout.Text>
+            </Callout.Root>
+          ) : null}
+          <Flex direction={{ initial: "column", sm: "row" }} gap="4" wrap="wrap">
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Billing</Text>
+              <Heading size="6">
+                {subscription.billingInterval === "year"
+                  ? "Annual"
+                  : subscription.billingInterval === "month"
+                    ? "Monthly"
+                    : "Community"}
+              </Heading>
+              <Text size="1" color="gray">
+                {subscription.cancelAtPeriodEnd && subscription.currentPeriodEnd
+                  ? `Cancels at period end on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`
+                  : subscription.currentPeriodEnd
+                    ? `Current period ends ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`
+                    : "No recurring billing is active."}
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Devices</Text>
+              <Heading size="6">{subscription.usage.activeDevices} / {subscription.limits.maxActiveDevices}</Heading>
+            </Flex>
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Stored batches</Text>
+              <Heading size="6">{subscription.usage.storedBatchesTotal} / {subscription.limits.maxStoredBatchesTotal}</Heading>
+              <Text size="1" color="gray">
+                Private: {subscription.usage.storedPrivateBatches} / {subscription.limits.maxStoredPrivateBatches}
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1">
+              <Text size="2" color="gray">Monthly points</Text>
+              <Heading size="6">{subscription.usage.monthlyPointsUsed.toLocaleString()} / {subscription.limits.monthlyPoints.toLocaleString()}</Heading>
+              <Text size="1" color="gray">
+                Resets {new Date(subscription.usage.resetAt).toLocaleDateString()} · max {subscription.limits.maxPointsPerBatch.toLocaleString()} points per batch
+              </Text>
+            </Flex>
+          </Flex>
+          <Text size="2" color="gray">
+            Video downloads: {subscription.videoDownloadAccess === "full" ? "full export included" : "watermarked preview export only"}.
+          </Text>
+          <Flex gap="2" wrap="wrap">
+            {checkoutOffers.map((offer) => {
+              const isBusy = activeCheckoutOfferId === offer.offerId;
+              const offerLabel = offer.billingInterval === "year"
+                ? `${offer.label} - ${formatReceiptMoney(offer.unitAmount, offer.currency)} / year`
+                : `${offer.label} - ${formatReceiptMoney(offer.unitAmount, offer.currency)} / month`;
+              return (
+                <Button
+                  key={offer.offerId}
+                  onClick={() => void handleStartSubscriptionCheckout(offer.offerId as "pro_monthly" | "pro_yearly")}
+                  disabled={Boolean(activeCheckoutOfferId) || subscription.planId !== "free_community"}
+                >
+                  {isBusy ? "Opening Checkout..." : offerLabel}
+                </Button>
+              );
+            })}
+            {subscription.canManageBilling ? (
+              <Button
+                variant="soft"
+                onClick={() => void handleOpenBillingPortal()}
+                disabled={isOpeningBillingPortal}
+              >
+                {isOpeningBillingPortal ? "Opening Billing..." : "Manage billing"}
+              </Button>
+            ) : null}
+            {researchOffer ? (
+              <Button variant="ghost" asChild>
+                <Link href={`mailto:${researchOffer.contactEmail}`}>Contact for Research / Lab</Link>
+              </Button>
+            ) : null}
+          </Flex>
+        </Flex>
+      </Card>
 
       <Card>
         <Flex direction="column" gap="3">
@@ -531,16 +732,24 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
           </Flex>
           <Separator my="2" size="4" />
           <Text size="2" color="gray">Default batch visibility</Text>
-          <SegmentedControl.Root
-            value={settings.defaultBatchVisibility}
-            onValueChange={handleDefaultVisibilityChange}
-            disabled={isSettingsBusy}
-          >
-            <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
-            <SegmentedControl.Item value="private">Private</SegmentedControl.Item>
-          </SegmentedControl.Root>
+          {subscription.limits.maxStoredPrivateBatches < 1 ? (
+            <SegmentedControl.Root value="public" disabled>
+              <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          ) : (
+            <SegmentedControl.Root
+              value={settings.defaultBatchVisibility}
+              onValueChange={handleDefaultVisibilityChange}
+              disabled={isSettingsBusy}
+            >
+              <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
+              <SegmentedControl.Item value="private">Private</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          )}
           <Text size="1" color="gray">
-            Public batches can be surfaced in shared dashboards, while private batches remain restricted to your account.
+            {subscription.limits.maxStoredPrivateBatches < 1
+              ? "Community accounts default to public uploads. Upgrade to Pro to keep batches private."
+              : "Public batches can be surfaced in shared dashboards, while private batches remain restricted to your account."}
           </Text>
           <Separator my="3" size="4" />
           <Text size="2" color="gray">Map rendering</Text>

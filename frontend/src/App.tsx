@@ -101,6 +101,7 @@ const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
 type AppTab = "map" | "dashboard" | "smoke" | "admin" | DeepLinkedAppTab;
 type ThemeCheckoutNotice = "success" | "cancelled" | null;
+type SubscriptionCheckoutNotice = "success" | "cancelled" | null;
 
 function isDeepLinkedTab(tab: AppTab): tab is DeepLinkedAppTab {
   return tab === "pairing-info" || tab === "about" || tab === "node";
@@ -126,6 +127,26 @@ function readThemeCheckoutSessionId(): string | null {
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
 }
 
+function readSubscriptionCheckoutNotice(): SubscriptionCheckoutNotice {
+  if (typeof window === "undefined") return null;
+  const status = new URLSearchParams(window.location.search).get("subscriptionCheckout");
+  return status === "success" || status === "cancelled" ? status : null;
+}
+
+function readSubscriptionCheckoutSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  const sessionId = new URLSearchParams(window.location.search).get("subscriptionCheckoutSessionId");
+  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
+}
+
+function clearSubscriptionCheckoutNoticeFromUrl() {
+  if (typeof window === "undefined") return;
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete("subscriptionCheckout");
+  nextUrl.searchParams.delete("subscriptionCheckoutSessionId");
+  window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+}
+
 export default function App() {
   const { user, isLoading, signOut, canAccessAdmin, canRunSmokeTests } = useAuth();
   const { settings } = useUserSettings();
@@ -135,6 +156,8 @@ export default function App() {
     : null;
   const initialThemeCheckoutNotice = readThemeCheckoutNotice();
   const initialThemeCheckoutSessionId = readThemeCheckoutSessionId();
+  const initialSubscriptionCheckoutNotice = readSubscriptionCheckoutNotice();
+  const initialSubscriptionCheckoutSessionId = readSubscriptionCheckoutSessionId();
   const [tab, setTab] = useState<AppTab>(initialDeepLinkedTab ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
@@ -144,6 +167,8 @@ export default function App() {
   const [isThemeModalOpen, setThemeModalOpen] = useState(Boolean(initialThemeCheckoutNotice));
   const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(initialThemeCheckoutNotice);
   const [themeCheckoutSessionId, setThemeCheckoutSessionId] = useState<string | null>(initialThemeCheckoutSessionId);
+  const [subscriptionCheckoutNotice, setSubscriptionCheckoutNotice] = useState<SubscriptionCheckoutNotice>(initialSubscriptionCheckoutNotice);
+  const [subscriptionCheckoutSessionId, setSubscriptionCheckoutSessionId] = useState<string | null>(initialSubscriptionCheckoutSessionId);
   const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
   const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
@@ -208,6 +233,12 @@ export default function App() {
     if (user) return;
     setThemeDraft(null);
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !subscriptionCheckoutNotice) return;
+    setTab("dashboard");
+    setDashboardRefreshToken((prev) => prev + 1);
+  }, [subscriptionCheckoutNotice, user]);
 
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
@@ -304,6 +335,15 @@ export default function App() {
     setTab("dashboard");
     setDashboardRefreshToken((prev) => prev + 1);
   };
+
+  const handleSubscriptionCheckoutHandled = useCallback(() => {
+    if (!subscriptionCheckoutNotice && !subscriptionCheckoutSessionId) {
+      return;
+    }
+    setSubscriptionCheckoutNotice(null);
+    setSubscriptionCheckoutSessionId(null);
+    clearSubscriptionCheckoutNoticeFromUrl();
+  }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
 
   const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
     setPendingSmokeResult(result);
@@ -620,6 +660,9 @@ export default function App() {
                       onRequestActivation={openActivationModal}
                       onOpenSmokeTest={canRunSmokeTests ? (() => handleProtectedTabClick("smoke")) : undefined}
                       onOpenThemeModal={openThemeModal}
+                      subscriptionCheckoutNotice={subscriptionCheckoutNotice}
+                      subscriptionCheckoutSessionId={subscriptionCheckoutSessionId}
+                      onSubscriptionCheckoutHandled={handleSubscriptionCheckoutHandled}
                       refreshToken={dashboardRefreshToken}
                     />
                   ) : activeTab === "smoke" && user && canRunSmokeTests ? (

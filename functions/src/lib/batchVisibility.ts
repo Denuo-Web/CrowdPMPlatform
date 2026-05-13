@@ -1,6 +1,10 @@
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import type { BatchVisibility } from "@crowdpm/types";
 import { db } from "./fire.js";
+import {
+  defaultBatchVisibilityForSubscription,
+  getSubscriptionSummary,
+} from "../services/accountEntitlements.js";
 
 export type { BatchVisibility };
 
@@ -18,9 +22,15 @@ export function normalizeBatchVisibility(value: unknown): BatchVisibility | null
 export async function getUserDefaultBatchVisibility(userId: string | undefined | null): Promise<BatchVisibility | null> {
   if (!userId) return null;
   try {
-    const snap = await db().collection("userSettings").doc(userId).get();
-    if (!snap.exists) return null;
-    return normalizeBatchVisibility(snap.get("defaultBatchVisibility"));
+    const [snap, subscription] = await Promise.all([
+      db().collection("userSettings").doc(userId).get(),
+      getSubscriptionSummary(userId, db()),
+    ]);
+    const preferred = snap.exists ? normalizeBatchVisibility(snap.get("defaultBatchVisibility")) : null;
+    if (preferred === "private" && subscription.limits.maxStoredPrivateBatches < 1) {
+      return "public";
+    }
+    return preferred ?? defaultBatchVisibilityForSubscription(subscription);
   }
   catch (err) {
     console.warn("Failed to load user settings for visibility", { userId, err });
@@ -30,7 +40,9 @@ export async function getUserDefaultBatchVisibility(userId: string | undefined |
 
 export async function getDeviceDefaultBatchVisibility(snapshot: DocumentSnapshot): Promise<BatchVisibility | null> {
   const explicit = normalizeBatchVisibility(snapshot.get("defaultBatchVisibility"));
-  if (explicit) return explicit;
+  if (explicit === "public") {
+    return "public";
+  }
   const ownerUserIdRaw = snapshot.get("ownerUserId");
   const ownerUserIdsRaw = snapshot.get("ownerUserIds");
   const ownerUserId = typeof ownerUserIdRaw === "string" && ownerUserIdRaw.length > 0 ? ownerUserIdRaw : null;
@@ -40,7 +52,10 @@ export async function getDeviceDefaultBatchVisibility(snapshot: DocumentSnapshot
   const candidates = Array.from(new Set([ownerUserId, ...ownerUserIds].filter((id): id is string => Boolean(id))));
   for (const candidate of candidates) {
     const pref = await getUserDefaultBatchVisibility(candidate);
+    if (explicit === "private") {
+      return pref === "private" ? "private" : "public";
+    }
     if (pref) return pref;
   }
-  return null;
+  return explicit;
 }

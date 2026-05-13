@@ -2,7 +2,6 @@ import type { Firestore } from "firebase-admin/firestore";
 import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
-  DEFAULT_BATCH_VISIBILITY,
   getDeviceDefaultBatchVisibility,
 } from "../lib/batchVisibility.js";
 import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
@@ -12,6 +11,13 @@ import { IngestPayload } from "../lib/validation.js";
 import { processIngestBatch } from "./ingestBatchProcessor.js";
 import { updateDeviceLastSeen } from "./deviceRegistry.js";
 import { buildBatchStoragePath, encodeBatchPayload } from "./batchPayloads.js";
+import {
+  defaultBatchVisibilityForSubscription,
+  getSubscriptionSummary,
+  reserveUploadQuota,
+  rollbackUploadQuotaReservation,
+  type UploadQuotaReservation,
+} from "./accountEntitlements.js";
 
 export type IngestBody = SharedIngestBody;
 
@@ -43,6 +49,9 @@ type ResolvedIngestDependencies = {
   getDb: () => Firestore;
   processIngestBatch: typeof processIngestBatch;
   updateDeviceLastSeen: (deviceId: string, targetDb: Firestore) => Promise<void>;
+  getSubscriptionSummary: typeof getSubscriptionSummary;
+  reserveUploadQuota: typeof reserveUploadQuota;
+  rollbackUploadQuotaReservation: typeof rollbackUploadQuotaReservation;
 };
 
 export type IngestServiceDependencies = {
@@ -50,6 +59,9 @@ export type IngestServiceDependencies = {
   db?: Firestore;
   processIngestBatch?: typeof processIngestBatch;
   updateDeviceLastSeen?: (deviceId: string, targetDb: Firestore) => Promise<void>;
+  getSubscriptionSummary?: typeof getSubscriptionSummary;
+  reserveUploadQuota?: typeof reserveUploadQuota;
+  rollbackUploadQuotaReservation?: typeof rollbackUploadQuotaReservation;
 };
 
 function normalizeStatus(value: unknown, transform: (value: string) => string): string | null {
@@ -78,6 +90,9 @@ export class IngestService {
       getDb: getDbDep,
       processIngestBatch: deps.processIngestBatch ?? processIngestBatch,
       updateDeviceLastSeen: deps.updateDeviceLastSeen ?? updateDeviceLastSeen,
+      getSubscriptionSummary: deps.getSubscriptionSummary ?? getSubscriptionSummary,
+      reserveUploadQuota: deps.reserveUploadQuota ?? reserveUploadQuota,
+      rollbackUploadQuotaReservation: deps.rollbackUploadQuotaReservation ?? rollbackUploadQuotaReservation,
     };
   }
 
@@ -127,42 +142,76 @@ export class IngestService {
       throw new IngestServiceError("invalid_payload", "all points must match the device_id in the request", 400);
     }
 
-    const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
-    const visibility = normalizeVisibility(request.visibility, ownerDefaultVisibility ?? DEFAULT_BATCH_VISIBILITY);
-
     const batchId = crypto.randomUUID();
+    const ownerSubscription = await this.deps.getSubscriptionSummary(ownerUserId, db);
+    const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
+    const visibility = normalizeVisibility(
+      request.visibility,
+      ownerDefaultVisibility ?? defaultBatchVisibilityForSubscription(ownerSubscription),
+    );
     const storagePath = buildBatchStoragePath({ ownerUserId, deviceId, batchId });
     const batchPayload = { ...parsedBody, device_id: deviceId };
     const encoded = encodeBatchPayload(batchPayload);
-    await bucket.file(storagePath).save(encoded.buffer, {
-      contentType: "application/gzip",
-      metadata: {
+    let reservation: UploadQuotaReservation | null = null;
+    let storedPayload = false;
+    try {
+      reservation = await this.deps.reserveUploadQuota({
+        userId: ownerUserId,
+        visibility,
+        pointCount: batchPayload.points.length,
+        targetDb: db,
+      });
+
+      await bucket.file(storagePath).save(encoded.buffer, {
+        contentType: "application/gzip",
         metadata: {
-          crowdpmSchemaVersion: "2",
-          crowdpmContentEncoding: "gzip",
+          metadata: {
+            crowdpmSchemaVersion: "2",
+            crowdpmContentEncoding: "gzip",
+          },
         },
-      },
-    });
+      });
+      storedPayload = true;
 
-    const processed = await this.deps.processIngestBatch({
-      deviceId,
-      batchId,
-      storagePath,
-      compressedBytes: encoded.buffer.byteLength,
-      visibility,
-      payload: batchPayload,
-      ownerUserId,
-      ownerUserIds: effectiveOwnerUserIds,
-      deviceName: typeof devSnap.get("name") === "string" && devSnap.get("name").trim().length > 0
-        ? devSnap.get("name").trim()
-        : null,
-    });
+      const processed = await this.deps.processIngestBatch({
+        deviceId,
+        batchId,
+        storagePath,
+        compressedBytes: encoded.buffer.byteLength,
+        visibility,
+        payload: batchPayload,
+        ownerUserId,
+        ownerUserIds: effectiveOwnerUserIds,
+        deviceName: typeof devSnap.get("name") === "string" && devSnap.get("name").trim().length > 0
+          ? devSnap.get("name").trim()
+          : null,
+      });
 
-    await this.deps.updateDeviceLastSeen(deviceId, db).catch((err) => {
-      console.error({ err, deviceId }, "failed to update device last seen");
-    });
+      await this.deps.updateDeviceLastSeen(deviceId, db).catch((err) => {
+        console.error({ err, deviceId }, "failed to update device last seen");
+      });
 
-    return { accepted: true, batchId, deviceId, storagePath, visibility: processed.visibility };
+      return { accepted: true, batchId, deviceId, storagePath, visibility: processed.visibility };
+    }
+    catch (err) {
+      if (storedPayload) {
+        await bucket.file(storagePath).delete({ ignoreNotFound: true }).catch((cleanupErr) => {
+          console.error({ err: cleanupErr, storagePath }, "failed to clean up stored batch payload after ingest failure");
+        });
+      }
+      if (reservation) {
+        await this.deps.rollbackUploadQuotaReservation({
+          userId: ownerUserId,
+          visibility: reservation.visibility,
+          pointCount: reservation.pointCount,
+          reservationMonthKey: reservation.monthKey,
+          targetDb: db,
+        }).catch((rollbackErr) => {
+          console.error({ err: rollbackErr, ownerUserId, batchId }, "failed to roll back ingest quota reservation");
+        });
+      }
+      throw err;
+    }
   }
 
   private normalizeIngestPayload(rawBody: string): IngestPayload {

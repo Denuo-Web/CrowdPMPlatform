@@ -29,7 +29,7 @@ type PatchedDeck = DeckLike & {
   __crowdpmFramebufferSetPropsPatched?: boolean;
 };
 
-type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
+type GoogleMapsOverlayPrivateState = {
   _deck?: DeckLike | null;
   _onAdd?: () => void;
   _onAddVectorOverlay?: () => void;
@@ -37,8 +37,10 @@ type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
   _onContextLost?: () => void;
   __crowdpmExternalFramebuffer?: ExternalFramebufferState | null;
   __crowdpmExternalFramebufferPatched?: boolean;
-  finalize: () => void;
+  finalize?: () => void;
 };
+
+type OverlayHookKey = "_onAdd" | "_onAddVectorOverlay" | "_onContextRestored" | "_onContextLost";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object";
@@ -55,7 +57,7 @@ function isRawExternalFramebufferHandle(value: unknown): value is WebGLFramebuff
     && !("colorAttachments" in value);
 }
 
-function destroyExternalFramebuffer(overlay: GoogleMapsOverlayInternal) {
+function destroyExternalFramebuffer(overlay: GoogleMapsOverlayPrivateState) {
   overlay.__crowdpmExternalFramebuffer?.wrapper.destroy();
   overlay.__crowdpmExternalFramebuffer = null;
 }
@@ -67,7 +69,7 @@ function getExternalFramebufferSize(device: WebGLDeviceLike) {
 }
 
 function wrapExternalFramebuffer(
-  overlay: GoogleMapsOverlayInternal,
+  overlay: GoogleMapsOverlayPrivateState,
   device: WebGLDeviceLike,
   handle: WebGLFramebuffer
 ) {
@@ -86,7 +88,7 @@ function wrapExternalFramebuffer(
   return wrapper;
 }
 
-function patchDeckSetProps(overlay: GoogleMapsOverlayInternal, deck: DeckLike | null | undefined) {
+function patchDeckSetProps(overlay: GoogleMapsOverlayPrivateState, deck: DeckLike | null | undefined) {
   if (!deck) return;
 
   const patchedDeck = deck as PatchedDeck;
@@ -127,23 +129,24 @@ function patchDeckSetProps(overlay: GoogleMapsOverlayInternal, deck: DeckLike | 
 }
 
 function patchOverlayHook(
-  overlay: GoogleMapsOverlayInternal,
-  key: "_onAdd" | "_onAddVectorOverlay" | "_onContextRestored" | "_onContextLost",
+  overlay: GoogleMapsOverlayPrivateState,
+  key: OverlayHookKey,
   after: () => void
 ) {
   const original = overlay[key];
   if (typeof original !== "function") return;
 
-  overlay[key] = ((...args: unknown[]) => {
-    const result = original.apply(overlay, args as never);
+  const wrapped = ((...args: unknown[]) => {
+    const result = (original as (...hookArgs: unknown[]) => unknown).apply(overlay, args);
     after();
     return result;
-  }) as GoogleMapsOverlayInternal[typeof key];
+  }) as GoogleMapsOverlayPrivateState[OverlayHookKey];
+  (overlay as Record<OverlayHookKey, GoogleMapsOverlayPrivateState[OverlayHookKey]>)[key] = wrapped;
 }
 
 // TODO: Remove after a released `@deck.gl/google-maps` includes deck.gl PR #10253.
 export function patchGoogleMapsOverlayExternalFramebuffer(overlay: GoogleMapsOverlay) {
-  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
   if (internalOverlay.__crowdpmExternalFramebufferPatched) return;
   internalOverlay.__crowdpmExternalFramebufferPatched = true;
 
@@ -160,16 +163,18 @@ export function patchGoogleMapsOverlayExternalFramebuffer(overlay: GoogleMapsOve
     destroyExternalFramebuffer(internalOverlay);
   });
 
-  const originalFinalize = internalOverlay.finalize.bind(overlay);
-  internalOverlay.finalize = () => {
-    destroyExternalFramebuffer(internalOverlay);
-    originalFinalize();
-  };
+  if (typeof internalOverlay.finalize === "function") {
+    const originalFinalize = internalOverlay.finalize.bind(overlay);
+    internalOverlay.finalize = () => {
+      destroyExternalFramebuffer(internalOverlay);
+      originalFinalize();
+    };
+  }
 
   patchDeckSetProps(internalOverlay, internalOverlay._deck);
 }
 
 export function disposeGoogleMapsOverlayExternalFramebuffer(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
-  destroyExternalFramebuffer(overlay as GoogleMapsOverlayInternal);
+  destroyExternalFramebuffer(overlay as unknown as GoogleMapsOverlayPrivateState);
 }

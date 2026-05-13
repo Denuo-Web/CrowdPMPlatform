@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   rateLimitOrThrow: vi.fn(),
   bucketDelete: vi.fn(),
+  applyBatchVisibilityChange: vi.fn(),
+  applyStoredBatchDeletion: vi.fn(),
 }));
 
 type BatchRecord = {
@@ -137,6 +139,11 @@ vi.mock("../../src/lib/rateLimiter.js", async (importOriginal) => {
   return { ...actual, rateLimitOrThrow: mocks.rateLimitOrThrow };
 });
 
+vi.mock("../../src/services/accountEntitlements.js", () => ({
+  applyBatchVisibilityChange: mocks.applyBatchVisibilityChange,
+  applyStoredBatchDeletion: mocks.applyStoredBatchDeletion,
+}));
+
 async function buildApp() {
   const app = Fastify({ logger: false });
   app.setErrorHandler((err, req, rep) => {
@@ -186,6 +193,8 @@ beforeEach(() => {
   mocks.requireUser.mockReset();
   mocks.rateLimitOrThrow.mockReset();
   mocks.bucketDelete.mockReset();
+  mocks.applyBatchVisibilityChange.mockReset();
+  mocks.applyStoredBatchDeletion.mockReset();
   batchRecords = new Map();
   storagePayloads = new Map();
   batchSetCalls = [];
@@ -193,6 +202,8 @@ beforeEach(() => {
 
   mocks.rateLimitOrThrow.mockReturnValue({ allowed: true, remaining: 59, retryAfterSeconds: 0 });
   mocks.bucketDelete.mockResolvedValue(undefined);
+  mocks.applyBatchVisibilityChange.mockResolvedValue(undefined);
+  mocks.applyStoredBatchDeletion.mockResolvedValue(undefined);
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });

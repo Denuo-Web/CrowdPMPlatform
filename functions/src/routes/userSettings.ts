@@ -14,6 +14,11 @@ import type { BatchVisibility } from "../lib/batchVisibility.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { httpError } from "../lib/httpError.js";
 import { rateLimitGuard, requireUserGuard, requestUserId } from "../lib/routeGuards.js";
+import {
+  defaultBatchVisibilityForSubscription,
+  getSubscriptionSummary,
+  listSubscriptionOffers,
+} from "../services/accountEntitlements.js";
 
 const DEFAULT_INTERLEAVED_RENDERING = false;
 const DEFAULT_THEME_SAVE_UNLOCKED = false;
@@ -129,14 +134,28 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard("user-settings:get:global", 2_000, 60_000),
     ],
   }, async (req) => {
-    const snap = await db().collection("userSettings").doc(requestUserId(req)).get();
-    const visibility = normalizeVisibility(snap.get("defaultBatchVisibility"));
+    const userId = requestUserId(req);
+    const [snap, subscription] = await Promise.all([
+      db().collection("userSettings").doc(userId).get(),
+      getSubscriptionSummary(userId, db()),
+    ]);
+    const requestedVisibility = normalizeVisibility(snap.get("defaultBatchVisibility"), null);
+    const visibility = requestedVisibility === "private" && subscription.limits.maxStoredPrivateBatches < 1
+      ? "public"
+      : (requestedVisibility ?? defaultBatchVisibilityForSubscription(subscription));
     const interleavedRendering = snap.exists
       ? normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING
       : DEFAULT_INTERLEAVED_RENDERING;
     const theme = snap.exists ? readThemeSettings(snap.get("theme")) : DEFAULT_THEME_SETTINGS;
     const themeSaveUnlocked = snap.exists ? readThemeSaveUnlocked(snap.get("themeSaveUnlocked")) : DEFAULT_THEME_SAVE_UNLOCKED;
-    return { defaultBatchVisibility: visibility, interleavedRendering, theme, themeSaveUnlocked } satisfies UserSettingsResponse;
+    return {
+      defaultBatchVisibility: visibility,
+      interleavedRendering,
+      theme,
+      themeSaveUnlocked,
+      subscription,
+      subscriptionOffers: listSubscriptionOffers(),
+    } satisfies UserSettingsResponse;
   });
 
   app.put<{ Body: UserSettingsBody }>("/v1/user/settings", {
@@ -146,6 +165,8 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard("user-settings:update:global", 1_000, 60_000),
     ],
   }, async (req) => {
+    const userId = requestUserId(req);
+    const subscription = await getSubscriptionSummary(userId, db());
     const hasVisibility = "defaultBatchVisibility" in (req.body ?? {});
     const hasInterleaved = "interleavedRendering" in (req.body ?? {});
     const hasTheme = "theme" in (req.body ?? {});
@@ -160,6 +181,13 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       if (!visibility) {
         throw httpError(400, "invalid_visibility", "defaultBatchVisibility must be 'public' or 'private'.");
       }
+      if (visibility === "private" && subscription.limits.maxStoredPrivateBatches < 1) {
+        throw httpError(403, "quota_exceeded", "Private batches require a paid subscription.", {
+          planId: subscription.planId,
+          limits: subscription.limits,
+          usage: subscription.usage,
+        });
+      }
     }
 
     let interleavedRendering: boolean | null = null;
@@ -170,7 +198,7 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const docRef = db().collection("userSettings").doc(requestUserId(req));
+    const docRef = db().collection("userSettings").doc(userId);
     let theme: UserThemeSettings | null = null;
     if (hasTheme) {
       const existingSnap = await docRef.get();
@@ -195,11 +223,16 @@ export const userSettingsRoutes: FastifyPluginAsync = async (app) => {
     const nextInterleaved = normalizeInterleavedRendering(snap.get("interleavedRendering")) ?? DEFAULT_INTERLEAVED_RENDERING;
     const nextTheme = readThemeSettings(snap.get("theme"));
     const nextThemeSaveUnlocked = readThemeSaveUnlocked(snap.get("themeSaveUnlocked"));
+    const nextSubscription = await getSubscriptionSummary(userId, db());
     return {
-      defaultBatchVisibility: nextVisibility,
+      defaultBatchVisibility: nextVisibility === "private" && nextSubscription.limits.maxStoredPrivateBatches < 1
+        ? "public"
+        : (nextVisibility ?? defaultBatchVisibilityForSubscription(nextSubscription)),
       interleavedRendering: nextInterleaved,
       theme: nextTheme,
       themeSaveUnlocked: nextThemeSaveUnlocked,
+      subscription: nextSubscription,
+      subscriptionOffers: listSubscriptionOffers(),
     } satisfies UserSettingsResponse;
   });
 };

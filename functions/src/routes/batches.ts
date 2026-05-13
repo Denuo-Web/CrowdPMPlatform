@@ -16,6 +16,10 @@ import {
   requestUserId,
 } from "../lib/routeGuards.js";
 import { decodeBatchPayload } from "../services/batchPayloads.js";
+import {
+  applyBatchVisibilityChange,
+  applyStoredBatchDeletion,
+} from "../services/accountEntitlements.js";
 
 const OWNED_BATCH_LIST_LIMIT = 50;
 const OWNED_BATCH_LIST_MAX_LIMIT = 500;
@@ -182,7 +186,16 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     if (!userOwnsBatch(data, user.uid)) {
       throw httpError(403, "forbidden", "You do not have access to this batch.");
     }
+    const previousVisibility = normalizeVisibility(data.visibility);
 
+    await applyBatchVisibilityChange({
+      userId: typeof data.ownerUserId === "string" && data.ownerUserId.trim().length > 0
+        ? data.ownerUserId.trim()
+        : user.uid,
+      fromVisibility: previousVisibility,
+      toVisibility: visibility,
+      targetDb: db(),
+    });
     await ref.set({
       visibility,
       updatedAt: new Date(),
@@ -213,6 +226,7 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     if (!userOwnsBatch(data, user.uid)) {
       throw httpError(403, "forbidden", "You do not have access to this batch.");
     }
+    const currentVisibility = normalizeVisibility(data.visibility);
 
     const storagePath = asString(data.storagePath);
     if (storagePath) {
@@ -226,6 +240,13 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     await ref.delete();
+    await applyStoredBatchDeletion({
+      userId: typeof data.ownerUserId === "string" && data.ownerUserId.trim().length > 0
+        ? data.ownerUserId.trim()
+        : user.uid,
+      visibility: currentVisibility,
+      targetDb: db(),
+    });
     return { status: "deleted", deviceId, batchId };
   });
 };

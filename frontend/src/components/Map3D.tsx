@@ -30,9 +30,13 @@ export type Map3DCaptureSession = {
   stop: () => void;
 };
 
+type Map3DCaptureOptions = {
+  watermarkText?: string | null;
+};
+
 export type Map3DHandle = {
   getCaptureCanvas: () => HTMLCanvasElement | null;
-  startCaptureSession: () => Promise<Map3DCaptureSession | null>;
+  startCaptureSession: (options?: Map3DCaptureOptions) => Promise<Map3DCaptureSession | null>;
   waitForVisualReady: () => Promise<void>;
 };
 
@@ -59,7 +63,7 @@ type GuardedOverlayView = google.maps.OverlayView & {
   getMap?: () => google.maps.Map | null;
   requestRedraw?: () => void;
 };
-type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
+type GoogleMapsOverlayPrivateState = {
   _map?: google.maps.Map | null;
   _overlay?: GuardedOverlayView | null;
   _positioningOverlay?: GuardedOverlayView | null;
@@ -250,12 +254,12 @@ function pickLargestCaptureCanvas(root: HTMLDivElement | null): HTMLCanvasElemen
 
 function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
-  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
   internalOverlay._overlay?.requestRedraw?.();
 }
 
 function guardOverlayLifecycle(overlay: GoogleMapsOverlay) {
-  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
 
   if (typeof internalOverlay._onAdd === "function") {
     const originalOnAdd = internalOverlay._onAdd.bind(overlay);
@@ -287,7 +291,39 @@ function compareCanvasOrder(left: HTMLCanvasElement, right: HTMLCanvasElement): 
   return 0;
 }
 
-function createCompositeCaptureSession(root: HTMLDivElement | null): Map3DCaptureSession | null {
+function drawWatermark(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  dpr: number,
+  watermarkText: string,
+) {
+  const safeText = watermarkText.trim();
+  if (!safeText) return;
+
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.scale(dpr, dpr);
+  const fontSize = Math.max(14, Math.round(Math.min(canvas.width / dpr, canvas.height / dpr) * 0.028));
+  const paddingX = fontSize * 0.8;
+  const paddingY = fontSize * 0.55;
+  const x = (canvas.width / dpr) - paddingX;
+  const y = (canvas.height / dpr) - paddingY;
+  context.font = `600 ${fontSize}px system-ui, sans-serif`;
+  context.textAlign = "right";
+  context.textBaseline = "bottom";
+  const metrics = context.measureText(safeText);
+  const boxWidth = metrics.width + fontSize * 1.1;
+  const boxHeight = fontSize * 1.9;
+  context.fillStyle = "rgba(0, 0, 0, 0.52)";
+  context.beginPath();
+  context.roundRect(x - boxWidth, y - boxHeight + 4, boxWidth, boxHeight, 8);
+  context.fill();
+  context.fillStyle = "rgba(255, 255, 255, 0.92)";
+  context.fillText(safeText, x - fontSize * 0.55, y - fontSize * 0.35);
+  context.restore();
+}
+
+function createCompositeCaptureSession(root: HTMLDivElement | null, options?: Map3DCaptureOptions): Map3DCaptureSession | null {
   if (!root) return null;
 
   const canvases = getVisibleCanvases(root).sort(compareCanvasOrder);
@@ -344,6 +380,9 @@ function createCompositeCaptureSession(root: HTMLDivElement | null): Map3DCaptur
         }, err);
       }
     });
+    if (options?.watermarkText) {
+      drawWatermark(context, compositeCanvas, dpr, options.watermarkText);
+    }
   };
 
   drawFrame();
@@ -369,7 +408,7 @@ function createDirectCanvasCaptureSession(root: HTMLDivElement | null): Map3DCap
 
 async function createStreamBackedCaptureSession(
   root: HTMLDivElement | null,
-  options?: { allowCompositeFallback?: boolean }
+  options?: { allowCompositeFallback?: boolean; watermarkText?: string | null }
 ): Promise<Map3DCaptureSession | null> {
   if (!root) return null;
   const allowCompositeFallback = options?.allowCompositeFallback ?? true;
@@ -379,7 +418,7 @@ async function createStreamBackedCaptureSession(
 
   const baseCanvas = pickLargestCaptureCanvas(root);
   if (!baseCanvas || !canCaptureCanvas(baseCanvas)) {
-    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
+    return allowCompositeFallback ? createCompositeCaptureSession(root, options) : null;
   }
 
   const rootRect = root.getBoundingClientRect();
@@ -403,7 +442,7 @@ async function createStreamBackedCaptureSession(
     baseStream = baseCanvas.captureStream(30);
   }
   catch {
-    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
+    return allowCompositeFallback ? createCompositeCaptureSession(root, options) : null;
   }
 
   const baseVideo = document.createElement("video");
@@ -417,7 +456,7 @@ async function createStreamBackedCaptureSession(
   }
   catch {
     baseStream.getTracks().forEach((track) => track.stop());
-    return allowCompositeFallback ? createCompositeCaptureSession(root) : null;
+    return allowCompositeFallback ? createCompositeCaptureSession(root, options) : null;
   }
 
   let disposed = false;
@@ -457,6 +496,9 @@ async function createStreamBackedCaptureSession(
         }, err);
       }
     });
+    if (options?.watermarkText) {
+      drawWatermark(context, compositeCanvas, dpr, options.watermarkText);
+    }
   };
 
   drawFrame();
@@ -475,8 +517,14 @@ async function createStreamBackedCaptureSession(
 
 async function createCaptureSession(
   root: HTMLDivElement | null,
-  options?: { preferDirectCanvas?: boolean }
+  options?: { preferDirectCanvas?: boolean; watermarkText?: string | null }
 ): Promise<Map3DCaptureSession | null> {
+  if (options?.watermarkText) {
+    return createStreamBackedCaptureSession(root, {
+      allowCompositeFallback: true,
+      watermarkText: options.watermarkText,
+    });
+  }
   if (options?.preferDirectCanvas) {
     // Interleaved Google Maps renders deck.gl into the Maps WebGL canvas. Redrawing
     // that canvas through 2D drawImage can produce black frames, so record it directly.
@@ -601,7 +649,10 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
   useImperativeHandle(ref, () => ({
     getCaptureCanvas,
-    startCaptureSession: () => createCaptureSession(divRef.current, { preferDirectCanvas: interleaved }),
+    startCaptureSession: (options) => createCaptureSession(divRef.current, {
+      preferDirectCanvas: interleaved,
+      watermarkText: options?.watermarkText,
+    }),
     waitForVisualReady: async () => {
       syncOverlayRef.current?.();
       requestOverlayRedraw(overlayRef.current);

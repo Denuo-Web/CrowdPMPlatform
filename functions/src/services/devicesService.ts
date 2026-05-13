@@ -6,6 +6,7 @@ import { httpError } from "../lib/httpError.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
 import { normalizeTimestamp, parseDeviceId } from "../lib/httpValidation.js";
 import { revokeDevice as revokeRegistryDevice } from "./deviceRegistry.js";
+import { writeDeviceWithQuota } from "./accountEntitlements.js";
 
 export type DeviceRecord = DeviceSummary;
 
@@ -46,11 +47,18 @@ export class DevicesService {
     }
     const ref = this.deps.db.collection("devices").doc();
     const createdAt = this.deps.now().toISOString();
-    await ref.set({
-      name: params.name,
-      ownerUserIds: [userId],
-      status: "ACTIVE",
-      createdAt,
+    await writeDeviceWithQuota({
+      userId,
+      deviceRef: ref,
+      targetDb: this.deps.db,
+      now: this.deps.now(),
+      deviceData: {
+        name: params.name,
+        ownerUserIds: [userId],
+        status: "ACTIVE",
+        registryStatus: "active",
+        createdAt,
+      },
     });
     return { id: ref.id };
   }
