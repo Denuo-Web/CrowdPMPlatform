@@ -5,20 +5,14 @@ export type { AdminRole };
 
 export type Permission =
   | "users.manage"
-  | "smoke_tests.run"
   | "submissions.read_all"
   | "submissions.moderate"
   | "devices.moderate";
 
-const LOCAL_SMOKE_TESTER_EMAIL = "smoke-tester@crowdpm.dev";
 const MODERATOR_PERMISSIONS: Permission[] = [
   "submissions.read_all",
   "submissions.moderate",
   "devices.moderate",
-];
-const LOCAL_SMOKE_TESTER_PERMISSIONS: Permission[] = [
-  "smoke_tests.run",
-  ...MODERATOR_PERMISSIONS,
 ];
 
 function normalizeRole(value: unknown): AdminRole | null {
@@ -56,24 +50,11 @@ export function hasRole(user: DecodedIdToken, role: AdminRole): boolean {
   return rolesFromToken(user).includes(role);
 }
 
-function isEmulatorRuntime(): boolean {
-  return process.env.FUNCTIONS_EMULATOR === "true" || Boolean(process.env.FIREBASE_EMULATOR_HUB);
-}
-
-function isLocalSmokeTester(user: DecodedIdToken): boolean {
-  return (
-    isEmulatorRuntime()
-    && user.email?.trim().toLowerCase() === LOCAL_SMOKE_TESTER_EMAIL
-  );
-}
-
 export function hasPermission(user: DecodedIdToken, permission: Permission): boolean {
   const roles = rolesFromToken(user);
   if (roles.includes("super_admin")) return true;
 
   if (roles.includes("moderator")) return MODERATOR_PERMISSIONS.includes(permission);
-
-  if (isLocalSmokeTester(user)) return LOCAL_SMOKE_TESTER_PERMISSIONS.includes(permission);
 
   return false;
 }

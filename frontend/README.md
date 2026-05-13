@@ -1,6 +1,6 @@
 # Frontend
 
-React 19 + Vite client for the CrowdPM map, activation flow, user dashboard, smoke-test lab, and moderation UI.
+React 19 + Vite client for the CrowdPM map, activation flow, user dashboard, and moderation UI.
 
 ## Commands
 
@@ -39,7 +39,7 @@ Vite reads environment variables at startup, so restart the dev server after cha
 ## Structure
 
 - `src/App.tsx`: top-level navigation, lazy-loaded pages, auth-gated tabs.
-- `src/pages/`: map, dashboard, smoke-test, activation, public info, and moderation pages.
+- `src/pages/`: map, dashboard, activation, public info, and moderation pages.
 - `src/components/`: shared UI components.
 - `src/lib/api.ts`: typed API client for `crowdpmApi`.
 - `src/lib/firebase.ts`: Firebase app and Auth emulator wiring.

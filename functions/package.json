@@ -4,13 +4,14 @@
   "main": "lib/index.js",
   "scripts": {
     "prebuild": "node ../scripts/prepare-functions-deps.mjs",
-    "build": "tsc",
+    "build": "rm -rf lib && tsc",
     "build:watch": "tsc --watch --preserveWatchOutput",
     "predev": "pnpm run build",
     "dev": "firebase emulators:start --project crowdpm-local",
     "preemulate": "pnpm run build",
     "emulate": "firebase emulators:start --project crowdpm-local",
     "test": "vitest",
+    "admin:bootstrap-super-admin": "node ./scripts/bootstrap-super-admin.mjs",
     "admin:grant-role": "node ./scripts/grant-role.mjs",
     "backfill:device-ownership": "node ./scripts/backfill-device-ownership.mjs"
   },

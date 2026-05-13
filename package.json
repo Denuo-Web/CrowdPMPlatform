@@ -15,11 +15,10 @@
     "predev": "pnpm run prepare:functions-deps && pnpm --filter crowdpm-functions build",
     "dev": "concurrently -k -n FRONTEND,FUNCTIONS,FUNCTIONS_BUILD \"pnpm --filter crowdpm-frontend dev\" \"pnpm --filter crowdpm-functions exec firebase emulators:start --project crowdpm-local\" \"pnpm --filter crowdpm-functions build:watch\"",
     "device:pair": "node scripts/device-emulator.mjs",
-    "device:simulate:osu": "node scripts/osu-bike-sim.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "eslint \"{functions,frontend}/src/**/*.{ts,tsx}\" \"functions/test/**/*.ts\"",
-    "deploy": "sh -c 'if [ \"${1:-}\" = \"--\" ]; then shift; fi; test -n \"${FIREBASE_PROJECT_ID:-}\" || { echo \"Set FIREBASE_PROJECT_ID to the deployed Firebase project ID.\" >&2; exit 1; }; firebase deploy --project \"$FIREBASE_PROJECT_ID\" \"$@\"' --"
+    "deploy": "sh -c 'if [ \"${1:-}\" = \"--\" ]; then shift; fi; test -n \"${FIREBASE_PROJECT_ID:-}\" || { echo \"Set FIREBASE_PROJECT_ID to the deployed Firebase project ID.\" >&2; exit 1; }; firebase deploy --project \"$FIREBASE_PROJECT_ID\" \"$@\"; deploy_status=$?; if [ $deploy_status -ne 0 ]; then exit $deploy_status; fi; if [ -n \"${FIRST_SUPER_ADMIN_EMAIL:-}\" ]; then pnpm --filter crowdpm-functions admin:bootstrap-super-admin; else echo \"FIRST_SUPER_ADMIN_EMAIL not set; skipping super admin bootstrap.\"; fi' --"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.5",

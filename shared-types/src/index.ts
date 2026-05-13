@@ -304,25 +304,6 @@ export type UserSettings = {
   subscriptionOffers: SubscriptionOffer[];
 };
 
-export type SmokeTestRequestBody = {
-  deviceId?: string;
-  payload?: IngestBody;
-  pointOverrides?: Partial<IngestPoint>;
-  visibility?: BatchVisibility;
-};
-
-export type SmokeTestResponse = IngestResult & {
-  payload: IngestBatchPayload;
-  points: IngestPoint[];
-  seededDeviceId: string;
-  seededDeviceIds: string[];
-};
-
-export type SmokeTestCleanupResponse = {
-  clearedDeviceId: string | null;
-  clearedDeviceIds?: string[];
-};
-
 export type AdminUserSummary = {
   uid: string;
   email: string | null;

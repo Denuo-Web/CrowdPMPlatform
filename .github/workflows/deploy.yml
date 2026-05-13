@@ -20,8 +20,9 @@ jobs:
       DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE }}
       DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS }}
       DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
-      SMOKE_TEST_USER_EMAIL: ${{ secrets.SMOKE_TEST_USER_EMAIL || vars.SMOKE_TEST_USER_EMAIL }}
-      SMOKE_TEST_USER_EMAILS: ${{ secrets.SMOKE_TEST_USER_EMAILS || vars.SMOKE_TEST_USER_EMAILS }}
+      FIRST_SUPER_ADMIN_EMAIL: ${{ secrets.FIRST_SUPER_ADMIN_EMAIL || vars.FIRST_SUPER_ADMIN_EMAIL }}
+      FIRST_SUPER_ADMIN_PASSWORD: ${{ secrets.FIRST_SUPER_ADMIN_PASSWORD }}
+      FIRST_SUPER_ADMIN_DISPLAY_NAME: ${{ secrets.FIRST_SUPER_ADMIN_DISPLAY_NAME || vars.FIRST_SUPER_ADMIN_DISPLAY_NAME }}
       DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
@@ -34,8 +35,6 @@ jobs:
       VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
       VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      VITE_SMOKE_TEST_USER_EMAIL: ${{ secrets.VITE_SMOKE_TEST_USER_EMAIL || vars.VITE_SMOKE_TEST_USER_EMAIL }}
-      VITE_SMOKE_TEST_USER_EMAILS: ${{ secrets.VITE_SMOKE_TEST_USER_EMAILS || vars.VITE_SMOKE_TEST_USER_EMAILS }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
       FIREBASE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
@@ -163,8 +162,6 @@ jobs:
             [ -n "$DEVICE_TOKEN_AUDIENCE" ] && printf 'DEVICE_TOKEN_AUDIENCE=%s\n' "$DEVICE_TOKEN_AUDIENCE"
             [ -n "$DEVICE_ACCESS_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_ACCESS_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_ACCESS_TOKEN_TTL_SECONDS"
             [ -n "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_REGISTRATION_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS"
-            [ -n "$SMOKE_TEST_USER_EMAIL" ] && printf 'SMOKE_TEST_USER_EMAIL=%s\n' "$SMOKE_TEST_USER_EMAIL"
-            [ -n "$SMOKE_TEST_USER_EMAILS" ] && printf 'SMOKE_TEST_USER_EMAILS=%s\n' "$SMOKE_TEST_USER_EMAILS"
             printf 'PUBLIC_APP_BASE_URL=%s\n' "$public_app_base_url"
           } > "$env_file"
 
@@ -281,6 +278,10 @@ jobs:
       - name: Deploy hosting and functions
         run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
 
+      - name: Bootstrap first super admin
+        if: ${{ env.FIRST_SUPER_ADMIN_EMAIL }}
+        run: corepack pnpm --filter crowdpm-functions admin:bootstrap-super-admin
+
       - name: Deploy Firestore rules
         if: ${{ steps.firestore.outputs.changed == 'true' }}
         run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID"
@@ -289,7 +290,7 @@ jobs:
         if: ${{ steps.storage.outputs.changed == 'true' }}
         run: firebase deploy --only storage --project "$FIREBASE_PROJECT_ID"
 
-      - name: Frontend smoke test
+      - name: Frontend availability check
         if: ${{ env.FRONTEND_URL }}
         run: |
           curl --fail --silent --show-error "$FRONTEND_URL" >/dev/null

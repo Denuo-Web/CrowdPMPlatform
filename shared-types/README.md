@@ -21,7 +21,6 @@ The package exports:
 - Batch visibility and moderation types.
 - Device, measurement, batch, public batch, admin, and user-settings contracts.
 - Ingest payload/result types.
-- Smoke-test request/response types.
 - Timestamp normalization helpers.
 
 Keep cross-package API shapes here when both frontend and functions need the same contract. Keep package-local implementation details in their owning package.

@@ -11,8 +11,6 @@ import { useUserSettings } from "./providers/UserSettingsProvider";
 import {
   confirmThemeSaveCheckoutSession,
   createThemeSaveCheckoutSession,
-  type IngestSmokeTestCleanupResponse,
-  type IngestSmokeTestResponse,
 } from "./lib/api";
 import {
   Theme,
@@ -80,7 +78,6 @@ const THEME_SHORTCUT_IGNORED_SELECTOR = [
 
 const MapPage = lazy(() => import("./pages/MapPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
-const SmokeTestLab = lazy(() => import("./pages/SmokeTestLab"));
 const AdminModerationPage = lazy(() => import("./pages/AdminModerationPage"));
 const AuthDialog = lazy(async () => {
   const module = await import("./components/AuthDialog");
@@ -99,7 +96,7 @@ const ThemeSettingsControls = lazy(async () => {
 });
 const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
-type AppTab = "map" | "dashboard" | "smoke" | "admin" | DeepLinkedAppTab;
+type AppTab = "map" | "dashboard" | "admin" | DeepLinkedAppTab;
 type ThemeCheckoutNotice = "success" | "cancelled" | null;
 type SubscriptionCheckoutNotice = "success" | "cancelled" | null;
 
@@ -148,7 +145,7 @@ function clearSubscriptionCheckoutNoticeFromUrl() {
 }
 
 export default function App() {
-  const { user, isLoading, signOut, canAccessAdmin, canRunSmokeTests } = useAuth();
+  const { user, isLoading, signOut, canAccessAdmin } = useAuth();
   const { settings } = useUserSettings();
   const userScopedKey = user?.uid ?? "anon";
   const initialDeepLinkedTab = typeof window !== "undefined"
@@ -171,15 +168,11 @@ export default function App() {
   const [subscriptionCheckoutSessionId, setSubscriptionCheckoutSessionId] = useState<string | null>(initialSubscriptionCheckoutSessionId);
   const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
-  const [pendingSmokeResult, setPendingSmokeResult] = useState<IngestSmokeTestResponse | null>(null);
-  const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
 
   const isSignedIn = Boolean(user);
   const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
-    : (tab === "smoke" && (!user || !canRunSmokeTests)
-      ? "map"
-      : (tab === "admin" && !canAccessAdmin ? "map" : tab));
+    : (tab === "admin" && !canAccessAdmin ? "map" : tab);
   const activeTheme = themeDraft ?? settings.theme;
   const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
@@ -240,9 +233,8 @@ export default function App() {
     setDashboardRefreshToken((prev) => prev + 1);
   }, [subscriptionCheckoutNotice, user]);
 
-  const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
+  const handleProtectedTabClick = (target: "dashboard" | "admin") => {
     if (user) {
-      if (target === "smoke" && !canRunSmokeTests) return;
       if (target === "admin" && !canAccessAdmin) return;
       setTab(target);
       return;
@@ -344,29 +336,6 @@ export default function App() {
     setSubscriptionCheckoutSessionId(null);
     clearSubscriptionCheckoutNoticeFromUrl();
   }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
-
-  const handleSmokeTestComplete = (result: IngestSmokeTestResponse) => {
-    setPendingSmokeResult(result);
-    setPendingSmokeCleanup(null);
-    setTab("map");
-  };
-
-  const handleSmokeTestCleanup = (detail: IngestSmokeTestCleanupResponse) => {
-    setPendingSmokeCleanup(detail);
-    setPendingSmokeResult((prev) => {
-      if (!prev) return prev;
-      const cleared = new Set<string>();
-      if (typeof detail.clearedDeviceId === "string" && detail.clearedDeviceId.length) {
-        cleared.add(detail.clearedDeviceId);
-      }
-      if (Array.isArray(detail.clearedDeviceIds)) {
-        detail.clearedDeviceIds.forEach((id) => {
-          if (typeof id === "string" && id.length) cleared.add(id);
-        });
-      }
-      return cleared.has(prev.deviceId) ? null : prev;
-    });
-  };
 
   const tabPanelFallback = (
     <Flex
@@ -539,15 +508,6 @@ export default function App() {
                 >
                   User Dashboard
                 </DropdownMenu.Item>
-                {canRunSmokeTests ? (
-                  <DropdownMenu.Item
-                    onSelect={() => handleProtectedTabClick("smoke")}
-                    style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
-                    disabled={isLoading}
-                  >
-                    Smoke Test Lab
-                  </DropdownMenu.Item>
-                ) : null}
                 {canAccessAdmin ? (
                   <DropdownMenu.Item
                     onSelect={() => handleProtectedTabClick("admin")}
@@ -616,13 +576,7 @@ export default function App() {
             }}
           >
             <Suspense fallback={tabPanelFallback}>
-              <MapPage
-                key={`map:${userScopedKey}`}
-                pendingSmokeResult={user ? pendingSmokeResult : null}
-                onSmokeResultConsumed={user ? (() => setPendingSmokeResult(null)) : undefined}
-                pendingCleanupDetail={user ? pendingSmokeCleanup : null}
-                onCleanupDetailConsumed={user ? (() => setPendingSmokeCleanup(null)) : undefined}
-              />
+              <MapPage key={`map:${userScopedKey}`} />
             </Suspense>
           </Box>
         ) : (
@@ -658,18 +612,11 @@ export default function App() {
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
-                      onOpenSmokeTest={canRunSmokeTests ? (() => handleProtectedTabClick("smoke")) : undefined}
                       onOpenThemeModal={openThemeModal}
                       subscriptionCheckoutNotice={subscriptionCheckoutNotice}
                       subscriptionCheckoutSessionId={subscriptionCheckoutSessionId}
                       onSubscriptionCheckoutHandled={handleSubscriptionCheckoutHandled}
                       refreshToken={dashboardRefreshToken}
-                    />
-                  ) : activeTab === "smoke" && user && canRunSmokeTests ? (
-                    <SmokeTestLab
-                      key={`smoke:${userScopedKey}`}
-                      onSmokeTestComplete={handleSmokeTestComplete}
-                      onSmokeTestCleared={handleSmokeTestCleanup}
                     />
                   ) : activeTab === "admin" && user && canAccessAdmin ? (
                     <AdminModerationPage key={`admin:${userScopedKey}`} />

@@ -24,19 +24,6 @@ let users = new Map<string, UserRecord>();
 let revokedRefreshTokens = new Set<string>();
 let deviceOwnership = new Map<string, string[]>();
 
-async function withFunctionsEmulator<T>(enabled: boolean, fn: () => Promise<T>): Promise<T> {
-  const previous = process.env.FUNCTIONS_EMULATOR;
-  if (enabled) process.env.FUNCTIONS_EMULATOR = "true";
-  else delete process.env.FUNCTIONS_EMULATOR;
-  try {
-    return await fn();
-  }
-  finally {
-    if (previous === undefined) delete process.env.FUNCTIONS_EMULATOR;
-    else process.env.FUNCTIONS_EMULATOR = previous;
-  }
-}
-
 function cloneUser(user: UserRecord): UserRecord {
   return JSON.parse(JSON.stringify(user));
 }
@@ -179,7 +166,6 @@ beforeEach(() => {
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
     if (auth === "Bearer super") return { uid: "admin-1", roles: ["super_admin"], admin: true };
     if (auth === "Bearer mod") return { uid: "mod-1", roles: ["moderator"] };
-    if (auth === "Bearer smoke") return { uid: "smoke-1", email: "smoke-tester@crowdpm.dev", roles: [] };
     return { uid: "user-x", roles: [] };
   });
 
@@ -210,24 +196,6 @@ describe("GET /v1/admin/users", () => {
       disabled: false,
     }));
     await app.close();
-  });
-
-  it("denies the local smoke tester because user management remains super-admin only", async () => {
-    await withFunctionsEmulator(true, async () => {
-      const app = await buildApp();
-      const res = await app.inject({
-        method: "GET",
-        url: "/v1/admin/users",
-        headers: { authorization: "Bearer smoke" },
-      });
-
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({
-        error: "forbidden",
-        message: "You do not have permission to access this resource.",
-      });
-      await app.close();
-    });
   });
 });
 
