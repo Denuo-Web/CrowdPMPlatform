@@ -12,7 +12,7 @@ type UserSettingsContextValue = {
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
-  defaultBatchVisibility: "private",
+  defaultBatchVisibility: "public",
   interleavedRendering: false,
   theme: {
     appearance: "dark",
@@ -23,6 +23,34 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
     scaling: "100%",
   },
   themeSaveUnlocked: false,
+  subscription: {
+    planId: "free_community",
+    label: "Free / Community",
+    source: "free",
+    status: "active",
+    billingInterval: null,
+    canManageBilling: false,
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: null,
+    videoDownloadAccess: "preview_watermarked",
+    limits: {
+      maxActiveDevices: 2,
+      maxStoredBatchesTotal: 100,
+      maxStoredPrivateBatches: 0,
+      monthlyPoints: 100_000,
+      maxPointsPerBatch: 5_000,
+    },
+    usage: {
+      activeDevices: 0,
+      storedBatchesTotal: 0,
+      storedPrivateBatches: 0,
+      monthlyPointsUsed: 0,
+      monthlyPointsRemaining: 100_000,
+      monthKey: "1970-01",
+      resetAt: "1970-02-01T00:00:00.000Z",
+    },
+  },
+  subscriptionOffers: [],
 };
 
 function applyUserSettingsDefaults(next: Partial<UserSettings>): UserSettings {

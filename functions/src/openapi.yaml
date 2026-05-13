@@ -112,14 +112,122 @@ paths:
           description: Stripe or application configuration is missing.
         '502':
           description: Stripe returned an upstream error.
+  /v1/subscription/checkout-session:
+    post:
+      operationId: createSubscriptionCheckoutSession
+      summary: Create a Stripe Checkout session for a CrowdPM Pro subscription
+      description: >
+        Creates an authenticated Stripe Checkout session for a recurring CrowdPM
+        Pro subscription. The checkout is linked to the signed-in account and
+        provisions higher device, batch, upload, and export limits after payment.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offerId]
+              properties:
+                offerId:
+                  type: string
+                  enum: [pro_monthly, pro_yearly]
+      responses:
+        '200':
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutRedirectSession'
+        '401':
+          description: Missing or invalid bearer token.
+        '429':
+          description: Rate limited.
+        '500':
+          description: Stripe or application configuration is missing.
+        '502':
+          description: Stripe returned an upstream error.
+  /v1/subscription/confirm:
+    post:
+      operationId: confirmSubscriptionCheckoutSession
+      summary: Confirm a completed subscription checkout
+      description: >
+        Retrieves a completed Stripe Checkout session, verifies that it belongs
+        to the signed-in account, and synchronizes the active subscription state
+        into CrowdPM account entitlements.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Subscription entitlement synchronized.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [confirmed, sessionId, subscriptionSynchronized]
+                properties:
+                  confirmed:
+                    type: boolean
+                    example: true
+                  sessionId:
+                    type: string
+                  subscriptionSynchronized:
+                    type: boolean
+                    example: true
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Checkout session belongs to another user.
+        '409':
+          description: Checkout session is still pending.
+        '429':
+          description: Rate limited.
+        '502':
+          description: Stripe returned an upstream error.
+  /v1/subscription/billing-portal:
+    post:
+      operationId: createBillingPortalSession
+      summary: Open the Stripe Billing Portal for the signed-in account
+      description: >
+        Creates a Stripe Billing Portal session for the signed-in user when a
+        Stripe customer record is already linked to the account.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Billing portal session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutRedirectSession'
+        '401':
+          description: Missing or invalid bearer token.
+        '409':
+          description: No Stripe customer is linked to the account yet.
+        '429':
+          description: Rate limited.
+        '502':
+          description: Stripe returned an upstream error.
   /v1/payments/stripe/webhook:
     post:
       operationId: handleStripeWebhook
       summary: Receive Stripe webhook events
       description: >
-        Accepts Stripe webhook callbacks and records successful node hardware or
-        theme save unlock sessions, including shipping details where applicable,
-        calculated tax, and account entitlements after verifying the
+        Accepts Stripe webhook callbacks and records successful node hardware,
+        theme save unlock, and recurring subscription events, including shipping
+        details where applicable, calculated tax, and account entitlements after
+        verifying the
         `Stripe-Signature` header against the raw request body.
       security: []
       parameters:
@@ -1386,11 +1494,148 @@ components:
         themeSaveUnlocked:
           type: boolean
           description: Whether the account has purchased the one-time entitlement that allows saving theme preferences.
+        subscription:
+          $ref: '#/components/schemas/SubscriptionSummary'
+        subscriptionOffers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionOffer'
       required:
         - defaultBatchVisibility
         - interleavedRendering
         - theme
         - themeSaveUnlocked
+        - subscription
+        - subscriptionOffers
+    SubscriptionSummary:
+      type: object
+      properties:
+        planId:
+          type: string
+          enum: [free_community, pro, research_lab]
+        label:
+          type: string
+        source:
+          type: string
+          enum: [free, stripe, manual]
+        status:
+          type: string
+          enum: [active, inactive, trialing, past_due, canceled]
+        billingInterval:
+          type: string
+          nullable: true
+          enum: [month, year]
+        canManageBilling:
+          type: boolean
+        cancelAtPeriodEnd:
+          type: boolean
+        currentPeriodEnd:
+          type: string
+          format: date-time
+          nullable: true
+        videoDownloadAccess:
+          type: string
+          enum: [preview_watermarked, full]
+        limits:
+          $ref: '#/components/schemas/SubscriptionLimits'
+        usage:
+          $ref: '#/components/schemas/SubscriptionUsage'
+      required:
+        - planId
+        - label
+        - source
+        - status
+        - billingInterval
+        - canManageBilling
+        - cancelAtPeriodEnd
+        - currentPeriodEnd
+        - videoDownloadAccess
+        - limits
+        - usage
+    SubscriptionLimits:
+      type: object
+      properties:
+        maxActiveDevices:
+          type: integer
+        maxStoredBatchesTotal:
+          type: integer
+        maxStoredPrivateBatches:
+          type: integer
+        monthlyPoints:
+          type: integer
+        maxPointsPerBatch:
+          type: integer
+      required:
+        - maxActiveDevices
+        - maxStoredBatchesTotal
+        - maxStoredPrivateBatches
+        - monthlyPoints
+        - maxPointsPerBatch
+    SubscriptionUsage:
+      type: object
+      properties:
+        activeDevices:
+          type: integer
+        storedBatchesTotal:
+          type: integer
+        storedPrivateBatches:
+          type: integer
+        monthlyPointsUsed:
+          type: integer
+        monthlyPointsRemaining:
+          type: integer
+        monthKey:
+          type: string
+        resetAt:
+          type: string
+          format: date-time
+      required:
+        - activeDevices
+        - storedBatchesTotal
+        - storedPrivateBatches
+        - monthlyPointsUsed
+        - monthlyPointsRemaining
+        - monthKey
+        - resetAt
+    SubscriptionOffer:
+      type: object
+      properties:
+        offerId:
+          type: string
+          enum: [pro_monthly, pro_yearly, research_contact]
+        planId:
+          type: string
+          enum: [free_community, pro, research_lab]
+        label:
+          type: string
+        description:
+          type: string
+        currency:
+          type: string
+          nullable: true
+        unitAmount:
+          type: integer
+          nullable: true
+        billingInterval:
+          type: string
+          nullable: true
+          enum: [month, year]
+        action:
+          type: string
+          enum: [checkout, contact]
+        contactEmail:
+          type: string
+          nullable: true
+      required:
+        - offerId
+        - planId
+        - label
+        - description
+        - currency
+        - unitAmount
+        - billingInterval
+        - action
+        - contactEmail
     UserThemeSettings:
       type: object
       properties:

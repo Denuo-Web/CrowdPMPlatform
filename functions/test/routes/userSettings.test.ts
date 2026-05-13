@@ -22,6 +22,52 @@ const defaultTheme = {
   scaling: "100%",
 };
 
+const expectedFreeSubscription = {
+  planId: "free_community",
+  label: "Free / Community",
+  source: "free",
+  status: "active",
+  billingInterval: null,
+  canManageBilling: false,
+  cancelAtPeriodEnd: false,
+  currentPeriodEnd: null,
+  videoDownloadAccess: "preview_watermarked",
+  limits: {
+    maxActiveDevices: 2,
+    maxStoredBatchesTotal: 100,
+    maxStoredPrivateBatches: 0,
+    monthlyPoints: 100_000,
+    maxPointsPerBatch: 5_000,
+  },
+};
+
+const expectedOffers = [
+  {
+    offerId: "pro_monthly",
+    planId: "pro",
+    action: "checkout",
+    billingInterval: "month",
+    currency: "usd",
+    unitAmount: 900,
+  },
+  {
+    offerId: "pro_yearly",
+    planId: "pro",
+    action: "checkout",
+    billingInterval: "year",
+    currency: "usd",
+    unitAmount: 9900,
+  },
+  {
+    offerId: "research_contact",
+    planId: "research_lab",
+    action: "contact",
+    billingInterval: null,
+    currency: null,
+    unitAmount: null,
+  },
+];
+
 function makeDocRef(path: string) {
   return {
     get: vi.fn(async () => {
@@ -103,11 +149,13 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
-      defaultBatchVisibility: "private",
+    expect(res.json()).toMatchObject({
+      defaultBatchVisibility: "public",
       interleavedRendering: false,
       theme: defaultTheme,
       themeSaveUnlocked: false,
+      subscription: expectedFreeSubscription,
+      subscriptionOffers: expectedOffers,
     });
     await app.close();
   });
@@ -123,11 +171,13 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
+    expect(res.json()).toMatchObject({
       defaultBatchVisibility: "public",
       interleavedRendering: true,
       theme: defaultTheme,
       themeSaveUnlocked: false,
+      subscription: expectedFreeSubscription,
+      subscriptionOffers: expectedOffers,
     });
     await app.close();
   });
@@ -155,8 +205,8 @@ describe("user settings routes", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
-      defaultBatchVisibility: "private",
+    expect(res.json()).toMatchObject({
+      defaultBatchVisibility: "public",
       interleavedRendering: false,
       theme: {
         appearance: "light",
@@ -167,6 +217,8 @@ describe("user settings routes", () => {
         scaling: "105%",
       },
       themeSaveUnlocked: true,
+      subscription: expectedFreeSubscription,
+      subscriptionOffers: expectedOffers,
     });
 
     const partial = await app.inject({

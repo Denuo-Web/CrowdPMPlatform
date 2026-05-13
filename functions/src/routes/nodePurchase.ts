@@ -11,8 +11,11 @@ import {
   requireUserGuard,
 } from "../lib/routeGuards.js";
 import {
+  confirmSubscriptionCheckoutSession,
   confirmThemeSaveCheckoutSession,
+  createBillingPortalSession,
   createNodePurchaseCheckoutSession,
+  createSubscriptionCheckoutSession,
   createThemeSaveCheckoutSession,
   handleStripeWebhook,
   listNodePurchaseReceipts,
@@ -28,6 +31,14 @@ const nodeCheckoutBodySchema = z.object({
 }).strict();
 
 const confirmThemeCheckoutBodySchema = z.object({
+  sessionId: z.string().trim().min(1),
+}).strict();
+
+const subscriptionCheckoutBodySchema = z.object({
+  offerId: z.enum(["pro_monthly", "pro_yearly"]),
+}).strict();
+
+const confirmSubscriptionCheckoutBodySchema = z.object({
   sessionId: z.string().trim().min(1),
 }).strict();
 
@@ -102,6 +113,54 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
       userId: requestUserId(req),
     });
   });
+
+  app.post("/v1/subscription/checkout-session", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `subscription:checkout:user:${requestUserId(req)}`, 10, 60_000),
+      rateLimitGuard((req) => `subscription:checkout:ip:${requestIp(req)}`, 20, 60_000),
+      rateLimitGuard("subscription:checkout:global", 500, 60_000),
+    ],
+  }, async (req) => {
+    const parsed = subscriptionCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+    return createSubscriptionCheckoutSession({
+      offerId: parsed.data.offerId,
+      userId: requestUserId(req),
+      customerEmail: getRequestUser(req).email ?? null,
+    });
+  });
+
+  app.post("/v1/subscription/confirm", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `subscription:confirm:user:${requestUserId(req)}`, 20, 60_000),
+      rateLimitGuard((req) => `subscription:confirm:ip:${requestIp(req)}`, 40, 60_000),
+      rateLimitGuard("subscription:confirm:global", 1_000, 60_000),
+    ],
+  }, async (req) => {
+    const parsed = confirmSubscriptionCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+    return confirmSubscriptionCheckoutSession({
+      sessionId: parsed.data.sessionId,
+      userId: requestUserId(req),
+    });
+  });
+
+  app.post("/v1/subscription/billing-portal", {
+    preHandler: [
+      requireUserGuard(),
+      rateLimitGuard((req) => `subscription:portal:user:${requestUserId(req)}`, 20, 60_000),
+      rateLimitGuard((req) => `subscription:portal:ip:${requestIp(req)}`, 40, 60_000),
+      rateLimitGuard("subscription:portal:global", 1_000, 60_000),
+    ],
+  }, async (req) => createBillingPortalSession({
+    userId: requestUserId(req),
+  }));
 
   app.post("/v1/payments/stripe/webhook", {
     preHandler: [

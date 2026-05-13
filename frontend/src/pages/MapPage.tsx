@@ -1044,18 +1044,17 @@ export default function MapPage({
   const shouldRenderMapViewport = isMapViewportActivated || !isAnonymousHeroState;
   const isMapZoomHydrated = !isAuthLoading && zoomHydrationKey === userScopedZoomKey;
   const isExportSectionVisible = Boolean(selectedBatchKey) && !isShowingAllPublic24h;
+  const isWatermarkedExport = settings.subscription.videoDownloadAccess === "preview_watermarked";
   const canExportSelection = useMemo(() => {
     if (!selectedBatchKey || isShowingAllPublic24h) return false;
-    if (user) return Boolean(selectedSummary);
-    return selectedSummary?.visibility === "public";
+    return Boolean(user && selectedSummary);
   }, [isShowingAllPublic24h, selectedBatchKey, selectedSummary, user]);
   const exportDisabledReason = useMemo(() => {
     if (!isExportSectionVisible) return null;
+    if (!user) return "Sign in to create a video preview or unlock full downloads.";
     if (isLoadingBatch) return "Wait for the selected batch to finish loading before exporting.";
     if (!canExportSelection) {
-      return user
-        ? "The selected batch is not available for export."
-        : "Video export is only available for public batches when signed out.";
+      return "The selected batch is not available for export.";
     }
     if (rows.length < 2) return "Video export requires at least 2 measurements in the selected batch.";
     if (!recordingSupport.supported) return recordingSupport.reason;
@@ -1140,7 +1139,9 @@ export default function MapPage({
     try {
       await waitForAnimationFrames(2);
 
-      captureSession = await (map3DRef.current?.startCaptureSession() ?? Promise.resolve(null));
+      captureSession = await (map3DRef.current?.startCaptureSession({
+        watermarkText: isWatermarkedExport ? "CrowdPM Preview" : null,
+      }) ?? Promise.resolve(null));
       const captureCanvas = captureSession?.canvas ?? null;
       if (!captureCanvas) {
         throw new Error("Unable to prepare the active map and overlay for video export.");
@@ -1192,9 +1193,9 @@ export default function MapPage({
       const objectUrl = URL.createObjectURL(blob);
 
       setRenderedVideoUrl(objectUrl);
-      setRenderedVideoName(`${deviceSegment}-${batchSegment}.webm`);
+      setRenderedVideoName(`${deviceSegment}-${batchSegment}${isWatermarkedExport ? "-preview" : ""}.webm`);
       setRenderedVideoMimeType(blob.type || recordingSupport.mimeType);
-      setExportStatus("Your video is ready to download!");
+      setExportStatus(isWatermarkedExport ? "Your preview is ready to download." : "Your video is ready to download!");
     }
     catch (err) {
       if (recordingSession) {
@@ -1214,6 +1215,7 @@ export default function MapPage({
     recordingSupport.mimeType,
     renderedVideoUrl,
     rows.length,
+    isWatermarkedExport,
     selectedBatchParsed,
     selectedIndex,
     selectedSummary?.deviceName,
@@ -1608,7 +1610,7 @@ export default function MapPage({
                                 cursor: "pointer",
                               }}
                             >
-                              Download Video
+                              {isWatermarkedExport ? "Download Preview" : "Download Video"}
                             </a>
                             <button
                               type="button"
@@ -1642,7 +1644,7 @@ export default function MapPage({
                               cursor: canStartExport ? "pointer" : "not-allowed",
                             }}
                           >
-                            Create Video Now
+                            {isWatermarkedExport ? "Create Preview" : "Create Video Now"}
                           </button>
                         )}
                       </div>
@@ -1655,7 +1657,9 @@ export default function MapPage({
                       >
                         {renderedVideoUrl
                           ? (exportStatus ?? "Your video is ready to download.")
-                          : (exportDisabledReason ?? "Create a video flythrough from the selected measurement batch.")}
+                          : (exportDisabledReason ?? (isWatermarkedExport
+                            ? "Create a watermarked preview flythrough from the selected measurement batch."
+                            : "Create a video flythrough from the selected measurement batch."))}
                       </p>
                     </>
                   )}

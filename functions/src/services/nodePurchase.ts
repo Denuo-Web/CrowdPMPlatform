@@ -2,6 +2,12 @@ import Stripe from "stripe";
 import { db } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { getPublicAppBaseUrl, getStripeSecretKey, getStripeWebhookSecret } from "../lib/runtimeConfig.js";
+import {
+  getStripeCustomerIdForUser,
+  getStripeOfferConfig,
+  linkStripeCustomerToUser,
+  upsertStripeSubscriptionState,
+} from "./accountEntitlements.js";
 
 const CATALOG_COLLECTION = "paymentCatalog";
 const USER_SETTINGS_COLLECTION = "userSettings";
@@ -12,9 +18,11 @@ const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
 const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.";
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
+const SUBSCRIPTION_CHECKOUT_SUBMIT_MESSAGE = "Recurring CrowdPM account subscription. Applicable taxes are calculated in Stripe Checkout. Cancel any time from the billing portal.";
 const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
 const DEFAULT_NODE_HARDWARE_QUANTITY = 1;
 const MAX_NODE_HARDWARE_QUANTITY = 10;
+const SUBSCRIPTION_SESSION_COLLECTION = "subscriptionCheckoutSessions";
 
 type PaymentCatalog = {
   productId: string;
@@ -23,9 +31,10 @@ type PaymentCatalog = {
   unitAmount: number;
   taxCode: string;
   taxBehavior: Stripe.Price.TaxBehavior;
+  recurringInterval?: Stripe.Price.Recurring.Interval | null;
 };
 
-type PurchaseType = "node_hardware" | "theme_save_unlock";
+type PurchaseType = "node_hardware" | "theme_save_unlock" | "subscription";
 type CheckoutSessionCreateParams = NonNullable<Parameters<Stripe["checkout"]["sessions"]["create"]>[0]>;
 
 type CheckoutProductConfig = {
@@ -43,12 +52,22 @@ type CheckoutProductConfig = {
   successQueryParam: string;
   cancelQueryParam: string;
   customText: CheckoutSessionCreateParams["custom_text"];
+  mode?: CheckoutSessionCreateParams["mode"];
+  recurringInterval?: Stripe.Price.Recurring.Interval;
+  allowPromotionCodes?: boolean;
+  successSessionIdQueryParam?: string;
   shippingAddressCollection?: CheckoutSessionCreateParams["shipping_address_collection"];
 };
 
 export type NodePurchaseCheckoutSession = {
   sessionId: string;
   url: string;
+};
+
+export type ConfirmSubscriptionCheckoutSessionResult = {
+  confirmed: true;
+  sessionId: string;
+  subscriptionSynchronized: true;
 };
 
 export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
@@ -152,6 +171,7 @@ const THEME_SAVE_UNLOCK_CONFIG: CheckoutProductConfig = {
   billingAddressCollection: "required",
   successPath: "/",
   successQueryParam: "themeCheckout=success",
+  successSessionIdQueryParam: "themeCheckoutSessionId",
   cancelQueryParam: "themeCheckout=cancelled",
   customText: {
     submit: {
@@ -231,6 +251,9 @@ function readStoredCatalog(data: Record<string, unknown> | undefined): PaymentCa
   const unitAmount = typeof data?.unitAmount === "number" ? data.unitAmount : Number.NaN;
   const taxCode = typeof data?.taxCode === "string" ? data.taxCode.trim() : "";
   const taxBehavior = typeof data?.taxBehavior === "string" ? data.taxBehavior.trim() as Stripe.Price.TaxBehavior : "";
+  const recurringInterval = data?.recurringInterval === "month" || data?.recurringInterval === "year"
+    ? data.recurringInterval as Stripe.Price.Recurring.Interval
+    : null;
 
   if (
     !productId
@@ -251,6 +274,7 @@ function readStoredCatalog(data: Record<string, unknown> | undefined): PaymentCa
     unitAmount,
     taxCode,
     taxBehavior,
+    recurringInterval,
   };
 }
 
@@ -258,13 +282,14 @@ function isCurrentCatalog(catalog: PaymentCatalog, config: CheckoutProductConfig
   return catalog.currency === config.currency
     && catalog.unitAmount === config.unitAmount
     && catalog.taxCode === config.taxCode
-    && catalog.taxBehavior === config.taxBehavior;
+    && catalog.taxBehavior === config.taxBehavior
+    && (catalog.recurringInterval ?? null) === (config.recurringInterval ?? null);
 }
 
 function checkoutRedirectUrls(config: CheckoutProductConfig): { successUrl: string; cancelUrl: string } {
   const baseUrl = normalizeBaseUrl(getPublicAppBaseUrl());
-  const successUrl = `${baseUrl}${config.successPath}?${config.successQueryParam}${config.purchaseType === THEME_SAVE_UNLOCK_CONFIG.purchaseType
-    ? "&themeCheckoutSessionId={CHECKOUT_SESSION_ID}"
+  const successUrl = `${baseUrl}${config.successPath}?${config.successQueryParam}${config.successSessionIdQueryParam
+    ? `&${config.successSessionIdQueryParam}={CHECKOUT_SESSION_ID}`
     : ""}`;
   const cancelUrl = `${baseUrl}${config.successPath}?${config.cancelQueryParam}`;
   return {
@@ -305,6 +330,9 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
         currency: config.currency,
         unit_amount: config.unitAmount,
         tax_behavior: config.taxBehavior,
+        ...(config.recurringInterval
+          ? { recurring: { interval: config.recurringInterval } }
+          : {}),
       },
     });
   }
@@ -327,6 +355,7 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
     unitAmount: config.unitAmount,
     taxCode: config.taxCode,
     taxBehavior: config.taxBehavior,
+    recurringInterval: config.recurringInterval ?? null,
   };
 
   await ref.set({
@@ -339,9 +368,11 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
 
 type CreateCheckoutSessionOptions = {
   customerEmail?: string | null;
+  customerId?: string | null;
   userId?: string;
   quantity?: number;
   metadata?: Record<string, string>;
+  subscriptionMetadata?: Record<string, string>;
   sessionData?: Record<string, unknown>;
 };
 
@@ -369,7 +400,7 @@ async function createCheckoutSession(
         quantity,
       },
     ],
-    mode: "payment",
+    mode: config.mode ?? "payment",
     automatic_tax: {
       enabled: true,
     },
@@ -379,14 +410,25 @@ async function createCheckoutSession(
     success_url: successUrl,
     cancel_url: cancelUrl,
   };
+  if (config.allowPromotionCodes) {
+    params.allow_promotion_codes = true;
+  }
   if (config.shippingAddressCollection) {
     params.shipping_address_collection = config.shippingAddressCollection;
   }
-  if (options.customerEmail) {
+  if (options.customerId) {
+    params.customer = options.customerId;
+  }
+  else if (options.customerEmail) {
     params.customer_email = options.customerEmail;
   }
   if (options.userId) {
     params.client_reference_id = options.userId;
+  }
+  if ((config.mode ?? "payment") === "subscription" && options.subscriptionMetadata) {
+    params.subscription_data = {
+      metadata: options.subscriptionMetadata,
+    };
   }
 
   let session: Stripe.Checkout.Session;
@@ -437,6 +479,37 @@ async function ensureThemeSaveLocked(userId: string): Promise<void> {
   }
 }
 
+function subscriptionConfigForOffer(offerId: "pro_monthly" | "pro_yearly"): CheckoutProductConfig {
+  const offer = getStripeOfferConfig(offerId);
+  if (!offer) {
+    throw httpError(400, "invalid_request", "Unknown subscription offer.");
+  }
+  return {
+    catalogDocId: offer.catalogDocId,
+    sessionCollection: SUBSCRIPTION_SESSION_COLLECTION,
+    purchaseType: "subscription",
+    productName: offer.productName,
+    description: offer.productDescription,
+    currency: offer.currency,
+    unitAmount: offer.unitAmount,
+    taxCode: DEFAULT_PRODUCT_TAX_CODE,
+    taxBehavior: "exclusive",
+    billingAddressCollection: "required",
+    successPath: "/",
+    successQueryParam: "subscriptionCheckout=success",
+    successSessionIdQueryParam: "subscriptionCheckoutSessionId",
+    cancelQueryParam: "subscriptionCheckout=cancelled",
+    customText: {
+      submit: {
+        message: SUBSCRIPTION_CHECKOUT_SUBMIT_MESSAGE,
+      },
+    },
+    mode: "subscription",
+    recurringInterval: offer.billingInterval,
+    allowPromotionCodes: true,
+  };
+}
+
 export async function createNodePurchaseCheckoutSession(args: {
   variantId?: NodePurchaseVariantId;
   quantity?: number;
@@ -469,6 +542,241 @@ export async function createThemeSaveCheckoutSession(args: {
 }): Promise<NodePurchaseCheckoutSession> {
   await ensureThemeSaveLocked(args.userId);
   return createCheckoutSession(THEME_SAVE_UNLOCK_CONFIG, args);
+}
+
+export async function createSubscriptionCheckoutSession(args: {
+  offerId: "pro_monthly" | "pro_yearly";
+  userId: string;
+  customerEmail?: string | null;
+}): Promise<NodePurchaseCheckoutSession> {
+  const offer = getStripeOfferConfig(args.offerId);
+  if (!offer) {
+    throw httpError(400, "invalid_request", "Unknown subscription offer.");
+  }
+
+  const existingCustomerId = await getStripeCustomerIdForUser(args.userId);
+  return createCheckoutSession(subscriptionConfigForOffer(args.offerId), {
+    userId: args.userId,
+    customerId: existingCustomerId,
+    customerEmail: args.customerEmail,
+    metadata: {
+      offerId: offer.offerId,
+      planId: offer.planId,
+      billingInterval: offer.billingInterval,
+    },
+    subscriptionMetadata: {
+      purchaseType: "subscription",
+      offerId: offer.offerId,
+      planId: offer.planId,
+      billingInterval: offer.billingInterval,
+      userId: args.userId,
+    },
+    sessionData: {
+      offerId: offer.offerId,
+      planId: offer.planId,
+      billingInterval: offer.billingInterval,
+    },
+  });
+}
+
+async function retrieveSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+  try {
+    return await getStripeClient().subscriptions.retrieve(subscriptionId);
+  }
+  catch (err) {
+    const message = err instanceof Error && err.message.trim().length > 0
+      ? err.message
+      : "Unable to retrieve the Stripe subscription.";
+    throw httpError(502, "stripe_error", message);
+  }
+}
+
+async function recordCompletedSubscriptionCheckoutSession(
+  session: Stripe.Checkout.Session,
+  event?: Stripe.Event,
+): Promise<void> {
+  const storedSessionSnap = await db().collection(SUBSCRIPTION_SESSION_COLLECTION).doc(session.id).get();
+  const storedSession = storedSessionSnap.exists ? (storedSessionSnap.data() as Record<string, unknown>) : null;
+  const offerId = readSubscriptionOfferId(session.metadata?.offerId)
+    ?? readSubscriptionOfferId(storedSession?.offerId);
+  const offer = offerId ? getStripeOfferConfig(offerId) : null;
+  const userId = resolveSubscriptionUserId(session.metadata, storedSession, session.client_reference_id);
+  const customerId = extractExpandableId(session.customer as string | { id: string } | null | undefined);
+  const subscriptionId = extractExpandableId(session.subscription as string | { id: string } | null | undefined);
+
+  await db().collection(SUBSCRIPTION_SESSION_COLLECTION).doc(session.id).set({
+    sessionId: session.id,
+    status: "completed",
+    purchaseType: "subscription",
+    mode: session.mode,
+    userId,
+    offerId: offer?.offerId ?? null,
+    planId: offer?.planId ?? null,
+    billingInterval: offer?.billingInterval ?? null,
+    customerId,
+    customerEmail: session.customer_details?.email ?? session.customer_email ?? null,
+    paymentStatus: session.payment_status ?? null,
+    subscriptionId,
+    amountSubtotal: session.amount_subtotal ?? null,
+    amountTotal: session.amount_total ?? null,
+    currency: session.currency ?? null,
+    completedAt: new Date().toISOString(),
+    ...(event
+      ? {
+          eventId: event.id,
+          eventCreatedAt: new Date(event.created * 1000).toISOString(),
+        }
+      : {}),
+  }, { merge: true });
+
+  if (userId && customerId) {
+    await linkStripeCustomerToUser(userId, customerId);
+  }
+}
+
+async function syncStripeSubscription(
+  subscription: Stripe.Subscription,
+  options: { checkoutSessionId?: string | null; fallbackUserId?: string | null } = {},
+): Promise<void> {
+  const currentPeriodEnd = subscription.items.data[0]?.current_period_end ?? null;
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  const offer = await findSubscriptionOfferByPriceId(priceId)
+    ?? getStripeOfferConfig(readSubscriptionOfferId(subscription.metadata?.offerId));
+  const userId = readNonEmptyString(subscription.metadata?.userId)
+    ?? options.fallbackUserId
+    ?? null;
+
+  if (!offer || !userId) {
+    return;
+  }
+
+  await upsertStripeSubscriptionState({
+    userId,
+    planId: offer.planId,
+    billingInterval: offer.billingInterval,
+    status: normalizeStripeSubscriptionStatus(subscription.status),
+    stripeCustomerId: extractExpandableId(subscription.customer as string | { id: string } | null | undefined),
+    stripeSubscriptionId: subscription.id,
+    stripePriceId: priceId,
+    stripeCheckoutSessionId: options.checkoutSessionId ?? undefined,
+    currentPeriodEnd: currentPeriodEnd
+      ? new Date(currentPeriodEnd * 1000).toISOString()
+      : null,
+    cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+  });
+}
+
+export async function confirmSubscriptionCheckoutSession(args: {
+  sessionId: string;
+  userId: string;
+}): Promise<ConfirmSubscriptionCheckoutSessionResult> {
+  const sessionId = readNonEmptyString(args.sessionId);
+  if (!sessionId) {
+    throw httpError(400, "invalid_request", "sessionId is required.");
+  }
+
+  const session = await retrieveCheckoutSession(sessionId);
+  if (session.mode !== "subscription") {
+    throw httpError(400, "invalid_request", "Checkout session is not a subscription purchase.");
+  }
+  const storedSessionSnap = await db().collection(SUBSCRIPTION_SESSION_COLLECTION).doc(session.id).get();
+  const storedSession = storedSessionSnap.exists ? (storedSessionSnap.data() as Record<string, unknown>) : null;
+  const sessionUserId = resolveSubscriptionUserId(session.metadata, storedSession, session.client_reference_id);
+  if (!sessionUserId || sessionUserId !== args.userId) {
+    throw httpError(403, "subscription_forbidden", "This subscription checkout does not belong to the signed-in account.");
+  }
+  const subscriptionId = extractExpandableId(session.subscription as string | { id: string } | null | undefined);
+  if (!subscriptionId || (session.status !== "complete" && session.payment_status !== "paid" && session.payment_status !== "no_payment_required")) {
+    throw httpError(409, "subscription_pending", "Subscription checkout is still processing. Please try again in a moment.");
+  }
+
+  await recordCompletedSubscriptionCheckoutSession(session);
+  const subscription = await retrieveSubscription(subscriptionId);
+  await syncStripeSubscription(subscription, {
+    checkoutSessionId: session.id,
+    fallbackUserId: args.userId,
+  });
+
+  return {
+    confirmed: true,
+    sessionId,
+    subscriptionSynchronized: true,
+  };
+}
+
+export async function createBillingPortalSession(args: {
+  userId: string;
+}): Promise<NodePurchaseCheckoutSession> {
+  const customerId = await getStripeCustomerIdForUser(args.userId);
+  if (!customerId) {
+    throw httpError(409, "billing_portal_unavailable", "No Stripe billing account is linked to this user yet.");
+  }
+
+  const baseUrl = normalizeBaseUrl(getPublicAppBaseUrl());
+  let session: Stripe.BillingPortal.Session;
+  try {
+    session = await getStripeClient().billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${baseUrl}/`,
+    });
+  }
+  catch (err) {
+    const message = err instanceof Error && err.message.trim().length > 0
+      ? err.message
+      : "Unable to open the Stripe billing portal.";
+    throw httpError(502, "stripe_error", message);
+  }
+
+  if (!session.url) {
+    throw httpError(502, "stripe_error", "Stripe did not return a billing portal URL.");
+  }
+
+  return {
+    sessionId: session.id,
+    url: session.url,
+  };
+}
+
+function readSubscriptionOfferId(value: unknown): "pro_monthly" | "pro_yearly" | null {
+  return value === "pro_monthly" || value === "pro_yearly" ? value : null;
+}
+
+function resolveSubscriptionUserId(
+  metadata: Record<string, string | null | undefined> | null | undefined,
+  storedSession: Record<string, unknown> | null,
+  clientReferenceId?: string | null,
+): string | null {
+  return readNonEmptyString(metadata?.userId)
+    ?? readNonEmptyString(clientReferenceId)
+    ?? readNonEmptyString(storedSession?.userId);
+}
+
+function normalizeStripeSubscriptionStatus(
+  status: Stripe.Subscription.Status | null | undefined,
+): "active" | "inactive" | "trialing" | "past_due" | "canceled" {
+  if (status === "active" || status === "trialing" || status === "past_due") {
+    return status;
+  }
+  if (status === "canceled") {
+    return "canceled";
+  }
+  return "inactive";
+}
+
+async function findSubscriptionOfferByPriceId(priceId: string | null | undefined) {
+  if (!priceId) {
+    return null;
+  }
+  for (const offerId of ["pro_monthly", "pro_yearly"] as const) {
+    const offer = getStripeOfferConfig(offerId);
+    if (!offer) continue;
+    const snap = await db().collection(CATALOG_COLLECTION).doc(offer.catalogDocId).get();
+    const stored = readStoredCatalog(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
+    if (stored?.defaultPriceId === priceId) {
+      return offer;
+    }
+  }
+  return null;
 }
 
 export type ConfirmThemeSaveCheckoutSessionResult = {
@@ -737,8 +1045,29 @@ export async function handleStripeWebhook({ signature, rawBody }: StripeWebhookA
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const { config, storedSession } = await resolvePurchase(session);
-    await recordCompletedSession(config, storedSession, session, event);
+    if (session.mode === "subscription") {
+      await recordCompletedSubscriptionCheckoutSession(session, event);
+      const subscriptionId = extractExpandableId(session.subscription as string | { id: string } | null | undefined);
+      if (subscriptionId) {
+        const subscription = await retrieveSubscription(subscriptionId);
+        await syncStripeSubscription(subscription, {
+          checkoutSessionId: session.id,
+          fallbackUserId: resolveSubscriptionUserId(session.metadata, null, session.client_reference_id),
+        });
+      }
+    }
+    else {
+      const { config, storedSession } = await resolvePurchase(session);
+      await recordCompletedSession(config, storedSession, session, event);
+    }
+  }
+
+  if (
+    event.type === "customer.subscription.created"
+    || event.type === "customer.subscription.updated"
+    || event.type === "customer.subscription.deleted"
+  ) {
+    await syncStripeSubscription(event.data.object as Stripe.Subscription);
   }
 
   return { received: true };

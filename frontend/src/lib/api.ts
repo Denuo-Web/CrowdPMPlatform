@@ -22,6 +22,9 @@ import type {
   NodePurchaseVariantId,
   PublicBatchDetail,
   PublicBatchSummary,
+  SubscriptionOffer,
+  SubscriptionOfferId,
+  SubscriptionSummary,
   SmokeTestCleanupResponse,
   SmokeTestResponse,
   UserSettings,
@@ -130,6 +133,9 @@ export type {
   NodePurchaseVariantId,
   PublicBatchDetail,
   PublicBatchSummary,
+  SubscriptionOffer,
+  SubscriptionOfferId,
+  SubscriptionSummary,
   UserSettings,
 };
 export type IngestSmokeTestPoint = IngestPoint;
@@ -164,6 +170,36 @@ export async function listNodePurchaseReceipts(): Promise<NodePurchaseReceipt[]>
 
 export async function createThemeSaveCheckoutSession(): Promise<CheckoutRedirectSession> {
   return requestJson<CheckoutRedirectSession>("/v1/theme-purchase/checkout-session", {
+    method: "POST",
+  });
+}
+
+export async function createSubscriptionCheckoutSession(offerId: "pro_monthly" | "pro_yearly"): Promise<CheckoutRedirectSession> {
+  return requestJson<CheckoutRedirectSession>("/v1/subscription/checkout-session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ offerId }),
+  });
+}
+
+export async function confirmSubscriptionCheckoutSession(sessionId: string): Promise<{
+  confirmed: true;
+  sessionId: string;
+  subscriptionSynchronized: true;
+}> {
+  return requestJson("/v1/subscription/confirm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+export async function createBillingPortalSession(): Promise<CheckoutRedirectSession> {
+  return requestJson<CheckoutRedirectSession>("/v1/subscription/billing-portal", {
     method: "POST",
   });
 }

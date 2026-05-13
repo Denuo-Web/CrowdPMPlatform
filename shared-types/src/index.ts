@@ -239,11 +239,69 @@ export type UserThemeSettings = {
   scaling: UserThemeScaling;
 };
 
+export type SubscriptionPlanId = "free_community" | "pro" | "research_lab";
+
+export type SubscriptionBillingInterval = "month" | "year";
+
+export type SubscriptionSource = "free" | "stripe" | "manual";
+
+export type SubscriptionStatus = "active" | "inactive" | "trialing" | "past_due" | "canceled";
+
+export type VideoDownloadAccess = "preview_watermarked" | "full";
+
+export type SubscriptionLimits = {
+  maxActiveDevices: number;
+  maxStoredBatchesTotal: number;
+  maxStoredPrivateBatches: number;
+  monthlyPoints: number;
+  maxPointsPerBatch: number;
+};
+
+export type SubscriptionUsage = {
+  activeDevices: number;
+  storedBatchesTotal: number;
+  storedPrivateBatches: number;
+  monthlyPointsUsed: number;
+  monthlyPointsRemaining: number;
+  monthKey: string;
+  resetAt: string;
+};
+
+export type SubscriptionOfferId = "pro_monthly" | "pro_yearly" | "research_contact";
+
+export type SubscriptionOffer = {
+  offerId: SubscriptionOfferId;
+  planId: SubscriptionPlanId;
+  label: string;
+  description: string;
+  currency: string | null;
+  unitAmount: number | null;
+  billingInterval: SubscriptionBillingInterval | null;
+  action: "checkout" | "contact";
+  contactEmail: string | null;
+};
+
+export type SubscriptionSummary = {
+  planId: SubscriptionPlanId;
+  label: string;
+  source: SubscriptionSource;
+  status: SubscriptionStatus;
+  billingInterval: SubscriptionBillingInterval | null;
+  canManageBilling: boolean;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  videoDownloadAccess: VideoDownloadAccess;
+  limits: SubscriptionLimits;
+  usage: SubscriptionUsage;
+};
+
 export type UserSettings = {
   defaultBatchVisibility: BatchVisibility;
   interleavedRendering: boolean;
   theme: UserThemeSettings;
   themeSaveUnlocked: boolean;
+  subscription: SubscriptionSummary;
+  subscriptionOffers: SubscriptionOffer[];
 };
 
 export type SmokeTestRequestBody = {
