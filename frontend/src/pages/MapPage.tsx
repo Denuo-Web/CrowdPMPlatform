@@ -68,6 +68,8 @@ type VisibleBatchSummary = BatchSummary & {
   access: VisibleBatchAccess;
 };
 
+type BatchBrowserTimeRange = "all" | "8h" | "24h" | "7d" | "30d";
+
 type StoredSmokeBatch = {
   summary: BatchSummary;
   points: IngestSmokeTestPoint[];
@@ -136,6 +138,21 @@ function sortBatchesByProcessedAtDesc<T extends BatchSummary>(list: T[]): T[] {
     const timeB = timestampToMillis(b.processedAt) ?? 0;
     return timeB - timeA;
   });
+}
+
+function getBatchBrowserTimeRangeCutoff(range: BatchBrowserTimeRange): number | null {
+  switch (range) {
+    case "8h":
+      return Date.now() - 8 * 60 * 60 * 1000;
+    case "24h":
+      return Date.now() - 24 * 60 * 60 * 1000;
+    case "7d":
+      return Date.now() - 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return Date.now() - 30 * 24 * 60 * 60 * 1000;
+    case "all":
+      return null;
+  }
 }
 
 function toPublicVisibleBatches(publicBatches: BatchSummary[]): VisibleBatchSummary[] {
@@ -323,6 +340,9 @@ export default function MapPage({
   const [zoomHydrationKey, setZoomHydrationKey] = useState<string | null>(null);
   const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
   const [batchBrowserPageIndex, setBatchBrowserPageIndex] = useState(0);
+  const [batchBrowserTimeRange, setBatchBrowserTimeRange] = useState<BatchBrowserTimeRange>("all");
+  const [showPublicBatchBrowser, setShowPublicBatchBrowser] = useState(true);
+  const [showPrivateBatchBrowser, setShowPrivateBatchBrowser] = useState(true);
   const cacheHydratedRef = useRef<string | null>(null);
   const selectionHydratedRef = useRef<string | null>(null);
   const zoomHydratedRef = useRef<string | null>(null);
@@ -392,13 +412,23 @@ export default function MapPage({
     () => batchBrowserQuery.data ?? visibleBatches,
     [batchBrowserQuery.data, visibleBatches]
   );
+  const filteredBatchBrowserBatches = useMemo(() => {
+    const cutoff = getBatchBrowserTimeRangeCutoff(batchBrowserTimeRange);
+    return batchBrowserBatches.filter((batch) => {
+      if (batch.visibility === "public" && !showPublicBatchBrowser) return false;
+      if (batch.visibility === "private" && !showPrivateBatchBrowser) return false;
+      if (cutoff === null) return true;
+      const processedAtMs = timestampToMillis(batch.processedAt);
+      return processedAtMs !== null && processedAtMs >= cutoff;
+    });
+  }, [batchBrowserBatches, batchBrowserTimeRange, showPrivateBatchBrowser, showPublicBatchBrowser]);
   const batchBrowserPagination = useMemo(
-    () => getPaginationWindow(batchBrowserBatches.length, batchBrowserPageIndex),
-    [batchBrowserBatches.length, batchBrowserPageIndex]
+    () => getPaginationWindow(filteredBatchBrowserBatches.length, batchBrowserPageIndex),
+    [filteredBatchBrowserBatches.length, batchBrowserPageIndex]
   );
   const visibleBatchBrowserRows = useMemo(
-    () => batchBrowserBatches.slice(batchBrowserPagination.pageStart, batchBrowserPagination.pageEnd),
-    [batchBrowserBatches, batchBrowserPagination.pageEnd, batchBrowserPagination.pageStart]
+    () => filteredBatchBrowserBatches.slice(batchBrowserPagination.pageStart, batchBrowserPagination.pageEnd),
+    [batchBrowserPagination.pageEnd, batchBrowserPagination.pageStart, filteredBatchBrowserBatches]
   );
 
   const selectedSummary = useMemo(() => {
@@ -568,11 +598,15 @@ export default function MapPage({
   }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
 
   useEffect(() => {
-    const nextPageIndex = clampPageIndex(batchBrowserBatches.length, batchBrowserPageIndex);
+    const nextPageIndex = clampPageIndex(filteredBatchBrowserBatches.length, batchBrowserPageIndex);
     if (nextPageIndex !== batchBrowserPageIndex) {
       setBatchBrowserPageIndex(nextPageIndex);
     }
-  }, [batchBrowserBatches.length, batchBrowserPageIndex]);
+  }, [filteredBatchBrowserBatches.length, batchBrowserPageIndex]);
+
+  useEffect(() => {
+    setBatchBrowserPageIndex(0);
+  }, [batchBrowserTimeRange, showPrivateBatchBrowser, showPublicBatchBrowser]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -994,7 +1028,7 @@ export default function MapPage({
   );
   const batchSelectValue = selectedBatchKey || NO_BATCH_SELECTED_KEY;
   const batchSelectPlaceholder = user ? "Select batch" : "Select a public batch";
-  const batchBrowserActionLabel = user ? "See all batches..." : "See all public batches...";
+  const batchBrowserActionLabel = "See all batches...";
   const batchBrowserTitle = user ? "All measurement batches" : "All public measurement batches";
   const allModeBatchCount = useMemo(() => (
     new Set(
@@ -1658,13 +1692,70 @@ export default function MapPage({
                   : "Unable to load more batches."}
               </Text>
             ) : null}
+            <Flex
+              align="end"
+              justify="between"
+              gap="3"
+              wrap="wrap"
+              style={{
+                padding: "var(--space-3)",
+                border: "1px solid var(--gray-a5)",
+                borderRadius: "var(--radius-3)",
+                background: "var(--gray-a2)",
+              }}
+            >
+              <Flex direction="column" gap="1">
+                <Text size="1" color="gray">Time range</Text>
+                <Select.Root
+                  value={batchBrowserTimeRange}
+                  onValueChange={(value) => setBatchBrowserTimeRange(value as BatchBrowserTimeRange)}
+                >
+                  <Select.Trigger aria-label="Batch browser time range" />
+                  <Select.Content>
+                    <Select.Item value="all">All time</Select.Item>
+                    <Select.Item value="8h">Last 8 hours</Select.Item>
+                    <Select.Item value="24h">Last 24 hours</Select.Item>
+                    <Select.Item value="7d">Last 7 days</Select.Item>
+                    <Select.Item value="30d">Last 30 days</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+              </Flex>
+              <Flex align="center" gap="4" wrap="wrap">
+                <Flex align="center" gap="2">
+                  <Switch
+                    id="batch-browser-public-filter"
+                    checked={showPublicBatchBrowser}
+                    onCheckedChange={setShowPublicBatchBrowser}
+                  />
+                  <label
+                    htmlFor="batch-browser-public-filter"
+                    style={{ fontSize: "var(--font-size-2)", color: "var(--gray-12)", cursor: "pointer" }}
+                  >
+                    Public
+                  </label>
+                </Flex>
+                <Flex align="center" gap="2">
+                  <Switch
+                    id="batch-browser-private-filter"
+                    checked={showPrivateBatchBrowser}
+                    onCheckedChange={setShowPrivateBatchBrowser}
+                  />
+                  <label
+                    htmlFor="batch-browser-private-filter"
+                    style={{ fontSize: "var(--font-size-2)", color: "var(--gray-12)", cursor: "pointer" }}
+                  >
+                    Private
+                  </label>
+                </Flex>
+              </Flex>
+            </Flex>
             <Flex align="center" justify="between" gap="3" wrap="wrap">
               <ResultCountControl
                 itemLabelSingular="batch"
                 itemLabelPlural="batches"
                 pageStart={batchBrowserPagination.pageStart}
                 pageEnd={batchBrowserPagination.pageEnd}
-                totalCount={batchBrowserBatches.length}
+                totalCount={filteredBatchBrowserBatches.length}
                 onShowLess={() => setBatchBrowserPageIndex((prev) => prev - 1)}
                 onShowMore={() => setBatchBrowserPageIndex((prev) => prev + 1)}
               />
@@ -1684,7 +1775,11 @@ export default function MapPage({
             >
               {!visibleBatchBrowserRows.length ? (
                 <Text size="2" color="gray">
-                  {batchBrowserQuery.isLoading ? "Loading batches..." : "No batches available."}
+                  {batchBrowserQuery.isLoading
+                    ? "Loading batches..."
+                    : batchBrowserBatches.length
+                      ? "No batches match these filters."
+                      : "No batches available."}
                 </Text>
               ) : visibleBatchBrowserRows.map((batch) => {
                 const key = encodeBatchKey(batch.deviceId, batch.batchId);
