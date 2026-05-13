@@ -14,6 +14,7 @@ type BatchRecord = {
 };
 
 let batchRecords = new Map<string, BatchRecord>();
+let appSettings = new Map<string, Record<string, unknown>>();
 
 async function withFunctionsEmulator<T>(enabled: boolean, fn: () => Promise<T>): Promise<T> {
   const previous = process.env.FUNCTIONS_EMULATOR;
@@ -79,8 +80,31 @@ function makeDoc(id: string) {
   };
 }
 
+function makeSettingsDoc(id: string) {
+  return {
+    get: async () => {
+      const record = appSettings.get(id);
+      return {
+        id,
+        exists: Boolean(record),
+        data: () => record ?? {},
+        get: (field: string) => record?.[field],
+      };
+    },
+    set: async (payload: Record<string, unknown>, options?: { merge?: boolean }) => {
+      const existing = appSettings.get(id);
+      appSettings.set(id, options?.merge ? { ...(existing ?? {}), ...payload } : { ...payload });
+    },
+  };
+}
+
 const mockDb = {
   collection: vi.fn((name: string) => {
+    if (name === "appSettings") {
+      return {
+        doc: (id: string) => makeSettingsDoc(id),
+      };
+    }
     if (name !== "batches") throw new Error(`unexpected collection ${name}`);
     return {
       where: (...args: [string, string, unknown]) => makeQuery().where(...args),
@@ -123,6 +147,9 @@ beforeEach(() => {
   mocks.requireUser.mockReset();
   mocks.writeModerationAudit.mockReset();
 
+  appSettings = new Map([
+    ["demoBatch", { deviceId: "device-1", batchId: "batch-1" }],
+  ]);
   batchRecords = new Map([
     [
       "batch-1",
@@ -153,6 +180,51 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("GET /v1/admin/demo-batch", () => {
+  it("returns the configured approved public batch", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/demo-batch",
+      headers: { authorization: "Bearer mod" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      deviceId: "device-1",
+      batchId: "batch-1",
+      summary: expect.objectContaining({
+        batchId: "batch-1",
+        deviceId: "device-1",
+        visibility: "public",
+        moderationState: "approved",
+      }),
+    });
+    await app.close();
+  });
+});
+
+describe("PUT /v1/admin/demo-batch", () => {
+  it("sets the demo batch when the batch is approved and public", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/demo-batch",
+      headers: { authorization: "Bearer mod" },
+      payload: { deviceId: "device-1", batchId: "batch-1" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(appSettings.get("demoBatch")).toEqual(expect.objectContaining({
+      deviceId: "device-1",
+      batchId: "batch-1",
+    }));
+    await app.close();
+  });
 });
 
 describe("GET /v1/admin/submissions", () => {

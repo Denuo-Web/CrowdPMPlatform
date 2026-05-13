@@ -10,6 +10,7 @@ type BatchRecord = {
 };
 
 let batchRecords = new Map<string, BatchRecord>();
+let appSettings = new Map<string, Record<string, unknown>>();
 let storagePayloads = new Map<string, Buffer>();
 
 function gzipPayload(payload: unknown): Buffer {
@@ -50,6 +51,20 @@ function makeQuery() {
 
 const mockDb = {
   collection: vi.fn((name: string) => {
+    if (name === "appSettings") {
+      return {
+        doc: (id: string) => ({
+          get: async () => {
+            const record = appSettings.get(id);
+            return {
+              exists: Boolean(record),
+              data: () => record ?? {},
+              get: (field: string) => record?.[field],
+            };
+          },
+        }),
+      };
+    }
     if (name !== "batches") throw new Error(`unexpected collection ${name}`);
     return {
       where: (...args: [string, string, unknown]) => makeQuery().where(...args),
@@ -126,6 +141,9 @@ function seedBatch(id: string, overrides?: Record<string, unknown>) {
 
 beforeEach(() => {
   batchRecords = new Map();
+  appSettings = new Map([
+    ["demoBatch", { deviceId: "device-1", batchId: "batch-approved" }],
+  ]);
   storagePayloads = new Map();
   seedBatch("batch-approved");
   seedBatch("batch-private", { visibility: "private", processedAt: "2024-01-03T00:00:00.000Z" });
@@ -140,6 +158,34 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("GET /v1/public/demo-batch", () => {
+  it("returns the configured approved public batch", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({ method: "GET", url: "/v1/public/demo-batch" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      batchId: "batch-approved",
+      deviceId: "device-1",
+      visibility: "public",
+      moderationState: "approved",
+    });
+    await app.close();
+  });
+
+  it("returns null when the configured batch is not public", async () => {
+    appSettings.set("demoBatch", { deviceId: "device-1", batchId: "batch-private" });
+    const app = await buildApp();
+
+    const res = await app.inject({ method: "GET", url: "/v1/public/demo-batch" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toBeNull();
+    await app.close();
+  });
 });
 
 describe("GET /v1/public/batches", () => {
