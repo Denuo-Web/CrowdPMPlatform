@@ -1,4 +1,4 @@
-import type { AdminSubmissionListResponse, AdminSubmissionSummary } from "@crowdpm/types";
+import type { AdminSubmissionListResponse, AdminSubmissionSummary, DemoBatchSetting } from "@crowdpm/types";
 import type { firestore } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -26,6 +26,12 @@ const updateBodySchema = z.object({
   moderationState: z.enum(["approved", "quarantined"] as const),
   reason: z.string().max(500).optional().nullable(),
 });
+const demoBatchBodySchema = z.object({
+  deviceId: z.string().trim().min(1),
+  batchId: z.string().trim().min(1),
+});
+const APP_SETTINGS_COLLECTION = "appSettings";
+const DEMO_BATCH_SETTINGS_DOC = "demoBatch";
 
 function normalizeReason(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -60,6 +66,22 @@ function serializeSubmission(doc: firestore.QueryDocumentSnapshot | firestore.Do
   };
 }
 
+async function loadApprovedPublicBatch(deviceId: string, batchId: string): Promise<AdminSubmissionSummary> {
+  const snap = await db().collection("batches").doc(batchId).get();
+  if (!snap.exists) {
+    throw httpError(404, "not_found", "Batch not found.");
+  }
+  const data = snap.data() ?? {};
+  if (
+    data.deviceId !== deviceId
+    || normalizeVisibility(data.visibility) !== "public"
+    || normalizeModerationState(data.moderationState) !== "approved"
+  ) {
+    throw httpError(400, "invalid_demo_batch", "Demo batch must be an approved public batch.");
+  }
+  return serializeSubmission(snap);
+}
+
 export const adminSubmissionsRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/admin/submissions", {
     preHandler: [
@@ -87,6 +109,43 @@ export const adminSubmissionsRoutes: FastifyPluginAsync = async (app) => {
     return {
       submissions: snap.docs.map((doc) => serializeSubmission(doc)),
     };
+  });
+
+  app.get("/v1/admin/demo-batch", {
+    preHandler: [
+      requirePermissionGuard("submissions.read_all"),
+      rateLimitGuard((req) => `admin:demo-batch:get:${requestUserId(req)}`, 60, 60_000),
+      rateLimitGuard("admin:demo-batch:get:global", 1_000, 60_000),
+    ],
+  }, async (): Promise<DemoBatchSetting> => {
+    const snap = await db().collection(APP_SETTINGS_COLLECTION).doc(DEMO_BATCH_SETTINGS_DOC).get();
+    const deviceId = asNullableString(snap.get("deviceId"));
+    const batchId = asNullableString(snap.get("batchId"));
+    if (!deviceId || !batchId) return null;
+    const summary = await loadApprovedPublicBatch(deviceId, batchId).catch(() => null);
+    return summary ? { deviceId, batchId, summary } : null;
+  });
+
+  app.put<{ Body: unknown }>("/v1/admin/demo-batch", {
+    preHandler: [
+      requirePermissionGuard("submissions.moderate"),
+      rateLimitGuard((req) => `admin:demo-batch:put:${requestUserId(req)}`, 30, 60_000),
+      rateLimitGuard("admin:demo-batch:put:global", 500, 60_000),
+    ],
+  }, async (req): Promise<NonNullable<DemoBatchSetting>> => {
+    const parsed = demoBatchBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+    const deviceId = parseDeviceId(parsed.data.deviceId, "deviceId");
+    const batchId = parsed.data.batchId;
+    const summary = await loadApprovedPublicBatch(deviceId, batchId);
+    await db().collection(APP_SETTINGS_COLLECTION).doc(DEMO_BATCH_SETTINGS_DOC).set({
+      deviceId,
+      batchId,
+      updatedAt: new Date(),
+    }, { merge: true });
+    return { deviceId, batchId, summary };
   });
 
   app.patch<{ Params: { deviceId: string; batchId: string } }>("/v1/admin/submissions/:deviceId/:batchId", {

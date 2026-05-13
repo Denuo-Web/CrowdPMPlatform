@@ -8,7 +8,7 @@ import {
 } from "../lib/batchVisibility.js";
 import { app as getFirebaseApp, db as getDb } from "../lib/fire.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
-import { hasRole } from "../lib/rbac.js";
+import { hasPermission } from "../lib/rbac.js";
 import type { IngestService } from "./ingestService.js";
 import { prepareSmokeTestPlan, type SmokeTestBody, type SmokeTestPlan } from "./smokeTest.js";
 
@@ -45,7 +45,7 @@ type ResolvedDependencies = {
 export type SmokeTestServiceDependencies = Partial<ResolvedDependencies>;
 
 export function authorizeSmokeTestUser(user: DecodedIdToken): void {
-  if (hasRole(user, "super_admin")) return;
+  if (hasPermission(user, "smoke_tests.run")) return;
   throw new SmokeTestServiceError("forbidden", "Caller lacks permission to run smoke tests", 403);
 }
 
