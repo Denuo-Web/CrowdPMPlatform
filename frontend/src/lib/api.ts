@@ -11,6 +11,7 @@ import type {
   BatchDetail,
   BatchSummary,
   BatchVisibility,
+  DemoBatchSetting,
   DeviceSummary,
   FirestoreTimestampLike,
   IngestBatchPayload,
@@ -120,6 +121,7 @@ export type {
   BatchDetail,
   BatchSummary,
   BatchVisibility,
+  DemoBatchSetting,
   DeviceSummary,
   FirestoreTimestampLike,
   MeasurementRecord,
@@ -232,6 +234,10 @@ export async function fetchPublicBatchDetail(deviceId: string, batchId: string):
   return requestJson<PublicBatchDetail>(`/v1/public/batches/${safeDevice}/${safeBatch}`);
 }
 
+export async function fetchDemoBatch(): Promise<PublicBatchSummary | null> {
+  return requestJson<PublicBatchSummary | null>("/v1/public/demo-batch");
+}
+
 export async function listAdminSubmissions(params?: {
   limit?: number;
   moderationState?: ModerationState;
@@ -250,6 +256,18 @@ export async function listAdminSubmissions(params?: {
   const suffix = qs.toString();
   const response = await requestJson<AdminSubmissionListResponse>(suffix ? `/v1/admin/submissions?${suffix}` : "/v1/admin/submissions");
   return Array.isArray(response.submissions) ? response.submissions : [];
+}
+
+export async function getAdminDemoBatch(): Promise<DemoBatchSetting> {
+  return requestJson<DemoBatchSetting>("/v1/admin/demo-batch");
+}
+
+export async function setAdminDemoBatch(deviceId: string, batchId: string): Promise<NonNullable<DemoBatchSetting>> {
+  return requestJson<NonNullable<DemoBatchSetting>>("/v1/admin/demo-batch", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId, batchId }),
+  });
 }
 
 export async function moderateAdminSubmission(

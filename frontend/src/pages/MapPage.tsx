@@ -4,6 +4,7 @@ import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
+  fetchDemoBatch,
   fetchPublicBatchDetail,
   listBatches,
   listPublicBatches,
@@ -294,6 +295,7 @@ export default function MapPage({
   onCleanupDetailConsumed,
 }: MapPageProps = {}) {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const userId = user?.uid;
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
@@ -316,6 +318,7 @@ export default function MapPage({
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
+  const [isDemoBatchLoading, setDemoBatchLoading] = useState(false);
   const [persistedMapZoom, setPersistedMapZoom] = useState<number | null>(null);
   const [zoomHydrationKey, setZoomHydrationKey] = useState<string | null>(null);
   const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
@@ -733,6 +736,31 @@ export default function MapPage({
       );
     }
   }, [isMapViewportActivated, user?.uid, userScopedSelectionKey]);
+
+  const handleDemoBatchSelect = useCallback(async () => {
+    setDemoBatchLoading(true);
+    try {
+      const demoBatch = await fetchDemoBatch();
+      if (!demoBatch) {
+        handleBatchSelect(SHOW_ALL_PUBLIC_24H_KEY);
+        return;
+      }
+
+      const key = encodeBatchKey(demoBatch.deviceId, demoBatch.batchId);
+      queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(userId ?? null), (prev = []) => {
+        const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
+        return sortBatchesByProcessedAtDesc([demoBatch, ...filtered]);
+      });
+      handleBatchSelect(key);
+    }
+    catch (err) {
+      logWarning("Unable to load demo batch", undefined, err);
+      handleBatchSelect(SHOW_ALL_PUBLIC_24H_KEY);
+    }
+    finally {
+      setDemoBatchLoading(false);
+    }
+  }, [handleBatchSelect, queryClient, userId]);
 
   const handleMapZoomChange = useCallback((zoom: number) => {
     const nextZoom = Math.min(Math.max(zoom, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
@@ -1240,7 +1268,8 @@ export default function MapPage({
             <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", marginTop: "var(--space-4)", flexWrap: "wrap" }}>
               <button
                 type="button"
-                onClick={() => handleBatchSelect(SHOW_ALL_PUBLIC_24H_KEY)}
+                onClick={() => { void handleDemoBatchSelect(); }}
+                disabled={isDemoBatchLoading}
                 style={{
                   padding: "var(--space-2) var(--space-4)",
                   borderRadius: "var(--radius-3)",
@@ -1249,10 +1278,11 @@ export default function MapPage({
                   color: "var(--accent-contrast)",
                   fontWeight: 600,
                   fontSize: "var(--font-size-2)",
-                  cursor: "pointer",
+                  cursor: isDemoBatchLoading ? "wait" : "pointer",
+                  opacity: isDemoBatchLoading ? 0.8 : 1,
                 }}
               >
-                Browse public data
+                See Demo Data
               </button>
               <button
                 type="button"

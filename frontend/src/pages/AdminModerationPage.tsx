@@ -13,9 +13,11 @@ import {
   Text,
 } from "@radix-ui/themes";
 import {
+  getAdminDemoBatch,
   listAdminSubmissions,
   listAdminUsers,
   moderateAdminSubmission,
+  setAdminDemoBatch,
   updateAdminUser,
   type AdminSubmissionSummary,
   type AdminUserSummary,
@@ -23,8 +25,11 @@ import {
   type ModerationState,
   type AdminRole,
 } from "../lib/api";
+import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
 import { useAuth } from "../providers/AuthProvider";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
+
+const NO_DEMO_BATCH_KEY = "__no_demo_batch__";
 
 function formatTimestamp(value: string | null): string {
   const ms = timestampToMillis(value);
@@ -36,6 +41,24 @@ function normalizeRoleLabel(role: AdminRole): string {
   return role === "super_admin" ? "Super Admin" : "Moderator";
 }
 
+function formatBatchOption(batch: AdminSubmissionSummary): string {
+  const device = batch.deviceName || batch.deviceId;
+  const count = batch.count ? ` (${batch.count})` : "";
+  return `${formatTimestamp(batch.processedAt)} - ${device}${count}`;
+}
+
+function mergeDemoBatchOptions(
+  batches: AdminSubmissionSummary[],
+  current: AdminSubmissionSummary | null,
+): AdminSubmissionSummary[] {
+  if (!current) return batches;
+  const key = encodeBatchKey(current.deviceId, current.batchId);
+  if (batches.some((batch) => encodeBatchKey(batch.deviceId, batch.batchId) === key)) {
+    return batches;
+  }
+  return [current, ...batches];
+}
+
 type SubmissionFilterState = "all" | ModerationState;
 type VisibilityFilterState = "all" | BatchVisibility;
 
@@ -43,15 +66,21 @@ export default function AdminModerationPage() {
   const { isSuperAdmin, canAccessAdmin } = useAuth();
 
   const [submissions, setSubmissions] = useState<AdminSubmissionSummary[]>([]);
+  const [demoBatches, setDemoBatches] = useState<AdminSubmissionSummary[]>([]);
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [usersPageToken, setUsersPageToken] = useState<string | null>(null);
 
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [demoBatchLoading, setDemoBatchLoading] = useState(false);
+  const [demoBatchSaving, setDemoBatchSaving] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [demoBatchError, setDemoBatchError] = useState<string | null>(null);
+  const [demoBatchMessage, setDemoBatchMessage] = useState<string | null>(null);
   const [userError, setUserError] = useState<string | null>(null);
+  const [demoBatchKey, setDemoBatchKey] = useState<string>(NO_DEMO_BATCH_KEY);
 
   const [moderationFilter, setModerationFilter] = useState<SubmissionFilterState>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
@@ -81,6 +110,28 @@ export default function AdminModerationPage() {
     () => users.slice(userPagination.pageStart, userPagination.pageEnd),
     [userPagination.pageEnd, userPagination.pageStart, users],
   );
+
+  const refreshDemoBatchOptions = useCallback(async () => {
+    if (!canAccessAdmin) return;
+    setDemoBatchLoading(true);
+    setDemoBatchError(null);
+    try {
+      const [setting, batches] = await Promise.all([
+        getAdminDemoBatch(),
+        listAdminSubmissions({ moderationState: "approved", visibility: "public", limit: 200 }),
+      ]);
+      setDemoBatches(mergeDemoBatchOptions(batches, setting?.summary ?? null));
+      setDemoBatchKey(setting ? encodeBatchKey(setting.deviceId, setting.batchId) : NO_DEMO_BATCH_KEY);
+    }
+    catch (err) {
+      setDemoBatchError(err instanceof Error ? err.message : "Unable to load demo batch options.");
+      setDemoBatches([]);
+      setDemoBatchKey(NO_DEMO_BATCH_KEY);
+    }
+    finally {
+      setDemoBatchLoading(false);
+    }
+  }, [canAccessAdmin]);
 
   const refreshSubmissions = useCallback(async () => {
     if (!canAccessAdmin) return;
@@ -122,6 +173,11 @@ export default function AdminModerationPage() {
     if (!canAccessAdmin) return;
     void refreshSubmissions();
   }, [canAccessAdmin, refreshSubmissions]);
+
+  useEffect(() => {
+    if (!canAccessAdmin) return;
+    void refreshDemoBatchOptions();
+  }, [canAccessAdmin, refreshDemoBatchOptions]);
 
   useEffect(() => {
     if (!canManageUsers) return;
@@ -199,6 +255,27 @@ export default function AdminModerationPage() {
     }
   }, [canManageUsers, refreshUsers]);
 
+  const handleDemoBatchChange = useCallback(async (value: string) => {
+    if (value === NO_DEMO_BATCH_KEY) return;
+    const parsed = decodeBatchKey(value);
+    if (!parsed) return;
+
+    setDemoBatchSaving(true);
+    setDemoBatchError(null);
+    setDemoBatchMessage(null);
+    try {
+      const setting = await setAdminDemoBatch(parsed.deviceId, parsed.batchId);
+      setDemoBatchKey(encodeBatchKey(setting.deviceId, setting.batchId));
+      setDemoBatchMessage("Front page demo data updated.");
+    }
+    catch (err) {
+      setDemoBatchError(err instanceof Error ? err.message : "Unable to update demo batch.");
+    }
+    finally {
+      setDemoBatchSaving(false);
+    }
+  }, []);
+
   if (!canAccessAdmin) {
     return (
       <Card>
@@ -212,6 +289,45 @@ export default function AdminModerationPage() {
 
   return (
     <Flex direction="column" gap="5">
+      <Card>
+        <Flex direction="column" gap="3">
+          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+            <Box>
+              <Heading as="h3" size="5">Front Page Demo Data</Heading>
+              <Text size="2" color="gray">Choose the approved public batch opened by See Demo Data.</Text>
+            </Box>
+            <Button onClick={() => { void refreshDemoBatchOptions(); }} disabled={demoBatchLoading || demoBatchSaving}>
+              {demoBatchLoading ? "Refreshing..." : "Refresh"}
+            </Button>
+          </Flex>
+          <Box maxWidth="520px">
+            <Text size="2" color="gray">Current demo batch</Text>
+            <Select.Root
+              value={demoBatchKey}
+              onValueChange={(value) => { void handleDemoBatchChange(value); }}
+              disabled={demoBatchLoading || demoBatchSaving || demoBatches.length === 0}
+            >
+              <Select.Trigger placeholder="Select demo batch" />
+              <Select.Content>
+                <Select.Item value={NO_DEMO_BATCH_KEY} disabled>
+                  {demoBatches.length ? "Select demo batch" : "No approved public batches"}
+                </Select.Item>
+                {demoBatches.map((batch) => {
+                  const key = encodeBatchKey(batch.deviceId, batch.batchId);
+                  return (
+                    <Select.Item key={key} value={key}>
+                      {formatBatchOption(batch)}
+                    </Select.Item>
+                  );
+                })}
+              </Select.Content>
+            </Select.Root>
+          </Box>
+          {demoBatchError ? <Text color="tomato">{demoBatchError}</Text> : null}
+          {demoBatchMessage ? <Text color="green">{demoBatchMessage}</Text> : null}
+        </Flex>
+      </Card>
+
       <Card>
         <Flex direction="column" gap="3">
           <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
