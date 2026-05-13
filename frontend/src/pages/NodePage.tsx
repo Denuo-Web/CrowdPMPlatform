@@ -43,10 +43,11 @@ type NodeProductVariant = {
   totalAmountCents: number;
 };
 
-const BASE_NODE_PRICE_CENTS = 35_000;
-const SENSOR_ADD_ON_PRICE_CENTS = 2_500;
-const CO2_SENSOR_ADD_ON_CENTS = SENSOR_ADD_ON_PRICE_CENTS;
-const NO2_SENSOR_ADD_ON_CENTS = SENSOR_ADD_ON_PRICE_CENTS;
+const BASE_NODE_PRICE_CENTS = 37_500;
+const SINGLE_SENSOR_ADD_ON_PRICE_CENTS = 4_500;
+const BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS = 10_500;
+const CO2_SENSOR_ADD_ON_CENTS = SINGLE_SENSOR_ADD_ON_PRICE_CENTS;
+const NO2_SENSOR_ADD_ON_CENTS = SINGLE_SENSOR_ADD_ON_PRICE_CENTS;
 const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
@@ -74,15 +75,15 @@ const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
   {
     id: "no2",
     label: "PM2.5 + NO2 node",
-    summary: "Adds a MiCS-6814 NO2 / vehicle-exhaust module and an ADS1115 ADC for Pi-compatible readout.",
-    addedHardware: "MiCS-6814 NO2 module + ADS1115 ADC",
+    summary: "Adds a MiCS-6814 multi-gas module and ADS1115 ADC. The oxidizing channel is the default NO2-oriented path, and the reducing channel can be wired for CO-oriented response.",
+    addedHardware: "MiCS-6814 multi-gas module + ADS1115 ADC",
     addOnAmountCents: NO2_SENSOR_ADD_ON_CENTS,
     totalAmountCents: BASE_NODE_PRICE_CENTS + NO2_SENSOR_ADD_ON_CENTS,
   },
   {
     id: "co2",
     label: "PM2.5 + CO2 node",
-    summary: "Adds an SCD41 CO2 sensor that also reports temperature and humidity over I2C.",
+    summary: "Adds an SCD41 CO2 sensor with published ppm accuracy over I2C. The sensor also reports temperature and humidity.",
     addedHardware: "SCD41 CO2 sensor",
     addOnAmountCents: CO2_SENSOR_ADD_ON_CENTS,
     totalAmountCents: BASE_NODE_PRICE_CENTS + CO2_SENSOR_ADD_ON_CENTS,
@@ -90,10 +91,10 @@ const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
   {
     id: "co2_no2",
     label: "PM2.5 + CO2 + NO2 node",
-    summary: "Combines the CO2 add-on with the NO2 / car-exhaust add-on in one mobile node.",
-    addedHardware: "SCD41 CO2 sensor + MiCS-6814 NO2 module + ADS1115 ADC",
-    addOnAmountCents: CO2_SENSOR_ADD_ON_CENTS + NO2_SENSOR_ADD_ON_CENTS,
-    totalAmountCents: BASE_NODE_PRICE_CENTS + CO2_SENSOR_ADD_ON_CENTS + NO2_SENSOR_ADD_ON_CENTS,
+    summary: "Combines the SCD41 CO2 sensor with the MiCS-6814 multi-gas module and ADS1115 on one Pi Zero 2 W build.",
+    addedHardware: "SCD41 CO2 sensor + MiCS-6814 multi-gas module + ADS1115 ADC",
+    addOnAmountCents: BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS,
+    totalAmountCents: BASE_NODE_PRICE_CENTS + BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS,
   },
 ];
 
@@ -101,13 +102,13 @@ const SENSOR_ADD_ONS = [
   {
     id: "co2",
     label: "CO2 sensor",
-    description: "Adds SCD41 CO2 sensing for indoor and mobile air-quality context.",
+    description: "Adds quantified SCD41 CO2 sensing over I2C.",
     amountCents: CO2_SENSOR_ADD_ON_CENTS,
   },
   {
     id: "no2",
     label: "NO2 sensor",
-    description: "Adds NO2-focused vehicle-exhaust sensing with the interface board included.",
+    description: "Adds MiCS-6814 gas-response sensing plus the interface ADC for NO2-oriented and optional CO-oriented readout.",
     amountCents: NO2_SENSOR_ADD_ON_CENTS,
   },
 ] as const;
@@ -376,8 +377,8 @@ export default function NodePage() {
   const [quantity, setQuantity] = useState(1);
   const selectedVariantId = nodeVariantIdForAddOns(includeCo2, includeNo2);
   const selectedVariant = NODE_PRODUCT_VARIANTS.find(({ id }) => id === selectedVariantId) ?? NODE_PRODUCT_VARIANTS[0];
-  const unitAddOnAmountCents = (includeCo2 ? CO2_SENSOR_ADD_ON_CENTS : 0) + (includeNo2 ? NO2_SENSOR_ADD_ON_CENTS : 0);
-  const unitTotalAmountCents = BASE_NODE_PRICE_CENTS + unitAddOnAmountCents;
+  const unitAddOnAmountCents = selectedVariant.addOnAmountCents;
+  const unitTotalAmountCents = selectedVariant.totalAmountCents;
   const orderSubtotalCents = unitTotalAmountCents * quantity;
 
   useEffect(() => {
@@ -417,7 +418,9 @@ export default function NodePage() {
             </Text>
             <Text size="2" mt="3" as="p">
               Start with the standard PM2.5 node, then add CO2, NO2, both sensors,
-              or neither. US shipping is included; sales tax is calculated at checkout.
+              or neither. Single-sensor builds are {formatUsd(42_000)} total per
+              device, and the dual-sensor build is {formatUsd(48_000)}. US shipping
+              is included; sales tax is calculated at checkout.
             </Text>
             <Box mt="4">
               <ProductGallery />
@@ -504,6 +507,10 @@ export default function NodePage() {
                     );
                   })}
                 </Flex>
+                <Text size="1" color="gray" as="p" mt="2">
+                  A single added sensor brings the node to {formatUsd(42_000)} total.
+                  Selecting both sensors switches to the {formatUsd(48_000)} dual-sensor build.
+                </Text>
               </Box>
 
               <Flex align="center" justify="between" gap="3">
@@ -541,8 +548,12 @@ export default function NodePage() {
                   <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
                 </Flex>
                 <Flex justify="between" gap="3" mt="1">
-                  <Text size="2" color="gray">Selected add-ons</Text>
+                  <Text size="2" color="gray">Configuration premium</Text>
                   <Text size="2">{unitAddOnAmountCents === 0 ? "$0.00" : `+${formatUsd(unitAddOnAmountCents)}`}</Text>
+                </Flex>
+                <Flex justify="between" gap="3" mt="1">
+                  <Text size="2" color="gray">Selected build</Text>
+                  <Text size="2">{selectedVariant.label}</Text>
                 </Flex>
                 <Flex justify="between" gap="3" mt="1">
                   <Text size="2" color="gray">Quantity</Text>
@@ -623,9 +634,7 @@ export default function NodePage() {
         <InfoTable
           headers={["Configuration", "What it adds", "Price"]}
           rows={[
-            ["Standard node", NODE_PRODUCT_VARIANTS[0].addedHardware, formatUsd(BASE_NODE_PRICE_CENTS)],
-            ["CO2 add-on", "SCD41 CO2 sensor", `+${formatUsd(CO2_SENSOR_ADD_ON_CENTS)}`],
-            ["NO2 add-on", "MiCS-6814 NO2 module + ADS1115 ADC", `+${formatUsd(NO2_SENSOR_ADD_ON_CENTS)}`],
+            ...NODE_PRODUCT_VARIANTS.map((variant) => [variant.label, variant.addedHardware, formatUsd(variant.totalAmountCents)]),
             ["Quantity", "1 to 10 devices per checkout", "Applied at checkout"],
           ]}
         />
@@ -770,15 +779,15 @@ export default function NodePage() {
             ],
             [
               <PartLink key="co2-sensor" href={CO2_SENSOR_URL}>HiLetgo SCD41 CO2 sensor</PartLink>,
-              "Optional CO2 add-on over I2C. Also reports temperature and humidity, so it can supplement the DHT22 in an expanded build.",
+              "Optional CO2 add-on over I2C. This is a true ppm CO2 sensor with a published accuracy range, and it also reports temperature and humidity.",
             ],
             [
               <PartLink key="no2-sensor" href={NO2_SENSOR_URL}>MiCS-6814 NO2 / exhaust sensor module</PartLink>,
-              "Optional NO2-focused gas add-on sourced from an automobile-exhaust style air-quality module.",
+              "Optional multi-gas add-on. The OX and RED channels are commonly used for relative NO2-like and CO-like response, but the module is not a turnkey calibrated ppm sensor.",
             ],
             [
               <PartLink key="ads1115" href={ADS1115_URL}>ADS1115 ADC</PartLink>,
-              "Required when using the MiCS-6814 add-on because the Pi Zero 2 W does not provide native analog input pins.",
+              "Required for analog-output MiCS-6814 boards because the Pi Zero 2 W does not provide native analog input pins.",
             ],
             [
               <PartLink key="gps-featherwing" href={GPS_FEATHERWING_URL}>Adafruit Ultimate GPS FeatherWing</PartLink>,
@@ -950,14 +959,23 @@ DHT22:
               ["SCL", "GPIO3 / SCL1", "Pin 5"],
             ]}
           />
+
+          <Text size="2" color="gray" as="p">
+            The SCD41 is a quantitative CO2 sensor, not a mere presence switch.
+            Sensirion specifies a 0 to 40,000 ppm output range, a specified
+            400 to 5,000 ppm range for the SCD41, and published accuracy bands
+            within that range. Placement still matters because self-heating and
+            directed exhaust can bias the reading.
+          </Text>
         </Subsection>
 
-        <Subsection title="Optional NO2 Sensor (MiCS-6814 + ADS1115)">
+        <Subsection title="Optional MiCS-6814 Gas Module (NO2 / CO + ADS1115)">
           <Text size="2" color="gray" as="p">
-            The Amazon MiCS-6814 boards expose analog gas channels, so the Pi
-            Zero 2 W needs an ADS1115 ADC in between. Use the oxidizing / NO2
-            output channel from the gas board and read it through an ADS1115
-            input. This is the extra hardware included in the NO2 product option.
+            The MiCS-6814 is a three-element MOS gas sensor with separate
+            oxidizing, reducing, and NH3-sensitive elements. In a Pi build, the
+            module&apos;s analog outputs go into an ADS1115 ADC. The oxidizing
+            channel is the best fit for the NO2-oriented signal path, and the
+            reducing channel can also be wired if you want a CO-oriented signal.
           </Text>
 
           <InfoTable
@@ -972,11 +990,12 @@ DHT22:
           />
 
           <InfoTable
-            headers={["MiCS-6814 Signal", "Connect To"]}
+            headers={["MiCS-6814 Signal", "Connect To", "Notes"]}
             rows={[
-              ["VCC", "5 V, physical pin 2 or 4"],
-              ["GND", "Raspberry Pi GND"],
-              ["NO2 / OX analog output", "ADS1115 A0"],
+              ["VCC", "5 V, physical pin 2 or 4", "Many breakout boards are designed around a 5 V supply."],
+              ["GND", "Raspberry Pi GND", "Common ground is required."],
+              ["OX / NO2-oriented analog output", "ADS1115 A0", "Default oxidizing-gas channel for the NO2-oriented build."],
+              ["RED / CO-oriented analog output (optional)", "ADS1115 A1", "Wire this too if you want the reducing-gas channel for CO-oriented response."],
             ]}
           />
 
@@ -984,23 +1003,75 @@ DHT22:
             Board labels vary a little between Amazon sellers. Look for the
             oxidizing output, often marked <InlineCode>OX</InlineCode>,
             <InlineCode>NO2</InlineCode>, or a similar analog-output label, and
-            route that channel into the ADS1115.
+            route that channel into the ADS1115. If your board exposes the
+            reducing channel separately, it is often marked <InlineCode>RED</InlineCode> or <InlineCode>CO</InlineCode>.
+          </Text>
+
+          <Text size="2" color="gray" as="p">
+            Treat the MiCS-6814 outputs as gas-response channels, not direct ppm
+            readings. SGX publishes typical CO and NO2 detection ranges for the
+            bare sensor, but a breakout-board build still needs baseline
+            calibration, environmental compensation, and validation before you
+            can claim concentration accuracy.
+          </Text>
+
+          <Text size="2" color="gray" as="p">
+            Be careful with module voltage levels. Many MiCS-6814 boards run
+            from 5 V, and board designs vary. Before hard-wiring the analog
+            outputs into an ADS1115 powered from 3.3 V, confirm with the seller
+            docs or a multimeter that the analog outputs stay inside the ADC
+            input limit. If a module can swing above the ADC supply, add a
+            divider or buffer stage.
+          </Text>
+        </Subsection>
+
+        <Subsection title="Using Both Add-ons Together">
+          <Text size="2" color="gray" as="p">
+            Both add-ons can be connected to the same Pi Zero 2 W build. The
+            SCD41 and ADS1115 are both I2C devices, and their default addresses
+            do not conflict.
+          </Text>
+
+          <InfoTable
+            headers={["Device", "Bus / Address", "Notes"]}
+            rows={[
+              ["SCD41", "I2C / 0x62", "Fixed sensor address."],
+              ["ADS1115", "I2C / 0x48 with ADDR tied to GND", "Use A0 for the OX path and A1 for the optional RED path."],
+            ]}
+          />
+
+          <Text size="2" color="gray" as="p">
+            Enable I2C in Raspberry Pi OS before expecting either board to show
+            up, then verify the bus after wiring.
+          </Text>
+
+          <CodeBlock>{`sudo raspi-config nonint do_i2c 0
+sudo apt install -y i2c-tools
+
+sudo i2cdetect -y 1`}</CodeBlock>
+
+          <Text size="2" color="gray" as="p">
+            A healthy shared-bus setup should show <InlineCode>48</InlineCode>{" "}
+            for the ADS1115 and <InlineCode>62</InlineCode> for the SCD41.
           </Text>
         </Subsection>
       </Section>
 
       {/* ---- Pi Setup ---- */}
       <Section title="Raspberry Pi Setup">
-        <Subsection title="Enable UART for GPS">
+        <Subsection title="Enable UART for GPS and I2C for Sensor Add-ons">
           <Text size="2" color="gray" as="p">
-            Enable serial hardware and disable the serial login console.
+            Enable serial hardware and disable the serial login console. If you
+            plan to use the CO2 or MiCS-6814 add-ons, enable I2C at the same
+            time.
           </Text>
 
           <CodeBlock>{`sudo apt update
-sudo apt install -y curl python3-venv python3-pip python3-dev libgpiod2
+sudo apt install -y curl python3-venv python3-pip python3-dev libgpiod2 i2c-tools
 
 sudo raspi-config nonint do_serial_cons 1
 sudo raspi-config nonint do_serial_hw 0
+sudo raspi-config nonint do_i2c 0
 
 sudo systemctl disable --now hciuart || true
 
@@ -1088,7 +1159,7 @@ python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 
 pip install --upgrade pip
-pip install pyserial pynmea2 adafruit-circuitpython-dht`}</CodeBlock>
+pip install pyserial pynmea2 adafruit-blinka adafruit-circuitpython-dht adafruit-circuitpython-scd4x adafruit-circuitpython-ads1x15`}</CodeBlock>
         </Subsection>
       </Section>
 
@@ -1342,6 +1413,10 @@ POST /api/factory-reset`}</CodeBlock>
             PMS5003 frames begin with hex bytes <InlineCode>42 4d</InlineCode>.
           </ListItem>
           <ListItem>DHT22 returns temperature and humidity.</ListItem>
+          <ListItem>
+            If you use the CO2 or MiCS add-ons, <InlineCode>i2cdetect -y 1</InlineCode>{" "}
+            shows <InlineCode>48</InlineCode> for the ADS1115 and <InlineCode>62</InlineCode> for the SCD41.
+          </ListItem>
           <ListItem>Device registration prints a CrowdPM user code.</ListItem>
           <ListItem>Activation succeeds in the browser.</ListItem>
           <ListItem>Test batch upload succeeds.</ListItem>

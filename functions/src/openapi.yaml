@@ -35,8 +35,8 @@ paths:
         Creates a Stripe Checkout session for the one-time CrowdPM node hardware
         purchase. Checkout collects a US shipping address, applies Stripe Tax
         based on that destination, and charges the selected hardware variant.
-        The standard PM2.5 node starts at a $350 base price with shipping
-        included, while optional CO2 and NO2 sensor add-ons are $25 each before
+        The standard PM2.5 node is $375 with shipping included. Single-sensor
+        variants are $420, and the combined CO2 + NO2 variant is $480 before
         tax. The selected quantity can be 1 through 10 devices. If a valid
         bearer token is supplied, the completed hardware receipt is tied to that
         account. The API lazily provisions the backing Stripe product + price for

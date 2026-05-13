@@ -141,8 +141,8 @@ beforeEach(() => {
     url: "https://checkout.stripe.com/c/pay/cs_test_123",
     mode: "payment",
     currency: "usd",
-    amount_subtotal: 35000,
-    amount_total: 35000,
+    amount_subtotal: 37500,
+    amount_total: 37500,
   });
 });
 
@@ -177,7 +177,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
-        unit_amount: 35000,
+        unit_amount: 37500,
         tax_behavior: "exclusive",
       },
     });
@@ -217,7 +217,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
@@ -229,11 +229,11 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       mode: "payment",
       checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_123",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
       quantity: 1,
       automaticTaxEnabled: true,
-      amountSubtotal: 35000,
-      amountTotal: 35000,
+      amountSubtotal: 37500,
+      amountTotal: 37500,
       purchaseType: "node_hardware",
       variantId: "standard",
       variantLabel: "PM2.5 standard node",
@@ -251,8 +251,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
       mode: "payment",
       currency: "usd",
-      amount_subtotal: 37500,
-      amount_total: 37500,
+      amount_subtotal: 42000,
+      amount_total: 42000,
     });
     const app = await buildApp();
 
@@ -274,7 +274,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
-        unit_amount: 37500,
+        unit_amount: 42000,
         tax_behavior: "exclusive",
       },
     });
@@ -296,17 +296,17 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_co2_123",
       defaultPriceId: "price_node_co2_123",
       currency: "usd",
-      unitAmount: 37500,
+      unitAmount: 42000,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
     expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
       sessionId: "cs_node_co2_123",
       purchaseType: "node_hardware",
-      unitAmount: 37500,
+      unitAmount: 42000,
       quantity: 1,
-      amountSubtotal: 37500,
-      amountTotal: 37500,
+      amountSubtotal: 42000,
+      amountTotal: 42000,
       variantId: "co2",
       variantLabel: "PM2.5 + CO2 node",
     });
@@ -323,8 +323,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       url: "https://checkout.stripe.com/c/pay/cs_node_no2_qty_123",
       mode: "payment",
       currency: "usd",
-      amount_subtotal: 75_000,
-      amount_total: 75_000,
+      amount_subtotal: 84_000,
+      amount_total: 84_000,
     });
     const app = await buildApp();
 
@@ -364,10 +364,10 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       customerEmail: "buyer@example.com",
       variantId: "no2",
       variantLabel: "PM2.5 + NO2 node",
-      unitAmount: 37_500,
+      unitAmount: 42_000,
       quantity: 2,
-      amountSubtotal: 75_000,
-      amountTotal: 75_000,
+      amountSubtotal: 84_000,
+      amountTotal: 84_000,
     });
     await app.close();
   });
@@ -377,7 +377,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_existing",
       defaultPriceId: "price_existing",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
@@ -431,7 +431,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
@@ -443,7 +443,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
     });
     const app = await buildApp();
 
@@ -458,7 +458,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
-      unitAmount: 35000,
+      unitAmount: 37500,
       taxCode: "txcd_99999999",
       taxBehavior: "exclusive",
     });
@@ -523,12 +523,12 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       variantLabel: "PM2.5 standard node",
       quantity: 1,
       currency: "usd",
-      unitAmount: 35_000,
-      amountSubtotal: 35_000,
-      amountTax: 3_150,
+      unitAmount: 37_500,
+      amountSubtotal: 37_500,
+      amountTax: 3_375,
       amountShipping: 0,
       amountDiscount: 0,
-      amountTotal: 38_150,
+      amountTotal: 40_875,
       completedAt: "2026-01-01T00:00:00.000Z",
       customerEmail: "buyer@example.com",
       shippingDetails: {
@@ -553,12 +553,12 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       variantLabel: "PM2.5 + CO2 + NO2 node",
       quantity: 3,
       currency: "usd",
-      unitAmount: 40_000,
-      amountSubtotal: 120_000,
-      amountTax: 10_800,
+      unitAmount: 48_000,
+      amountSubtotal: 144_000,
+      amountTax: 12_960,
       amountShipping: 0,
       amountDiscount: 0,
-      amountTotal: 130_800,
+      amountTotal: 156_960,
       completedAt: "2026-02-01T00:00:00.000Z",
       customerEmail: "buyer@example.com",
     });
@@ -591,14 +591,14 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         status: "completed",
         variantId: "co2_no2",
         quantity: 3,
-        amountTotal: 130_800,
+        amountTotal: 156_960,
       }),
       expect.objectContaining({
         sessionId: "cs_old",
         status: "completed",
         variantId: "standard",
         quantity: 1,
-        amountTotal: 38_150,
+        amountTotal: 40_875,
         shippingAddress: expect.objectContaining({
           city: "Seattle",
           state: "WA",
@@ -913,11 +913,11 @@ describe("POST /v1/payments/stripe/webhook", () => {
           total_details: {
             amount_discount: 0,
             amount_shipping: 0,
-            amount_tax: 3150,
+            amount_tax: 3375,
           },
           currency: "usd",
-          amount_subtotal: 35000,
-          amount_total: 38150,
+          amount_subtotal: 37500,
+          amount_total: 40875,
           url: null,
         },
       },
@@ -951,15 +951,15 @@ describe("POST /v1/payments/stripe/webhook", () => {
       customerEmail: "buyer@example.com",
       paymentIntentId: "pi_123",
       currency: "usd",
-      amountSubtotal: 35000,
-      amountTotal: 38150,
+      amountSubtotal: 37500,
+      amountTotal: 40875,
       purchaseType: "node_hardware",
       variantId: "standard",
       variantLabel: "PM2.5 standard node",
       quantity: 1,
       amountDiscount: 0,
       amountShipping: 0,
-      amountTax: 3150,
+      amountTax: 3375,
       automaticTaxEnabled: true,
       automaticTaxStatus: "complete",
       shippingDetails: {
