@@ -63,7 +63,7 @@ type GuardedOverlayView = google.maps.OverlayView & {
   getMap?: () => google.maps.Map | null;
   requestRedraw?: () => void;
 };
-type GoogleMapsOverlayInternal = GoogleMapsOverlay & {
+type GoogleMapsOverlayPrivateState = {
   _map?: google.maps.Map | null;
   _overlay?: GuardedOverlayView | null;
   _positioningOverlay?: GuardedOverlayView | null;
@@ -254,12 +254,12 @@ function pickLargestCaptureCanvas(root: HTMLDivElement | null): HTMLCanvasElemen
 
 function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
-  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
   internalOverlay._overlay?.requestRedraw?.();
 }
 
 function guardOverlayLifecycle(overlay: GoogleMapsOverlay) {
-  const internalOverlay = overlay as GoogleMapsOverlayInternal;
+  const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
 
   if (typeof internalOverlay._onAdd === "function") {
     const originalOnAdd = internalOverlay._onAdd.bind(overlay);

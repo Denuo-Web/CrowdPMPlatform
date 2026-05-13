@@ -199,17 +199,16 @@ function CodeBlock({ children }: { children: ReactNode }) {
       }}
     >
       <pre>
-        <Text
-          as="code"
-          size="1"
+        <code
           style={{
             whiteSpace: "pre",
+            fontSize: "var(--font-size-1)",
             fontFamily:
               "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           }}
         >
           {children}
-        </Text>
+        </code>
       </pre>
     </Box>
   );
@@ -217,19 +216,18 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
 function InlineCode({ children }: { children: ReactNode }) {
   return (
-    <Text
-      as="code"
-      size="1"
+    <code
       style={{
         borderRadius: "4px",
         padding: "0.1rem 0.3rem",
         background: "var(--gray-3)",
+        fontSize: "var(--font-size-1)",
         fontFamily:
           "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       }}
     >
       {children}
-    </Text>
+    </code>
   );
 }
 

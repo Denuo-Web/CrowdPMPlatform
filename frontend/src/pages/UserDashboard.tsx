@@ -732,16 +732,20 @@ export default function UserDashboard({
           </Flex>
           <Separator my="2" size="4" />
           <Text size="2" color="gray">Default batch visibility</Text>
-          <SegmentedControl.Root
-            value={settings.defaultBatchVisibility}
-            onValueChange={handleDefaultVisibilityChange}
-            disabled={isSettingsBusy}
-          >
-            <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
-            <SegmentedControl.Item value="private" disabled={subscription.limits.maxStoredPrivateBatches < 1}>
-              Private
-            </SegmentedControl.Item>
-          </SegmentedControl.Root>
+          {subscription.limits.maxStoredPrivateBatches < 1 ? (
+            <SegmentedControl.Root value="public" disabled>
+              <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          ) : (
+            <SegmentedControl.Root
+              value={settings.defaultBatchVisibility}
+              onValueChange={handleDefaultVisibilityChange}
+              disabled={isSettingsBusy}
+            >
+              <SegmentedControl.Item value="public">Public</SegmentedControl.Item>
+              <SegmentedControl.Item value="private">Private</SegmentedControl.Item>
+            </SegmentedControl.Root>
+          )}
           <Text size="1" color="gray">
             {subscription.limits.maxStoredPrivateBatches < 1
               ? "Community accounts default to public uploads. Upgrade to Pro to keep batches private."
