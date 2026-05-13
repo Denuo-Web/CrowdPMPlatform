@@ -10,12 +10,16 @@ type AuthContextValue = {
   roles: AdminRole[];
   isModerator: boolean;
   isSuperAdmin: boolean;
+  canAccessAdmin: boolean;
+  canRunSmokeTests: boolean;
   signIn: (email: string, password: string) => Promise<UserCredential>;
   signUp: (email: string, password: string) => Promise<UserCredential>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const SMOKE_TESTER_EMAIL = "smoke-tester@crowdpm.dev";
+const PRODUCTION_HOST_SUFFIXES = [".web.app", ".firebaseapp.com"];
 
 async function loadFirebaseAuth() {
   const [{ auth }, firebaseAuth] = await Promise.all([
@@ -52,6 +56,16 @@ function extractRoles(tokenResult: IdTokenResult | null): AdminRole[] {
     out.add("super_admin");
   }
   return Array.from(out);
+}
+
+function isLocalEmulatorSmokeTester(user: User | null): boolean {
+  const emulatorHost = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST?.trim();
+  const hostname = typeof window === "undefined" ? "" : window.location.hostname;
+  return (
+    Boolean(emulatorHost)
+    && !PRODUCTION_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
+    && user?.email?.trim().toLowerCase() === SMOKE_TESTER_EMAIL
+  );
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -135,16 +149,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearCachesOnSignOut]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      isLoading,
-      roles,
-      isModerator: roles.includes("moderator") || roles.includes("super_admin"),
-      isSuperAdmin: roles.includes("super_admin"),
-      signIn,
-      signUp,
-      signOut,
-    }),
+    () => {
+      const isSuperAdmin = roles.includes("super_admin");
+      const isModerator = roles.includes("moderator") || isSuperAdmin;
+      const isLocalSmokeTester = isLocalEmulatorSmokeTester(user);
+      return {
+        user,
+        isLoading,
+        roles,
+        isModerator,
+        isSuperAdmin,
+        canAccessAdmin: isModerator || isLocalSmokeTester,
+        canRunSmokeTests: isSuperAdmin || isLocalSmokeTester,
+        signIn,
+        signUp,
+        signOut,
+      };
+    },
     [user, isLoading, roles, signIn, signOut, signUp],
   );
 

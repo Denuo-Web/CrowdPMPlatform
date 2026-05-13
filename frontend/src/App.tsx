@@ -127,7 +127,7 @@ function readThemeCheckoutSessionId(): string | null {
 }
 
 export default function App() {
-  const { user, isLoading, signOut, isModerator, isSuperAdmin } = useAuth();
+  const { user, isLoading, signOut, canAccessAdmin, canRunSmokeTests } = useAuth();
   const { settings } = useUserSettings();
   const userScopedKey = user?.uid ?? "anon";
   const initialDeepLinkedTab = typeof window !== "undefined"
@@ -150,13 +150,11 @@ export default function App() {
   const [pendingSmokeCleanup, setPendingSmokeCleanup] = useState<IngestSmokeTestCleanupResponse | null>(null);
 
   const isSignedIn = Boolean(user);
-  const canUseSmokeTests = Boolean(user) && isSuperAdmin;
-  const canUseAdmin = Boolean(user) && (isModerator || isSuperAdmin);
   const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
     ? "map"
-    : (tab === "smoke" && (!user || !canUseSmokeTests)
+    : (tab === "smoke" && (!user || !canRunSmokeTests)
       ? "map"
-      : (tab === "admin" && !canUseAdmin ? "map" : tab));
+      : (tab === "admin" && !canAccessAdmin ? "map" : tab));
   const activeTheme = themeDraft ?? settings.theme;
   const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
@@ -213,8 +211,8 @@ export default function App() {
 
   const handleProtectedTabClick = (target: "dashboard" | "smoke" | "admin") => {
     if (user) {
-      if (target === "smoke" && !canUseSmokeTests) return;
-      if (target === "admin" && !canUseAdmin) return;
+      if (target === "smoke" && !canRunSmokeTests) return;
+      if (target === "admin" && !canAccessAdmin) return;
       setTab(target);
       return;
     }
@@ -501,7 +499,16 @@ export default function App() {
                 >
                   User Dashboard
                 </DropdownMenu.Item>
-                {canUseAdmin ? (
+                {canRunSmokeTests ? (
+                  <DropdownMenu.Item
+                    onSelect={() => handleProtectedTabClick("smoke")}
+                    style={activeTab === "smoke" ? { fontWeight: 600 } : undefined}
+                    disabled={isLoading}
+                  >
+                    Smoke Test Lab
+                  </DropdownMenu.Item>
+                ) : null}
+                {canAccessAdmin ? (
                   <DropdownMenu.Item
                     onSelect={() => handleProtectedTabClick("admin")}
                     style={activeTab === "admin" ? { fontWeight: 600 } : undefined}
@@ -611,17 +618,17 @@ export default function App() {
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
-                      onOpenSmokeTest={canUseSmokeTests ? (() => handleProtectedTabClick("smoke")) : undefined}
+                      onOpenSmokeTest={canRunSmokeTests ? (() => handleProtectedTabClick("smoke")) : undefined}
                       onOpenThemeModal={openThemeModal}
                       refreshToken={dashboardRefreshToken}
                     />
-                  ) : activeTab === "smoke" && user && canUseSmokeTests ? (
+                  ) : activeTab === "smoke" && user && canRunSmokeTests ? (
                     <SmokeTestLab
                       key={`smoke:${userScopedKey}`}
                       onSmokeTestComplete={handleSmokeTestComplete}
                       onSmokeTestCleared={handleSmokeTestCleanup}
                     />
-                  ) : activeTab === "admin" && user && canUseAdmin ? (
+                  ) : activeTab === "admin" && user && canAccessAdmin ? (
                     <AdminModerationPage key={`admin:${userScopedKey}`} />
                   ) : activeTab === "pairing-info" ? (
                     <PairingInfoPage onOpenActivation={openActivationModal} />

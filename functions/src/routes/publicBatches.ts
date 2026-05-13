@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from "node:http";
 import type { BatchVisibility, PublicBatchDetail, PublicBatchSummary } from "@crowdpm/types";
 import type { firestore } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
@@ -11,6 +12,8 @@ import { rateLimitGuard, requestParam } from "../lib/routeGuards.js";
 import { decodeBatchPayload } from "../services/batchPayloads.js";
 
 const PUBLIC_BATCH_LIST_MAX_LIMIT = 500;
+const APP_SETTINGS_COLLECTION = "appSettings";
+const DEMO_BATCH_SETTINGS_DOC = "demoBatch";
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(PUBLIC_BATCH_LIST_MAX_LIMIT).optional(),
 });
@@ -52,7 +55,34 @@ function ensurePublicApproved(data: firestore.DocumentData | undefined): { visib
   return { visibility: "public", moderationState: "approved" };
 }
 
+async function loadPublicApprovedSummary(deviceId: string, batchId: string): Promise<PublicBatchSummary | null> {
+  const batchSnap = await db().collection("batches").doc(batchId).get();
+  if (!batchSnap.exists) return null;
+  const batchData = batchSnap.data() ?? {};
+  if (batchData.deviceId !== deviceId) return null;
+  try {
+    ensurePublicApproved(batchData);
+  }
+  catch {
+    return null;
+  }
+  return serializeSummary(batchSnap);
+}
+
 export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/v1/public/demo-batch", {
+    preHandler: [
+      rateLimitGuard((req) => `public:demo-batch:ip:${requestIp(req)}`, 120, 60_000),
+      rateLimitGuard("public:demo-batch:global", 2_000, 60_000),
+    ],
+  }, async (): Promise<PublicBatchSummary | null> => {
+    const snap = await db().collection(APP_SETTINGS_COLLECTION).doc(DEMO_BATCH_SETTINGS_DOC).get();
+    const deviceId = asString(snap.get("deviceId"));
+    const batchId = asString(snap.get("batchId"));
+    if (!deviceId || !batchId) return null;
+    return loadPublicApprovedSummary(deviceId, batchId);
+  });
+
   app.get("/v1/public/batches", {
     preHandler: [
       rateLimitGuard((req) => `public:batches:list:ip:${requestIp(req)}`, 120, 60_000),
@@ -124,4 +154,3 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 };
-import type { IncomingHttpHeaders } from "node:http";

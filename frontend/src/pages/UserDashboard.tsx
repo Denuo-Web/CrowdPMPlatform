@@ -406,7 +406,7 @@ export default function UserDashboard({ onRequestActivation, onOpenSmokeTest, on
           </Flex>
           {onOpenSmokeTest ? (
             <Text size="2" color="gray">
-              Super admins can also{" "}
+              Authorized test users can also{" "}
               <Link
                 href="#"
                 onClick={(event) => {
