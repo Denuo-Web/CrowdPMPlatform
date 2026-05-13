@@ -75,6 +75,7 @@ function makeDocRef(path: string) {
       const data = dbStore.get(path);
       return {
         exists: Boolean(data),
+        data: () => data,
         get: (field: string) => data?.[field],
       };
     }),
@@ -86,9 +87,53 @@ function makeDocRef(path: string) {
   };
 }
 
+function matchesFilter(data: Record<string, unknown>, field: string, op: string, value: unknown): boolean {
+  const actual = data[field];
+  if (op === "array-contains") {
+    return Array.isArray(actual) && actual.includes(value);
+  }
+  if (op === "==") {
+    return actual === value;
+  }
+  throw new Error(`unsupported op ${op}`);
+}
+
+function queryDocs(collectionName: string, filters: Array<{ field: string; op: string; value: unknown }>) {
+  return Array.from(dbStore.entries())
+    .filter(([path]) => path.startsWith(`${collectionName}/`))
+    .map(([path, data]) => ({
+      id: path.slice(collectionName.length + 1),
+      data,
+    }))
+    .filter(({ data }) => filters.every((filter) => matchesFilter(data, filter.field, filter.op, filter.value)));
+}
+
+function makeQuery(collectionName: string, filters: Array<{ field: string; op: string; value: unknown }> = []) {
+  return {
+    where: (field: string, op: string, value: unknown) => makeQuery(collectionName, [...filters, { field, op, value }]),
+    get: async () => {
+      const docs = queryDocs(collectionName, filters).map(({ id, data }) => ({
+        id,
+        data: () => data,
+        get: (field: string) => data[field],
+      }));
+      return {
+        docs,
+        forEach: (callback: (doc: typeof docs[number]) => void) => docs.forEach(callback),
+      };
+    },
+    count: () => ({
+      get: async () => ({
+        data: () => ({ count: queryDocs(collectionName, filters).length }),
+      }),
+    }),
+  };
+}
+
 const mockDb = {
   collection: vi.fn((name: string) => ({
     doc: (id: string) => makeDocRef(`${name}/${id}`),
+    where: (field: string, op: string, value: unknown) => makeQuery(name, [{ field, op, value }]),
   })),
 };
 
@@ -156,6 +201,53 @@ describe("user settings routes", () => {
       themeSaveUnlocked: false,
       subscription: expectedFreeSubscription,
       subscriptionOffers: expectedOffers,
+    });
+    await app.close();
+  });
+
+  it("GET /v1/user/settings reconciles usage from live devices and batches", async () => {
+    const app = await buildApp();
+    dbStore.set("accountEntitlements/user-123", {
+      activeDeviceCount: 0,
+      storedBatchCount: 0,
+      storedPrivateBatchCount: 0,
+    });
+    dbStore.set("devices/device-1", {
+      ownerUserIds: ["user-123"],
+      status: "ACTIVE",
+      registryStatus: "active",
+    });
+    dbStore.set("devices/device-2", {
+      ownerUserIds: ["user-123"],
+      status: "ACTIVE",
+      registryStatus: "active",
+    });
+    dbStore.set("devices/device-revoked", {
+      ownerUserIds: ["user-123"],
+      status: "REVOKED",
+      registryStatus: "revoked",
+    });
+    dbStore.set("batches/batch-1", {
+      ownerUserIds: ["user-123"],
+      visibility: "public",
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/user/settings",
+      headers: { authorization: "Bearer ok" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      subscription: {
+        ...expectedFreeSubscription,
+        usage: {
+          activeDevices: 2,
+          storedBatchesTotal: 1,
+          storedPrivateBatches: 0,
+        },
+      },
     });
     await app.close();
   });

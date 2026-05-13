@@ -1,4 +1,11 @@
-import type { DocumentReference, Firestore } from "firebase-admin/firestore";
+import type {
+  AggregateQuerySnapshot,
+  DocumentReference,
+  Firestore,
+  Query,
+  QuerySnapshot,
+  Transaction,
+} from "firebase-admin/firestore";
 import type {
   BatchVisibility,
   SubscriptionBillingInterval,
@@ -15,7 +22,9 @@ import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 
 const ACCOUNT_ENTITLEMENTS_COLLECTION = "accountEntitlements";
+const BATCHES_COLLECTION = "batches";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
+const DEVICES_COLLECTION = "devices";
 const ENTITLEMENT_SCHEMA_VERSION = 1;
 
 type PlanDefinition = {
@@ -78,6 +87,11 @@ type StoredCounterOverride = Partial<Pick<
 >> & {
   updatedAt: string;
 };
+
+type UsageCounts = Pick<
+  StoredEntitlementData,
+  "activeDeviceCount" | "storedBatchCount" | "storedPrivateBatchCount"
+>;
 
 export type UploadQuotaReservation = {
   monthKey: string;
@@ -258,6 +272,79 @@ function mergeLimits(base: SubscriptionLimits, overrides: Partial<SubscriptionLi
   };
 }
 
+function normalizeUpperStatus(value: unknown): string | null {
+  return typeof value === "string" ? value.trim().toUpperCase() : null;
+}
+
+function normalizeLowerStatus(value: unknown): string | null {
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
+}
+
+function isDeviceActive(data: Record<string, unknown> | undefined): boolean {
+  const status = normalizeUpperStatus(data?.status);
+  const registryStatus = normalizeLowerStatus(data?.registryStatus);
+  return status !== "REVOKED"
+    && status !== "SUSPENDED"
+    && registryStatus !== "revoked"
+    && registryStatus !== "suspended";
+}
+
+function devicesQuery(targetDb: Firestore, userId: string): Query {
+  return targetDb.collection(DEVICES_COLLECTION).where("ownerUserIds", "array-contains", userId);
+}
+
+function storedBatchesQuery(targetDb: Firestore, userId: string): Query {
+  return targetDb.collection(BATCHES_COLLECTION).where("ownerUserIds", "array-contains", userId);
+}
+
+function storedPrivateBatchesQuery(targetDb: Firestore, userId: string): Query {
+  return storedBatchesQuery(targetDb, userId).where("visibility", "==", "private");
+}
+
+function countActiveDevices(snapshot: QuerySnapshot): number {
+  return snapshot.docs.reduce((total, doc) => {
+    const next = doc.data() as Record<string, unknown> | undefined;
+    return total + (isDeviceActive(next) ? 1 : 0);
+  }, 0);
+}
+
+function countAggregate(snapshot: AggregateQuerySnapshot<{ count: FirebaseFirestore.AggregateField<number> }>): number {
+  return snapshot.data().count;
+}
+
+async function loadUsageCounts(
+  userId: string,
+  targetDb: Firestore,
+): Promise<UsageCounts> {
+  const [ownedDevicesSnap, storedBatchCountSnap, storedPrivateBatchCountSnap] = await Promise.all([
+    devicesQuery(targetDb, userId).get(),
+    storedBatchesQuery(targetDb, userId).count().get(),
+    storedPrivateBatchesQuery(targetDb, userId).count().get(),
+  ]);
+  return {
+    activeDeviceCount: countActiveDevices(ownedDevicesSnap),
+    storedBatchCount: countAggregate(storedBatchCountSnap),
+    storedPrivateBatchCount: countAggregate(storedPrivateBatchCountSnap),
+  };
+}
+
+async function loadUsageCountsInTransaction(
+  userId: string,
+  targetDb: Firestore,
+  tx: Transaction,
+): Promise<UsageCounts> {
+  const [ownedDevicesSnap, storedBatchCountSnap, storedPrivateBatchCountSnap] = await Promise.all([
+    tx.get(devicesQuery(targetDb, userId)),
+    tx.get(storedBatchesQuery(targetDb, userId).count()),
+    tx.get(storedPrivateBatchesQuery(targetDb, userId).count()),
+  ]);
+  return {
+    activeDeviceCount: countActiveDevices(ownedDevicesSnap),
+    storedBatchCount: countAggregate(storedBatchCountSnap),
+    storedPrivateBatchCount: countAggregate(storedPrivateBatchCountSnap),
+  };
+}
+
 function readStoredEntitlementData(raw: Record<string, unknown> | undefined): StoredEntitlementData {
   return {
     planId: normalizePlanId(raw?.planId),
@@ -424,6 +511,7 @@ export function defaultBatchVisibilityForSubscription(summary: SubscriptionSumma
 export function buildSubscriptionSummary(
   raw: Record<string, unknown> | undefined,
   now: Date = new Date(),
+  usageCounts?: Partial<UsageCounts>,
 ): SubscriptionSummary {
   const stored = readStoredEntitlementData(raw);
   const effectivePlanId = effectivePlanIdFor(stored);
@@ -436,6 +524,9 @@ export function buildSubscriptionSummary(
   const monthlyPointsUsed = stored.currentUsageMonth === activeUsageMonth
     ? stored.currentMonthPointsUploaded
     : 0;
+  const activeDevices = usageCounts?.activeDeviceCount ?? stored.activeDeviceCount;
+  const storedBatchesTotal = usageCounts?.storedBatchCount ?? stored.storedBatchCount;
+  const storedPrivateBatches = usageCounts?.storedPrivateBatchCount ?? stored.storedPrivateBatchCount;
   return {
     planId: effectivePlanId,
     label: effectivePlan.label,
@@ -448,9 +539,9 @@ export function buildSubscriptionSummary(
     videoDownloadAccess: effectivePlan.videoDownloadAccess,
     limits,
     usage: {
-      activeDevices: stored.activeDeviceCount,
-      storedBatchesTotal: stored.storedBatchCount,
-      storedPrivateBatches: stored.storedPrivateBatchCount,
+      activeDevices,
+      storedBatchesTotal,
+      storedPrivateBatches,
       monthlyPointsUsed,
       monthlyPointsRemaining: Math.max(0, limits.monthlyPoints - monthlyPointsUsed),
       monthKey: activeUsageMonth,
@@ -463,8 +554,15 @@ export async function getSubscriptionSummary(
   userId: string,
   targetDb: Firestore = getDb(),
 ): Promise<SubscriptionSummary> {
-  const snap = await docRef(targetDb, userId).get();
-  return buildSubscriptionSummary(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
+  const [snap, usageCounts] = await Promise.all([
+    docRef(targetDb, userId).get(),
+    loadUsageCounts(userId, targetDb),
+  ]);
+  return buildSubscriptionSummary(
+    snap.exists ? (snap.data() as Record<string, unknown>) : undefined,
+    new Date(),
+    usageCounts,
+  );
 }
 
 export async function getStripeCustomerIdForUser(
@@ -512,7 +610,8 @@ export async function reserveUploadQuota(args: {
     const snap = await tx.get(ref);
     const raw = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
     const stored = readStoredEntitlementData(raw);
-    const summary = buildSubscriptionSummary(raw, now);
+    const usageCounts = await loadUsageCountsInTransaction(args.userId, targetDb, tx);
+    const summary = buildSubscriptionSummary(raw, now, usageCounts);
 
     if (args.pointCount > summary.limits.maxPointsPerBatch) {
       throw quotaExceeded(
@@ -576,7 +675,11 @@ export async function reserveUploadQuota(args: {
       monthKey: currentMonthKey,
       pointCount: args.pointCount,
       visibility: args.visibility,
-      subscription: buildSubscriptionSummary(applyCounterOverride(stored, override) as unknown as Record<string, unknown>, now),
+      subscription: buildSubscriptionSummary(applyCounterOverride(stored, override) as unknown as Record<string, unknown>, now, {
+        ...usageCounts,
+        storedBatchCount: override.storedBatchCount,
+        storedPrivateBatchCount: override.storedPrivateBatchCount,
+      }),
     };
   });
 }
@@ -630,7 +733,8 @@ export async function writeDeviceWithQuota(args: {
     const snap = await tx.get(ref);
     const raw = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
     const stored = readStoredEntitlementData(raw);
-    const summary = buildSubscriptionSummary(raw, now);
+    const usageCounts = await loadUsageCountsInTransaction(args.userId, targetDb, tx);
+    const summary = buildSubscriptionSummary(raw, now, usageCounts);
     if (summary.usage.activeDevices + 1 > summary.limits.maxActiveDevices) {
       throw quotaExceeded(
         summary,
@@ -664,13 +768,11 @@ export async function decrementActiveDeviceCount(args: {
   await targetDb.runTransaction(async (tx) => {
     const ref = docRef(targetDb, args.userId);
     const snap = await tx.get(ref);
-    if (!snap.exists) {
-      return;
-    }
-    const raw = snap.data() as Record<string, unknown>;
+    const raw = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
     const stored = readStoredEntitlementData(raw);
+    const usageCounts = await loadUsageCountsInTransaction(args.userId, targetDb, tx);
     const override: StoredCounterOverride = {
-      activeDeviceCount: Math.max(0, stored.activeDeviceCount - 1),
+      activeDeviceCount: usageCounts.activeDeviceCount,
       updatedAt: now.toISOString(),
     };
     tx.set(ref, baseCounterPayload(args.userId, now, stored, override), { merge: true });
@@ -689,16 +791,12 @@ export async function applyStoredBatchDeletion(args: {
   await targetDb.runTransaction(async (tx) => {
     const ref = docRef(targetDb, args.userId);
     const snap = await tx.get(ref);
-    if (!snap.exists) {
-      return;
-    }
-    const raw = snap.data() as Record<string, unknown>;
+    const raw = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
     const stored = readStoredEntitlementData(raw);
+    const usageCounts = await loadUsageCountsInTransaction(args.userId, targetDb, tx);
     const override: StoredCounterOverride = {
-      storedBatchCount: Math.max(0, stored.storedBatchCount - 1),
-      storedPrivateBatchCount: args.visibility === "private"
-        ? Math.max(0, stored.storedPrivateBatchCount - 1)
-        : stored.storedPrivateBatchCount,
+      storedBatchCount: usageCounts.storedBatchCount,
+      storedPrivateBatchCount: usageCounts.storedPrivateBatchCount,
       updatedAt: now.toISOString(),
     };
     tx.set(ref, baseCounterPayload(args.userId, now, stored, override), { merge: true });
@@ -724,7 +822,8 @@ export async function applyBatchVisibilityChange(args: {
     const snap = await tx.get(ref);
     const raw = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
     const stored = readStoredEntitlementData(raw);
-    const summary = buildSubscriptionSummary(raw, now);
+    const usageCounts = await loadUsageCountsInTransaction(args.userId, targetDb, tx);
+    const summary = buildSubscriptionSummary(raw, now, usageCounts);
 
     if (args.toVisibility === "private" && summary.limits.maxStoredPrivateBatches < 1) {
       throw quotaExceeded(
