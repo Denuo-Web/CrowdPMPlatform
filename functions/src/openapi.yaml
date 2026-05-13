@@ -587,62 +587,6 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to suspend the device.
-  /v1/admin/ingest-smoke-test:
-    post:
-      operationId: runIngestSmokeTest
-      summary: Run ingest smoke test
-      description: >
-        Seeds synthetic measurements and invokes the ingest pipeline for diagnostics.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/IngestSmokeTestRequest'
-      responses:
-        '200':
-          description: Smoke test completed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IngestSmokeTestResponse'
-        '400':
-          description: Invalid smoke test request.
-        '500':
-          description: Smoke test failed.
-        '401':
-          description: Missing or invalid bearer token.
-        '403':
-          description: Caller lacks permission to run smoke tests.
-  /v1/admin/ingest-smoke-test/cleanup:
-    post:
-      operationId: cleanupIngestSmokeTest
-      summary: Clean up ingest smoke test devices
-      description: >
-        Removes seeded measurement data and deletes generated ingest files.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/IngestCleanupRequest'
-      responses:
-        '200':
-          description: Cleanup completed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IngestCleanupResponse'
-        '400':
-          description: Invalid cleanup request.
-        '401':
-          description: Missing or invalid bearer token.
-        '403':
-          description: Caller lacks permission to clean up smoke tests.
   /v1/admin/submissions:
     get:
       operationId: listAdminSubmissions
@@ -1228,86 +1172,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IngestPoint'
-    IngestPointOverrides:
-      type: object
-      description: Overrides applied to each generated point.
-      additionalProperties: false
-      properties:
-        device_id:
-          type: string
-        pollutant:
-          type: string
-          enum: [pm25]
-        value:
-          type: number
-          format: float
-        unit:
-          type: string
-        lat:
-          type: number
-          format: double
-        lon:
-          type: number
-          format: double
-        altitude:
-          type: number
-          format: double
-          nullable: true
-        precision:
-          type: integer
-          nullable: true
-        timestamp:
-          type: string
-          format: date-time
-        flags:
-          type: integer
-          nullable: true
-    IngestSmokeTestRequest:
-      type: object
-      properties:
-        deviceId:
-          type: string
-          description: Device identifier to seed; defaults to a generated ID.
-        payload:
-          $ref: '#/components/schemas/IngestBody'
-        pointOverrides:
-          $ref: '#/components/schemas/IngestPointOverrides'
-        visibility:
-          $ref: '#/components/schemas/BatchVisibility'
-          description: Overrides the visibility of the generated batch; defaults to the caller's user setting.
-    IngestSmokeTestResponse:
-      type: object
-      properties:
-        accepted:
-          type: boolean
-          description: Indicates whether the payload was accepted for processing.
-        batchId:
-          type: string
-        deviceId:
-          type: string
-        storagePath:
-          type: string
-          description: Cloud Storage object path for the gzipped batch payload.
-        payload:
-          $ref: '#/components/schemas/IngestBody'
-        points:
-          type: array
-          items:
-            $ref: '#/components/schemas/IngestPoint'
-        visibility:
-          $ref: '#/components/schemas/BatchVisibility'
-        seededDeviceId:
-          type: string
-        seededDeviceIds:
-          type: array
-          items:
-            type: string
-      required:
-        - accepted
-        - batchId
-        - deviceId
-        - storagePath
-        - visibility
     BatchVisibility:
       type: string
       description: Controls whether a batch can be surfaced in public interfaces.
@@ -1461,25 +1325,6 @@ components:
           type: boolean
         reason:
           type: string
-    IngestCleanupRequest:
-      type: object
-      properties:
-        deviceId:
-          type: string
-        deviceIds:
-          type: array
-          items:
-            type: string
-    IngestCleanupResponse:
-      type: object
-      properties:
-        clearedDeviceId:
-          type: string
-          nullable: true
-        clearedDeviceIds:
-          type: array
-          items:
-            type: string
     UserSettings:
       type: object
       properties:

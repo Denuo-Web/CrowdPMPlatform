@@ -31,7 +31,7 @@ Important values:
 - `PUBLIC_APP_BASE_URL`: base URL used for Stripe Checkout success and cancel redirects.
 - `STRIPE_SECRET_KEY`: Stripe secret key for creating the node hardware Checkout session.
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
-- `DEV_AUTH_USER_EMAIL`, `DEV_AUTH_USER_PASSWORD`, `DEV_AUTH_USER_DISPLAY_NAME`: local Auth emulator seed user.
+- `FIRST_SUPER_ADMIN_EMAIL`, `FIRST_SUPER_ADMIN_PASSWORD`, `FIRST_SUPER_ADMIN_DISPLAY_NAME`: local Auth emulator super-admin seed user.
 
 The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` are expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
 
@@ -48,7 +48,7 @@ Stripe Checkout can still show `$0.00` tax for a valid US address when the Strip
 - Activation: `GET /v1/device-activation`, `POST /v1/device-activation/authorize`
 - User APIs: `/v1/devices`, `/v1/batches`, `/v1/user/settings`
 - Public APIs: `/v1/public/batches`
-- Admin APIs: `/v1/admin/devices/:id/suspend`, `/v1/admin/ingest-smoke-test`, `/v1/admin/submissions`, `/v1/admin/users`
+- Admin APIs: `/v1/admin/devices/:id/suspend`, `/v1/admin/submissions`, `/v1/admin/users`
 
 `ingestGateway` is a separate HTTPS Function that validates device access tokens and DPoP proofs, stores gzipped batch payloads, and writes batch metadata.
 

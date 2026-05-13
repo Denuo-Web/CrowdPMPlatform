@@ -1,6 +1,6 @@
 # Scripts
 
-Scripts in this directory emulate sensor devices, seed local smoke data, and support deployed-device checks. Run them from the repository root after selecting Node 24.
+Scripts in this directory emulate sensor devices and support deployed-device checks. Run them from the repository root after selecting Node 24.
 
 ```bash
 source ~/.nvm/nvm.sh && nvm use 24
@@ -50,25 +50,6 @@ Useful options:
 - `--minutes <n>`: points per batch, one point per minute.
 - `--start-value <n>` and `--value-step <n>`: shape PM2.5 values.
 - `--lat <n>`, `--lon <n>`, `--altitude <n>`, `--precision <n>`: shape location metadata.
-
-## Local OSU Bike Simulation
-
-Seeds multiple public smoke-test batches through `/v1/admin/ingest-smoke-test`.
-
-```bash
-pnpm device:simulate:osu -- --count 20 --minutes 36
-```
-
-Defaults sign in to the Auth emulator as `smoke-tester@crowdpm.dev` with password `crowdpm-dev`.
-
-Useful options:
-
-- `--prefix <text>`
-- `--start-index <n>`
-- `--delay-ms <n>`
-- `--visibility <public|private>`
-- `--api <url>`
-- `--auth-url <url>`
 
 ## Deployed Device Helpers
 

@@ -329,7 +329,7 @@ function PrivacyPolicy() {
           <Bullet>Paid product records, including Stripe Checkout session IDs, payment status, customer contact details, billing and shipping addresses where applicable, order totals, tax amounts, shipping details for hardware, receipts, refunds, support messages, and related fulfillment or entitlement records.</Bullet>
           <Bullet>Moderation and administration records, including moderator user IDs, role changes, disabled account status, moderation reasons, and audit records.</Bullet>
           <Bullet>Technical and security data, including IP address or network hints, request headers, logs, rate-limit keys, browser/device information available to the service, and error diagnostics.</Bullet>
-          <Bullet>Local browser storage, including recent map zoom, timeline position, smoke-test selections, and cached batch data used to keep the interface responsive.</Bullet>
+          <Bullet>Local browser storage, including recent map zoom, timeline position, and selected batch data used to keep the interface responsive.</Bullet>
           <Bullet>Communications you send to us, including email or support messages.</Bullet>
         </BulletList>
         <P>

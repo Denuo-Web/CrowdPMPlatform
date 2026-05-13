@@ -1,6 +1,6 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { timestampToIsoString, timestampToMillis } from "@crowdpm/types";
+import { timestampToMillis, type IngestPoint } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
@@ -10,9 +10,6 @@ import {
   listPublicBatches,
   type BatchSummary,
   type MeasurementRecord,
-  type IngestSmokeTestResponse,
-  type IngestSmokeTestPoint,
-  type IngestSmokeTestCleanupResponse,
 } from "../lib/api";
 import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
 import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
@@ -28,8 +25,7 @@ import type { Map3DCaptureSession, Map3DHandle } from "../components/Map3D";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
 // Keys used to scope localStorage entries per user so shared browsers do not mix data.
-const LAST_SELECTION_KEY = "crowdpm:lastSmokeSelection";
-const LAST_SMOKE_CACHE_KEY = "crowdpm:lastSmokeBatchCache";
+const LAST_SELECTION_KEY = "crowdpm:lastBatchSelection";
 const LAST_MAP_ZOOM_KEY = "crowdpm:lastMapZoom";
 const LAST_TIMELINE_INDEX_KEY = "crowdpm:lastTimelineIndex";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
@@ -70,59 +66,12 @@ type VisibleBatchSummary = BatchSummary & {
 
 type BatchBrowserTimeRange = "all" | "8h" | "24h" | "7d" | "30d";
 
-type StoredSmokeBatch = {
-  summary: BatchSummary;
-  points: IngestSmokeTestPoint[];
-};
-
 type MapMeasurementRecord = MeasurementRecord & {
   batchKey?: string;
   batchPointIndex?: number;
 };
 
 type StoredTimelineIndexes = Record<string, number>;
-
-// Safely parse a cached smoke batch so stale/invalid JSON never breaks the UI.
-function parseStoredSmokeBatch(raw: string | null): StoredSmokeBatch | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { summary?: Partial<BatchSummary>; points?: IngestSmokeTestPoint[] } | null;
-    if (!parsed || typeof parsed !== "object") return null;
-    const summary = parsed.summary;
-    if (
-      !summary
-      || typeof summary.batchId !== "string"
-      || typeof summary.deviceId !== "string"
-    ) {
-      return null;
-    }
-    if (!Array.isArray(parsed.points) || !parsed.points.length) {
-      return null;
-    }
-    const normalizedSummary: BatchSummary = {
-      batchId: summary.batchId,
-      deviceId: summary.deviceId,
-      deviceName: typeof summary.deviceName === "string" ? summary.deviceName : null,
-      count: typeof summary.count === "number" ? summary.count : parsed.points.length,
-      processedAt: timestampToIsoString(summary.processedAt) ?? new Date().toISOString(),
-      visibility: summary.visibility === "public" ? "public" : "private",
-      moderationState: summary.moderationState === "quarantined" ? "quarantined" : "approved",
-    };
-    return { summary: normalizedSummary, points: parsed.points };
-  }
-  catch {
-    return null;
-  }
-}
-
-// When we have a cached batch locally but the server has not returned it yet,
-// prepend it so the dropdown still shows the user's latest run.
-function mergeCachedSummary(list: BatchSummary[], cached: StoredSmokeBatch | null): BatchSummary[] {
-  if (!cached) return list;
-  const exists = list.some((batch) => batch.batchId === cached.summary.batchId && batch.deviceId === cached.summary.deviceId);
-  if (exists) return list;
-  return [cached.summary, ...list];
-}
 
 function formatBatchLabel(batch: BatchSummary) {
   const timeMs = timestampToMillis(batch.processedAt);
@@ -182,7 +131,7 @@ function isTerminalBatchError(error: unknown): boolean {
 }
 
 function pointsToMeasurementRecords(
-  points: IngestSmokeTestPoint[],
+  points: IngestPoint[],
   fallbackDeviceId: string,
   batchId: string,
   options?: { batchKey?: string }
@@ -213,36 +162,6 @@ function pointsToMeasurementRecords(
         batchPointIndex: idx,
       } satisfies MapMeasurementRecord;
     });
-}
-
-type MapPageProps = {
-  pendingSmokeResult?: IngestSmokeTestResponse | null;
-  onSmokeResultConsumed?: () => void;
-  pendingCleanupDetail?: IngestSmokeTestCleanupResponse | null;
-  onCleanupDetailConsumed?: () => void;
-};
-
-function buildClearedSet(detail?: IngestSmokeTestCleanupResponse | null) {
-  const cleared = new Set<string>();
-  if (!detail) return cleared;
-  if (Array.isArray(detail.clearedDeviceIds)) {
-    detail.clearedDeviceIds.forEach((id) => {
-      if (typeof id === "string" && id.length) cleared.add(id);
-    });
-  }
-  if (typeof detail.clearedDeviceId === "string" && detail.clearedDeviceId.length) {
-    cleared.add(detail.clearedDeviceId);
-  }
-  return cleared;
-}
-
-// Utility so we can safely schedule state updates outside React render cycles.
-function deferStateUpdate(action: () => void) {
-  if (typeof queueMicrotask === "function") {
-    queueMicrotask(action);
-    return;
-  }
-  Promise.resolve().then(action).catch(() => {});
 }
 
 function waitForAnimationFrame(): Promise<number> {
@@ -305,12 +224,7 @@ function getStoredTimelineIndex(storageKey: string, batchKey: string, maxIndex: 
   return Math.min(Math.max(Math.round(index), 0), maxIndex);
 }
 
-export default function MapPage({
-  pendingSmokeResult = null,
-  onSmokeResultConsumed,
-  pendingCleanupDetail = null,
-  onCleanupDetailConsumed,
-}: MapPageProps = {}) {
+export default function MapPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const userId = user?.uid;
   const { settings } = useUserSettings();
@@ -318,10 +232,6 @@ export default function MapPage({
 
   const userScopedSelectionKey = useMemo(
     () => scopedStorageKey(LAST_SELECTION_KEY, user?.uid ?? undefined),
-    [user?.uid]
-  );
-  const userScopedCacheKey = useMemo(
-    () => scopedStorageKey(LAST_SMOKE_CACHE_KEY, user?.uid ?? undefined),
     [user?.uid]
   );
   const userScopedZoomKey = useMemo(
@@ -343,7 +253,6 @@ export default function MapPage({
   const [batchBrowserTimeRange, setBatchBrowserTimeRange] = useState<BatchBrowserTimeRange>("all");
   const [showPublicBatchBrowser, setShowPublicBatchBrowser] = useState(true);
   const [showPrivateBatchBrowser, setShowPrivateBatchBrowser] = useState(true);
-  const cacheHydratedRef = useRef<string | null>(null);
   const selectionHydratedRef = useRef<string | null>(null);
   const zoomHydratedRef = useRef<string | null>(null);
   const timelineHydratedRef = useRef<string | null>(null);
@@ -360,16 +269,6 @@ export default function MapPage({
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
   const [isMapViewportActivated, setMapViewportActivated] = useState(false);
 
-
-  const getCachedBatch = useCallback(() => {
-    const raw = safeLocalStorageGet(
-      userScopedCacheKey,
-      null,
-      { context: "map:cache:read", userId: user?.uid }
-    );
-    return parseStoredSmokeBatch(raw);
-  }, [user?.uid, userScopedCacheKey]);
-
   const loadBatchSummaries = useCallback(async (ownedLimit?: number, publicLimit?: number) => {
     if (!user) {
       return toPublicVisibleBatches(await listPublicBatches(publicLimit));
@@ -378,8 +277,8 @@ export default function MapPage({
       listBatches(ownedLimit).catch(() => []),
       listPublicBatches(publicLimit),
     ]);
-    return mergeBatchLists(mergeCachedSummary(owned, getCachedBatch()), publicBatches);
-  }, [getCachedBatch, user]);
+    return mergeBatchLists(owned, publicBatches);
+  }, [user]);
 
   // Query #1: list of batches visible to the user.
   const batchesQuery = useQuery<VisibleBatchSummary[]>({
@@ -701,19 +600,7 @@ export default function MapPage({
       userScopedSelectionKey,
       { context: "map:selected-batch:clear-terminal-error", userId: user?.uid }
     );
-
-    const cached = getCachedBatch();
-    if (cached) {
-      const cachedKey = encodeBatchKey(cached.summary.deviceId, cached.summary.batchId);
-      if (cachedKey === selectedBatchKey) {
-        safeLocalStorageRemove(
-          userScopedCacheKey,
-          { context: "map:cache:clear-terminal-error", userId: user?.uid }
-        );
-      }
-    }
   }, [
-    getCachedBatch,
     isAuthLoading,
     measurementQuery.error,
     measurementQuery.isError,
@@ -721,7 +608,6 @@ export default function MapPage({
     measurementQuery.isLoading,
     selectedBatchKey,
     user?.uid,
-    userScopedCacheKey,
     userScopedSelectionKey,
   ]);
 
@@ -729,25 +615,6 @@ export default function MapPage({
   // useEffect(() => {
   //   setIndexOverride(null);
   // }, [selectedBatchKey, rows.length]);
-
-  // Hydrate the React Query cache with any batch cached in localStorage to show data instantly on refresh.
-  useEffect(() => {
-    if (!user) {
-      cacheHydratedRef.current = null;
-      return;
-    }
-    if (cacheHydratedRef.current === userScopedCacheKey) return;
-    const cached = getCachedBatch();
-    if (!cached) return;
-    cacheHydratedRef.current = userScopedCacheKey;
-    const key = encodeBatchKey(cached.summary.deviceId, cached.summary.batchId);
-    const records = pointsToMeasurementRecords(cached.points, cached.summary.deviceId, cached.summary.batchId);
-    queryClient.setQueryData(BATCH_DETAIL_QUERY_KEY(user.uid, key), records);
-    queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user.uid), (prev = []) => {
-      const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
-      return [cached.summary, ...filtered];
-    });
-  }, [getCachedBatch, queryClient, user, userScopedCacheKey]);
 
   const handleBatchSelect = useCallback((value: string) => {
     if (value && !isMapViewportActivated) {
@@ -827,13 +694,6 @@ export default function MapPage({
     );
   }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
 
-  const upsertBatchSummary = useCallback((summary: BatchSummary) => {
-    queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), (prev = []) => {
-      const filtered = prev.filter((batch) => !(batch.batchId === summary.batchId && batch.deviceId === summary.deviceId));
-      return sortBatchesByProcessedAtDesc([summary, ...filtered]);
-    });
-  }, [queryClient, user?.uid]);
-
   const openBatchBrowser = useCallback(() => {
     setBatchBrowserPageIndex(0);
     setBatchBrowserOpen(true);
@@ -850,119 +710,6 @@ export default function MapPage({
     }
     handleBatchSelect(value);
   }, [handleBatchSelect, openBatchBrowser]);
-
-  // Process smoke test results delivered via props by priming the React Query cache.
-  const processSmokeResult = useCallback((detail: IngestSmokeTestResponse) => {
-    if (!user || !detail?.batchId) return;
-    const deviceForBatch = detail.deviceId || detail.seededDeviceId;
-    if (!deviceForBatch) return;
-    const key = encodeBatchKey(deviceForBatch, detail.batchId);
-    const rawPoints = detail.points?.length ? detail.points : detail.payload?.points ?? [];
-    const records = rawPoints.length
-      ? pointsToMeasurementRecords(rawPoints as IngestSmokeTestPoint[], deviceForBatch, detail.batchId, { batchKey: key })
-      : [];
-    const summary: BatchSummary = {
-      batchId: detail.batchId,
-      deviceId: deviceForBatch,
-      deviceName: null,
-      count: rawPoints.length,
-      processedAt: new Date().toISOString(),
-      visibility: detail.visibility ?? "private",
-      moderationState: ("moderationState" in detail && detail.moderationState === "quarantined")
-        ? "quarantined"
-        : "approved",
-    };
-
-    upsertBatchSummary(summary);
-
-    if (records.length) {
-      queryClient.setQueryData(BATCH_DETAIL_QUERY_KEY(user.uid, key), records);
-      setIndexOverride(records.length - 1);
-    }
-    else {
-      queryClient.removeQueries({ queryKey: BATCH_DETAIL_QUERY_KEY(user.uid, key), exact: true });
-      setIndexOverride(0);
-    }
-
-    setSelectedBatchKey(key);
-    if (user) {
-      safeLocalStorageSet(
-        userScopedSelectionKey,
-        key,
-        { context: "map:selected-batch:save", userId: user.uid }
-      );
-      if (rawPoints.length) {
-        safeLocalStorageSet(
-          userScopedCacheKey,
-          JSON.stringify({ summary, points: rawPoints }),
-          { context: "map:cache:save", userId: user.uid }
-        );
-      }
-      else {
-        safeLocalStorageRemove(
-          userScopedCacheKey,
-          { context: "map:cache:clear", userId: user.uid }
-        );
-      }
-    }
-
-    void queryClient.invalidateQueries({ queryKey: BATCHES_QUERY_KEY(user.uid) });
-  }, [queryClient, upsertBatchSummary, user, userScopedCacheKey, userScopedSelectionKey]);
-
-  // Cleanup events remove batches tied to devices that were cleared server-side.
-  const processCleanupDetail = useCallback((detail: IngestSmokeTestCleanupResponse) => {
-    if (!user) return;
-    const cleared = buildClearedSet(detail);
-    if (!cleared.size) return;
-
-    queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(user.uid), (prev = []) =>
-      prev.filter((batch) => !cleared.has(batch.deviceId))
-    );
-
-    queryClient.removeQueries({
-      predicate: (query) => {
-        const [type, uid, encoded] = query.queryKey as [unknown, unknown, unknown];
-        if (type !== "batchDetail" || uid !== user.uid || typeof encoded !== "string") return false;
-        const parsed = decodeBatchKey(encoded);
-        return parsed ? cleared.has(parsed.deviceId) : false;
-      },
-    });
-
-    const current = decodeBatchKey(selectedBatchKey);
-    if (current && cleared.has(current.deviceId)) {
-      setSelectedBatchKey("");
-      setIndexOverride(0);
-      safeLocalStorageRemove(
-        userScopedSelectionKey,
-        { context: "map:selected-batch:clear-on-cleanup", userId: user.uid }
-      );
-      const cached = getCachedBatch();
-      if (cached && cleared.has(cached.summary.deviceId)) {
-        safeLocalStorageRemove(
-          userScopedCacheKey,
-          { context: "map:cache:clear-on-cleanup", userId: user.uid }
-        );
-      }
-    }
-
-    void queryClient.invalidateQueries({ queryKey: BATCHES_QUERY_KEY(user.uid) });
-  }, [getCachedBatch, queryClient, selectedBatchKey, user, userScopedCacheKey, userScopedSelectionKey]);
-
-  useEffect(() => {
-    if (!pendingSmokeResult) return;
-    deferStateUpdate(() => {
-      processSmokeResult(pendingSmokeResult);
-      onSmokeResultConsumed?.();
-    });
-  }, [onSmokeResultConsumed, pendingSmokeResult, processSmokeResult]);
-
-  useEffect(() => {
-    if (!pendingCleanupDetail) return;
-    deferStateUpdate(() => {
-      processCleanupDetail(pendingCleanupDetail);
-      onCleanupDetailConsumed?.();
-    });
-  }, [onCleanupDetailConsumed, pendingCleanupDetail, processCleanupDetail]);
 
   const handleMapPointSelect = useCallback((point: { batchKey?: string; batchPointIndex?: number }) => {
     if (!isShowingAllPublic24h) return;

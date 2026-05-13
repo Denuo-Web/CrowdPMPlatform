@@ -51,7 +51,7 @@ Functions values that normally need editing:
 - `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign registration and access tokens.
 - `DEVICE_ACTIVATION_URL=http://localhost:5173/activate`
 - `DEVICE_VERIFICATION_URI=http://localhost:5173/activate`
-- `DEV_AUTH_USER_*`: optional local Auth emulator seed user override.
+- `FIRST_SUPER_ADMIN_*`: optional local Auth emulator super-admin seed user override.
 
 Generate a local device token key when needed:
 
@@ -85,17 +85,16 @@ curl http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi/health
 open http://localhost:4000
 ```
 
-The Functions emulator seeds `smoke-tester@crowdpm.dev` with password `crowdpm-dev` unless overridden in `functions/.env.local`.
+The Functions emulator seeds `admin@crowdpm.dev` with password `crowdpm-dev` and the `super_admin` role unless overridden in `functions/.env.local`.
 
-## 5. Smoke Tests
+## 5. Device Checks
 
 Use the web app first:
 
 1. Open `http://localhost:5173`.
-2. Grant `smoke-tester@crowdpm.dev` the `super_admin` role for local use if needed: `pnpm --filter crowdpm-functions admin:grant-role -- --email smoke-tester@crowdpm.dev --roles super_admin`
-3. Sign in with that super-admin account.
-4. Open the Smoke Test Lab from the User Dashboard.
-5. Run a smoke test and confirm a batch appears on the map and in the dashboard.
+2. Sign in with the seeded super-admin account or another Firebase Auth emulator user.
+3. Approve a device pairing request from the activation UI.
+4. Send a test ingest batch from the device emulator and confirm it appears on the map and in the dashboard.
 
 Use the device emulator when testing pairing or DPoP behavior:
 

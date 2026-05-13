@@ -60,8 +60,9 @@ Common optional values:
 - `DEVICE_TOKEN_AUDIENCE`
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
-- `SMOKE_TEST_USER_EMAIL`
-- `SMOKE_TEST_USER_EMAILS`
+- `FIRST_SUPER_ADMIN_EMAIL`: optional post-deploy bootstrap target for the first super admin.
+- `FIRST_SUPER_ADMIN_PASSWORD`: optional one-time password used only if the bootstrap user does not already exist.
+- `FIRST_SUPER_ADMIN_DISPLAY_NAME`: optional display name for a created bootstrap user.
 - `PUBLIC_APP_BASE_URL`
 
 Keep secrets out of git. Deployed functions use Firebase Secret Manager for `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. The CI workflow syncs those three secrets from GitHub Actions into Firebase, then writes only non-secret runtime env vars into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
@@ -77,6 +78,14 @@ printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_
 printf '%s' "$STRIPE_WEBHOOK_SECRET" | firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project "$FIREBASE_PROJECT_ID" --data-file=-
 firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
 ```
+
+To grant the first deployed super admin after a release, set `FIRST_SUPER_ADMIN_EMAIL` and run:
+
+```bash
+pnpm --filter crowdpm-functions admin:bootstrap-super-admin
+```
+
+If the Firebase Auth user does not exist yet, also set `FIRST_SUPER_ADMIN_PASSWORD` for that one run so the script can create it.
 
 Deploy rules and indexes only when changed:
 
@@ -105,7 +114,6 @@ The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 - `DEVICE_TOKEN_AUDIENCE`
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
-- `SMOKE_TEST_USER_EMAIL` or `SMOKE_TEST_USER_EMAILS`
 - `PUBLIC_APP_BASE_URL`
 
 The three function secrets must exist in Firebase Secret Manager and are referenced by deployed functions through the `secrets` option.

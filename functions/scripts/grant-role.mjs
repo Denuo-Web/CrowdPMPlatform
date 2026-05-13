@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import admin from "firebase-admin";
-
-const VALID_ROLES = new Set(["super_admin", "moderator"]);
+import { applyAdminRoleClaims, parseRoles } from "./lib/adminClaims.mjs";
 
 function parseArg(name) {
   const args = process.argv.slice(2);
@@ -10,21 +9,6 @@ function parseArg(name) {
   const index = args.indexOf(`--${name}`);
   if (index >= 0) return args[index + 1];
   return undefined;
-}
-
-function parseRoles(input) {
-  const values = (input || "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length > 0);
-
-  const unique = Array.from(new Set(values));
-  const invalid = unique.filter((role) => !VALID_ROLES.has(role));
-  if (invalid.length) {
-    throw new Error(`Invalid role(s): ${invalid.join(", ")}. Allowed: super_admin, moderator`);
-  }
-
-  return unique;
 }
 
 function usage() {
@@ -58,18 +42,9 @@ async function run() {
     ? await auth.getUser(uid)
     : await auth.getUserByEmail(email);
 
-  const claims = { ...(userRecord.customClaims ?? {}) };
-  delete claims.roles;
-  delete claims.admin;
+  const claims = applyAdminRoleClaims(userRecord.customClaims, roles);
 
-  if (roles.length) {
-    claims.roles = roles;
-  }
-  if (roles.includes("super_admin")) {
-    claims.admin = true;
-  }
-
-  await auth.setCustomUserClaims(userRecord.uid, Object.keys(claims).length ? claims : null);
+  await auth.setCustomUserClaims(userRecord.uid, claims);
 
   console.log(JSON.stringify({
     uid: userRecord.uid,

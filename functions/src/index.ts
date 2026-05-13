@@ -14,7 +14,7 @@ import { userSettingsRoutes } from "./routes/userSettings.js";
 import { pairingRoutes } from "./routes/pairing.js";
 import { activationRoutes } from "./routes/activation.js";
 import { nodePurchaseRoutes } from "./routes/nodePurchase.js";
-import { ensureDevAuthUser } from "./lib/devAuthUser.js";
+import { ensureLocalSuperAdmin } from "./lib/localSuperAdmin.js";
 import { toHttpError } from "./lib/httpError.js";
 import { RateLimitError } from "./lib/rateLimiter.js";
 adminApp();
@@ -65,7 +65,7 @@ const rateLimitsEnabled = process.env.ENABLE_RATE_LIMITS === "true"
   || (!isEmulatorRuntime && process.env.NODE_ENV !== "test");
 
 const apiSetup = (async () => {
-  await ensureDevAuthUser();
+  await ensureLocalSuperAdmin();
   await api.register(cors, { origin: true });
   if (rateLimitsEnabled) {
     await api.register(rateLimit, {

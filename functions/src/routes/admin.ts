@@ -1,14 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
-import { bucket, db } from "../lib/fire.js";
-import { authorizeSmokeTestUser, getIngestSmokeTestService } from "../services/ingestSmokeTestService.js";
-import { type SmokeTestBody } from "../services/smokeTest.js";
-import { userOwnsDevice } from "../lib/deviceOwnership.js";
-import { getRequestUser, requirePermissionGuard, requireUserGuard } from "../lib/routeGuards.js";
-import { httpError } from "../lib/httpError.js";
+import { db } from "../lib/fire.js";
+import { requirePermissionGuard } from "../lib/routeGuards.js";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
-  const smokeTestService = getIngestSmokeTestService();
-
   fastify.post<{ Params: { id: string } }>("/v1/admin/devices/:id/suspend", {
     preHandler: requirePermissionGuard("devices.moderate"),
   }, async (req, rep) => {
@@ -16,103 +10,5 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await db().collection("devices").doc(id).set({ status: "SUSPENDED" }, { merge: true });
     rep.code(204);
     return undefined;
-  });
-
-  fastify.post<{ Body: SmokeTestBody }>("/v1/admin/ingest-smoke-test", {
-    preHandler: requireUserGuard(),
-  }, async (req) => {
-    fastify.log.info({ bodyKeys: Object.keys(req.body ?? {}) }, "ingest smoke test requested");
-    const user = getRequestUser(req);
-    authorizeSmokeTestUser(user);
-
-    try {
-      const result = await smokeTestService.runSmokeTest({ user, body: req.body });
-      fastify.log.info(
-        { batchId: result.batchId, deviceId: result.deviceId, deviceIds: result.seededDeviceIds },
-        "ingest smoke test completed"
-      );
-      return result;
-    }
-    catch (err) {
-      fastify.log.error({ err }, "ingest smoke test failed");
-      throw err;
-    }
-  });
-
-  fastify.post<{ Body: { deviceId?: string; deviceIds?: string[] } }>("/v1/admin/ingest-smoke-test/cleanup", {
-    preHandler: requireUserGuard(),
-  }, async (req, rep) => {
-    const user = getRequestUser(req);
-    authorizeSmokeTestUser(user);
-
-    const uniqueIds = Array.from(new Set(
-      (req.body?.deviceIds && req.body.deviceIds.length ? req.body.deviceIds : [req.body?.deviceId || "device-123"])
-        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-        .map((id) => id.trim())
-    ));
-
-    const allowedIds: string[] = [];
-    const forbiddenIds: string[] = [];
-    await Promise.all(uniqueIds.map(async (deviceId) => {
-      const snap = await db().collection("devices").doc(deviceId).get();
-      if (!snap.exists) {
-        allowedIds.push(deviceId); // stale device reference; allow cleanup to continue
-        return;
-      }
-      if (userOwnsDevice(snap.data(), user.uid)) {
-        allowedIds.push(deviceId);
-        return;
-      }
-      forbiddenIds.push(deviceId);
-    }));
-
-    if (forbiddenIds.length) {
-      throw httpError(403, "forbidden", "You do not have permission to delete one or more devices.", {
-        forbiddenDeviceIds: forbiddenIds,
-      });
-    }
-
-    const cleared: string[] = [];
-    const failures: Array<{ deviceId: string; stage: string; message: string }> = [];
-    for (const deviceId of allowedIds) {
-      try {
-        const batchSnap = await db().collection("batches").where("deviceId", "==", deviceId).get();
-        await Promise.all(batchSnap.docs.map(async (doc) => {
-          const data = doc.data();
-          const storagePath = typeof data.storagePath === "string" ? data.storagePath : null;
-          if (storagePath) {
-            await bucket().file(storagePath).delete({ ignoreNotFound: true });
-          }
-          await doc.ref.delete();
-        }));
-      }
-      catch (err) {
-        req.log.warn({ err, deviceId }, "failed to delete batch data");
-        failures.push({
-          deviceId,
-          stage: "batches",
-          message: err instanceof Error ? err.message : "failed to delete batch data",
-        });
-      }
-      try {
-        await db().collection("devices").doc(deviceId).delete();
-        cleared.push(deviceId);
-      }
-      catch (err) {
-        req.log.error({ err, deviceId }, "failed to delete device document");
-        failures.push({
-          deviceId,
-          stage: "device",
-          message: err instanceof Error ? err.message : "failed to delete device document",
-        });
-      }
-    }
-    const status = failures.length ? 207 : 200;
-    rep.code(status);
-    return {
-      clearedDeviceId: cleared[0] || null,
-      clearedDeviceIds: cleared,
-      failedDeletions: failures,
-    };
   });
 };

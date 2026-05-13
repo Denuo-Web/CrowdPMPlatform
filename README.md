@@ -80,7 +80,6 @@ Device emulator examples:
 ```bash
 pnpm device:pair -- --key .device-key.json --interval 3
 pnpm device:pair -- --mode ingest --key .device-key.json
-pnpm device:simulate:osu -- --count 20 --minutes 36
 ```
 
 ## API And Data Flow

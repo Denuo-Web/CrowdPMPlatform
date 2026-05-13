@@ -27,7 +27,6 @@ import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../comp
 
 type UserDashboardProps = {
   onRequestActivation: () => void;
-  onOpenSmokeTest?: () => void;
   onOpenThemeModal: () => void;
   subscriptionCheckoutNotice?: "success" | "cancelled" | null;
   subscriptionCheckoutSessionId?: string | null;
@@ -69,7 +68,6 @@ function formatShippingLocation(receipt: NodePurchaseReceipt): string {
 
 export default function UserDashboard({
   onRequestActivation,
-  onOpenSmokeTest,
   onOpenThemeModal,
   subscriptionCheckoutNotice = null,
   subscriptionCheckoutSessionId = null,
@@ -605,21 +603,6 @@ export default function UserDashboard({
               <InternalNewTabAnchor href={APP_ROUTES.pairingGuide}>How does pairing work?</InternalNewTabAnchor>
             </Button>
           </Flex>
-          {onOpenSmokeTest ? (
-            <Text size="2" color="gray">
-              Authorized test users can also{" "}
-              <Link
-                href="#"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onOpenSmokeTest();
-                }}
-              >
-                open the Smoke Test Lab
-              </Link>
-              {" "}from here.
-            </Text>
-          ) : null}
         </Flex>
       </Card>
 

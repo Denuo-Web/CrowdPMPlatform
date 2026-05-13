@@ -14,8 +14,6 @@ import type {
   DemoBatchSetting,
   DeviceSummary,
   FirestoreTimestampLike,
-  IngestBatchPayload,
-  IngestPoint,
   MeasurementRecord,
   ModerationState,
   NodePurchaseReceipt,
@@ -25,8 +23,6 @@ import type {
   SubscriptionOffer,
   SubscriptionOfferId,
   SubscriptionSummary,
-  SmokeTestCleanupResponse,
-  SmokeTestResponse,
   UserSettings,
 } from "@crowdpm/types";
 
@@ -138,10 +134,6 @@ export type {
   SubscriptionSummary,
   UserSettings,
 };
-export type IngestSmokeTestPoint = IngestPoint;
-export type IngestSmokeTestPayload = IngestBatchPayload;
-export type IngestSmokeTestResponse = SmokeTestResponse;
-export type IngestSmokeTestCleanupResponse = SmokeTestCleanupResponse;
 export type CheckoutRedirectSession = {
   sessionId: string;
   url: string;
@@ -338,32 +330,6 @@ export async function updateAdminUser(uid: string, payload: AdminUserUpdateReque
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  });
-}
-
-export async function runIngestSmokeTest(
-  payload?: IngestSmokeTestPayload,
-  options?: { visibility?: BatchVisibility }
-): Promise<IngestSmokeTestResponse> {
-  const body: Record<string, unknown> = payload ? { payload } : {};
-  if (options?.visibility) {
-    body.visibility = options.visibility;
-  }
-  return requestJson<IngestSmokeTestResponse>("/v1/admin/ingest-smoke-test", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
-export async function cleanupIngestSmokeTest(deviceId?: string | string[]): Promise<IngestSmokeTestCleanupResponse> {
-  const payload = Array.isArray(deviceId)
-    ? (deviceId.length ? { deviceIds: deviceId } : {})
-    : (deviceId ? { deviceId } : {});
-  return requestJson<IngestSmokeTestCleanupResponse>("/v1/admin/ingest-smoke-test/cleanup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
   });
 }
 

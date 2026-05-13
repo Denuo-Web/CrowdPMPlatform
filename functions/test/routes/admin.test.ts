@@ -5,88 +5,22 @@ import { toHttpError } from "../../src/lib/httpError.js";
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
-  authorizeSmokeTestUser: vi.fn(),
-  runSmokeTest: vi.fn(),
-  userOwnsDevice: vi.fn(),
   dbSet: vi.fn(),
-  dbDelete: vi.fn(),
-  dbGet: vi.fn(),
-  batchDelete: vi.fn(),
-  bucketFileDelete: vi.fn(),
 }));
-
-type DeviceDoc = {
-  exists: boolean;
-  data?: Record<string, unknown>;
-};
-
-let deviceDocs = new Map<string, DeviceDoc>();
-let batchDocs = new Map<string, Record<string, unknown>>();
 
 const mockDb = {
   collection: vi.fn((name: string) => {
-    if (name === "devices") {
-      return {
-        doc: (id: string) => ({
-          set: mocks.dbSet,
-          delete: mocks.dbDelete,
-          get: async () => {
-            const entry = deviceDocs.get(id);
-            return {
-              exists: entry?.exists ?? false,
-              data: () => entry?.data ?? {},
-            };
-          },
-        }),
-      };
-    }
-    if (name === "batches") {
-      return {
-        where: (_field: string, _op: string, deviceId: string) => ({
-          get: async () => ({
-            docs: Array.from(batchDocs.entries())
-              .filter(([, data]) => data.deviceId === deviceId)
-              .map(([id, data]) => ({
-                id,
-                data: () => data,
-                ref: { delete: async () => mocks.batchDelete(id) },
-              })),
-          }),
-        }),
-      };
-    }
-    throw new Error(`unexpected collection ${name}`);
+    if (name !== "devices") throw new Error(`unexpected collection ${name}`);
+    return {
+      doc: () => ({
+        set: mocks.dbSet,
+      }),
+    };
   }),
-};
-
-const mockBucket = {
-  file: vi.fn(() => ({
-    delete: mocks.bucketFileDelete,
-  })),
 };
 
 vi.mock("../../src/lib/fire.js", () => ({
   db: () => mockDb,
-  bucket: () => mockBucket,
-}));
-
-vi.mock("../../src/services/ingestSmokeTestService.js", () => ({
-  authorizeSmokeTestUser: mocks.authorizeSmokeTestUser,
-  getIngestSmokeTestService: () => ({ runSmokeTest: mocks.runSmokeTest }),
-  SmokeTestServiceError: class SmokeTestServiceError extends Error {
-    readonly statusCode: number;
-    readonly reason: string;
-
-    constructor(reason: string, message: string, statusCode: number) {
-      super(message);
-      this.reason = reason;
-      this.statusCode = statusCode;
-    }
-  },
-}));
-
-vi.mock("../../src/lib/deviceOwnership.js", () => ({
-  userOwnsDevice: mocks.userOwnsDevice,
 }));
 
 vi.mock("../../src/auth/firebaseVerify.js", () => ({
@@ -107,41 +41,16 @@ async function buildApp() {
 
 beforeEach(() => {
   mocks.requireUser.mockReset();
-  mocks.authorizeSmokeTestUser.mockReset();
-  mocks.runSmokeTest.mockReset();
-  mocks.userOwnsDevice.mockReset();
   mocks.dbSet.mockReset();
-  mocks.dbDelete.mockReset();
-  mocks.dbGet.mockReset();
-  mocks.batchDelete.mockReset();
-  mocks.bucketFileDelete.mockReset();
-  deviceDocs = new Map<string, DeviceDoc>();
-  batchDocs = new Map<string, Record<string, unknown>>();
 
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
     if (auth === "Bearer invalid") throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
     if (auth === "Bearer admin") return { uid: "admin-1", admin: true, roles: ["admin"] };
-    if (auth === "Bearer smoke") return { uid: "smoke-1", email: "smoke-tester@crowdpm.dev" };
     return { uid: "user-123", email: "user@example.com", roles: [] };
   });
-  mocks.authorizeSmokeTestUser.mockImplementation(() => undefined);
-  mocks.userOwnsDevice.mockReturnValue(true);
-  mocks.runSmokeTest.mockResolvedValue({
-    accepted: true,
-    batchId: "batch-1",
-    deviceId: "device-1",
-    storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
-    visibility: "private",
-    payload: { points: [] },
-    points: [],
-    seededDeviceId: "device-1",
-    seededDeviceIds: ["device-1"],
-  });
-  mocks.batchDelete.mockResolvedValue(undefined);
-  mocks.bucketFileDelete.mockResolvedValue(undefined);
-  mocks.dbDelete.mockResolvedValue(undefined);
+  mocks.dbSet.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -193,133 +102,6 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
       error: "forbidden",
       message: "You do not have permission to access this resource.",
     });
-    await app.close();
-  });
-});
-
-describe("POST /v1/admin/ingest-smoke-test", () => {
-  it("happy path returns smoke test result", async () => {
-    const app = await buildApp();
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test",
-      headers: { authorization: "Bearer admin" },
-      payload: { payload: { points: [] } },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual(expect.objectContaining({ batchId: "batch-1", deviceId: "device-1" }));
-    await app.close();
-  });
-
-  it("auth: smoke test forbidden returns 403", async () => {
-    const app = await buildApp();
-    mocks.authorizeSmokeTestUser.mockImplementation(() => {
-      throw Object.assign(new Error("Caller lacks permission to run smoke tests"), { statusCode: 403, code: "FORBIDDEN" });
-    });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test",
-      headers: { authorization: "Bearer ok" },
-    });
-
-    expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({
-      error: "forbidden",
-      message: "Caller lacks permission to run smoke tests",
-    });
-    await app.close();
-  });
-
-  it("error mapping: runSmokeTest errors map to status + body", async () => {
-    const app = await buildApp();
-    mocks.runSmokeTest.mockRejectedValue(Object.assign(new Error("invalid payload"), { statusCode: 400, code: "INVALID_PAYLOAD" }));
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test",
-      headers: { authorization: "Bearer admin" },
-      payload: { payload: { points: [] } },
-    });
-
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({
-      error: "invalid_payload",
-      message: "invalid payload",
-    });
-    await app.close();
-  });
-});
-
-describe("POST /v1/admin/ingest-smoke-test/cleanup", () => {
-  it("happy path clears device data", async () => {
-    const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
-    batchDocs.set("batch-1", {
-      deviceId: "device-1",
-      storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
-    });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test/cleanup",
-      headers: { authorization: "Bearer smoke" },
-      payload: { deviceId: "device-1" },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
-      clearedDeviceId: "device-1",
-      clearedDeviceIds: ["device-1"],
-      failedDeletions: [],
-    });
-    expect(mocks.bucketFileDelete).toHaveBeenCalledWith({ ignoreNotFound: true });
-    expect(mocks.batchDelete).toHaveBeenCalledWith("batch-1");
-    expect(mocks.dbDelete).toHaveBeenCalled();
-    await app.close();
-  });
-
-  it("auth: forbidden device returns 403 with list", async () => {
-    const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["other-user"] } });
-    mocks.userOwnsDevice.mockReturnValue(false);
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test/cleanup",
-      headers: { authorization: "Bearer smoke" },
-      payload: { deviceId: "device-1" },
-    });
-
-    expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({
-      error: "forbidden",
-      message: "You do not have permission to delete one or more devices.",
-      forbiddenDeviceIds: ["device-1"],
-    });
-    await app.close();
-  });
-
-  it("partial failures return 207 with failedDeletions", async () => {
-    const app = await buildApp();
-    deviceDocs.set("device-1", { exists: true, data: { ownerUserIds: ["user-123"] } });
-    batchDocs.set("batch-1", {
-      deviceId: "device-1",
-      storagePath: "ingest/v2/user-123/device-1/batch-1.json.gz",
-    });
-    mocks.batchDelete.mockRejectedValue(new Error("firestore failed"));
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/admin/ingest-smoke-test/cleanup",
-      headers: { authorization: "Bearer smoke" },
-      payload: { deviceId: "device-1" },
-    });
-
-    expect(res.statusCode).toBe(207);
-    expect(res.json().failedDeletions.length).toBeGreaterThan(0);
     await app.close();
   });
 });
