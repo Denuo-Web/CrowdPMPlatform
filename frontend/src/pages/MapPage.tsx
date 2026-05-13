@@ -1,6 +1,6 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { timestampToMillis, type IngestPoint } from "@crowdpm/types";
+import { timestampToMillis, type IngestPoint, type UserThemeAppearance } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
@@ -72,6 +72,10 @@ type MapMeasurementRecord = MeasurementRecord & {
 };
 
 type StoredTimelineIndexes = Record<string, number>;
+
+type MapPageProps = {
+  mapAppearance: UserThemeAppearance;
+};
 
 function formatBatchLabel(batch: BatchSummary) {
   const timeMs = timestampToMillis(batch.processedAt);
@@ -224,7 +228,7 @@ function getStoredTimelineIndex(storageKey: string, batchKey: string, maxIndex: 
   return Math.min(Math.max(Math.round(index), 0), maxIndex);
 }
 
-export default function MapPage() {
+export default function MapPage({ mapAppearance }: MapPageProps) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const userId = user?.uid;
   const { settings } = useUserSettings();
@@ -984,6 +988,7 @@ export default function MapPage() {
           <Map3D
             ref={map3DRef}
             data={data}
+            appearance={mapAppearance}
             selectedIndex={selectedIndex}
             onSelectIndex={effectiveShowAllMode ? undefined : handleTimelineIndexChange}
             onSelectPoint={handleMapPointSelect}

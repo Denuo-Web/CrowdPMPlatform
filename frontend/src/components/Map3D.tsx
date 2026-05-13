@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import type { UserThemeAppearance } from "@crowdpm/types";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
@@ -40,8 +41,16 @@ export type Map3DHandle = {
   waitForVisualReady: () => Promise<void>;
 };
 
+type MapCameraState = {
+  center: { lat: number; lng: number };
+  zoom?: number;
+  tilt?: number;
+  heading?: number;
+};
+
 type Map3DProps = {
   data: MeasurementPoint[];
+  appearance: UserThemeAppearance;
   selectedIndex: number;
   onSelectIndex?: (index: number) => void;
   onSelectPoint?: (point: MeasurementPoint) => void;
@@ -101,6 +110,20 @@ function waitForMapIdle(map: google.maps.Map | null, timeoutMs: number): Promise
     const listener = map.addListener("idle", finish);
     const timeoutId = window.setTimeout(finish, timeoutMs);
   });
+}
+
+function readMapCameraState(map: google.maps.Map | null): MapCameraState | null {
+  if (!map) return null;
+
+  const center = map.getCenter();
+  if (!center) return null;
+
+  return {
+    center: { lat: center.lat(), lng: center.lng() },
+    zoom: map.getZoom() ?? undefined,
+    tilt: map.getTilt() ?? undefined,
+    heading: map.getHeading() ?? undefined,
+  };
 }
 
 function ensureRange(min: number, max: number): [number, number] {
@@ -536,6 +559,7 @@ async function createCaptureSession(
 
 const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   data,
+  appearance,
   selectedIndex,
   onSelectIndex,
   onSelectPoint,
@@ -559,6 +583,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const showAllModeRef = useRef(showAllMode);
   const playbackPathModeRef = useRef(playbackPathMode);
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
+  const cameraStateRef = useRef<MapCameraState | null>(null);
   const hasUserControlRef = useRef(typeof defaultZoom === "number");
   const initialDefaultZoomRef = useRef(defaultZoom);
   const dataSignatureRef = useRef(signature(data));
@@ -691,17 +716,23 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         : FALLBACK_CENTER;
       const initialDefaultZoom = initialDefaultZoomRef.current;
       const resolvedZoom = initialDefaultZoom ?? FALLBACK_ZOOM;
-      const center = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
-      const initialZoom = firstPoint ? (initialDefaultZoom ?? 15) : resolvedZoom;
-      const initialTilt = firstPoint ? 67.5 : 0;
+      const defaultCenter = firstPoint ? { lat: firstPoint.lat, lng: firstPoint.lon } : resolvedCenter;
+      const defaultInitialZoom = firstPoint ? (initialDefaultZoom ?? 15) : resolvedZoom;
+      const defaultInitialTilt = firstPoint ? 67.5 : 0;
+      const savedCamera = cameraStateRef.current;
+      const center = savedCamera?.center ?? defaultCenter;
+      const initialZoom = savedCamera?.zoom ?? defaultInitialZoom;
+      const initialTilt = savedCamera?.tilt ?? defaultInitialTilt;
+      const initialHeading = savedCamera?.heading ?? 0;
 
       const MapCtor = mapsLib.Map as typeof google.maps.Map;
       const map = new MapCtor(element, {
         mapId,
+        colorScheme: appearance === "dark" ? "DARK" : "LIGHT",
         center,
         zoom: initialZoom,
         tilt: initialTilt,
-        heading: 0,
+        heading: initialHeading,
         gestureHandling: "greedy",
         disableDefaultUI: true,
         keyboardShortcuts: true,
@@ -768,7 +799,12 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       }
 
       if (currentSeries.length && typeof map.moveCamera === "function") {
-        map.moveCamera({ tilt: 67.5, heading: 0, zoom: initialDefaultZoom ?? 18 });
+        map.moveCamera({
+          center,
+          tilt: savedCamera?.tilt ?? 67.5,
+          heading: initialHeading,
+          zoom: savedCamera?.zoom ?? initialDefaultZoom ?? 18,
+        });
       }
       overlayRef.current = overlay;
       syncOverlayRef.current?.();
@@ -776,6 +812,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
     return () => {
       cancelled = true;
+      cameraStateRef.current = readMapCameraState(localMap ?? mapRef.current);
       const overlay = overlayRef.current;
       if (overlay) {
         disposeGoogleMapsOverlayExternalFramebuffer(overlay);
@@ -789,7 +826,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       if (overlayRef.current === localOverlay) overlayRef.current = null;
       if (mapRef.current === localMap) mapRef.current = null;
     };
-  }, [defaultCenterLat, defaultCenterLng, hasRenderableData, interleaved]);
+  }, [appearance, defaultCenterLat, defaultCenterLng, hasRenderableData, interleaved]);
 
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
