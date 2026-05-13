@@ -40,7 +40,7 @@ type SubmissionFilterState = "all" | ModerationState;
 type VisibilityFilterState = "all" | BatchVisibility;
 
 export default function AdminModerationPage() {
-  const { user, isModerator, isSuperAdmin } = useAuth();
+  const { isSuperAdmin, canAccessAdmin } = useAuth();
 
   const [submissions, setSubmissions] = useState<AdminSubmissionSummary[]>([]);
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
@@ -58,7 +58,7 @@ export default function AdminModerationPage() {
   const [submissionPageIndex, setSubmissionPageIndex] = useState(0);
   const [userPageIndex, setUserPageIndex] = useState(0);
 
-  const canAccess = Boolean(user) && isModerator;
+  const canManageUsers = canAccessAdmin && isSuperAdmin;
 
   const submissionParams = useMemo(() => ({
     moderationState: moderationFilter === "all" ? undefined : moderationFilter,
@@ -83,7 +83,7 @@ export default function AdminModerationPage() {
   );
 
   const refreshSubmissions = useCallback(async () => {
-    if (!canAccess) return;
+    if (!canAccessAdmin) return;
     setSubmissionsLoading(true);
     setSubmissionError(null);
     try {
@@ -97,10 +97,10 @@ export default function AdminModerationPage() {
     finally {
       setSubmissionsLoading(false);
     }
-  }, [canAccess, submissionParams]);
+  }, [canAccessAdmin, submissionParams]);
 
   const refreshUsers = useCallback(async (nextPageToken?: string | null) => {
-    if (!canAccess) return;
+    if (!canManageUsers) return;
     setUsersLoading(true);
     setUserError(null);
     try {
@@ -116,17 +116,17 @@ export default function AdminModerationPage() {
     finally {
       setUsersLoading(false);
     }
-  }, [canAccess]);
+  }, [canManageUsers]);
 
   useEffect(() => {
-    if (!canAccess) return;
+    if (!canAccessAdmin) return;
     void refreshSubmissions();
-  }, [canAccess, refreshSubmissions]);
+  }, [canAccessAdmin, refreshSubmissions]);
 
   useEffect(() => {
-    if (!canAccess) return;
+    if (!canManageUsers) return;
     void refreshUsers();
-  }, [canAccess, refreshUsers]);
+  }, [canManageUsers, refreshUsers]);
 
   useEffect(() => {
     const nextPageIndex = clampPageIndex(submissions.length, submissionPageIndex);
@@ -143,7 +143,7 @@ export default function AdminModerationPage() {
   }, [userPageIndex, users.length]);
 
   const handleModerationChange = useCallback(async (entry: AdminSubmissionSummary, moderationState: ModerationState) => {
-    if (!canAccess) return;
+    if (!canAccessAdmin) return;
     const reason = moderationState === "quarantined"
       ? window.prompt("Optional moderation reason", entry.moderationReason ?? "")
       : "";
@@ -162,10 +162,10 @@ export default function AdminModerationPage() {
     finally {
       setActionBusyId(null);
     }
-  }, [canAccess, refreshSubmissions]);
+  }, [canAccessAdmin, refreshSubmissions]);
 
   const handleToggleDisabled = useCallback(async (entry: AdminUserSummary) => {
-    if (!canAccess) return;
+    if (!canManageUsers) return;
     const nextDisabled = !entry.disabled;
     const reason = window.prompt("Optional moderation reason", "");
     setActionBusyId(`user:${entry.uid}:disabled`);
@@ -180,10 +180,10 @@ export default function AdminModerationPage() {
     finally {
       setActionBusyId(null);
     }
-  }, [canAccess, refreshUsers]);
+  }, [canManageUsers, refreshUsers]);
 
   const handleSetRoles = useCallback(async (entry: AdminUserSummary, roles: AdminRole[]) => {
-    if (!canAccess || !isSuperAdmin) return;
+    if (!canManageUsers) return;
     const reason = window.prompt("Optional role change reason", "");
     setActionBusyId(`user:${entry.uid}:roles`);
     setUserError(null);
@@ -197,9 +197,9 @@ export default function AdminModerationPage() {
     finally {
       setActionBusyId(null);
     }
-  }, [canAccess, isSuperAdmin, refreshUsers]);
+  }, [canManageUsers, refreshUsers]);
 
-  if (!canAccess) {
+  if (!canAccessAdmin) {
     return (
       <Card>
         <Flex direction="column" gap="2">
@@ -312,117 +312,115 @@ export default function AdminModerationPage() {
         </Flex>
       </Card>
 
-      <Card>
-        <Flex direction="column" gap="3">
-          <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
-            <Heading as="h3" size="5">User moderation</Heading>
-            <ResultCountControl
-              itemLabelSingular="user"
-              itemLabelPlural="users"
-              pageStart={userPagination.pageStart}
-              pageEnd={userPagination.pageEnd}
-              totalCount={users.length}
-              onShowLess={() => setUserPageIndex((current) => clampPageIndex(users.length, current - 1))}
-              onShowMore={() => setUserPageIndex((current) => clampPageIndex(users.length, current + 1))}
-            />
-          </Flex>
-          <Flex gap="3" wrap="wrap" align="center">
-            <Button onClick={() => { void refreshUsers(); }} disabled={usersLoading}>
-              {usersLoading ? "Refreshing..." : "Refresh"}
-            </Button>
-            {usersPageToken ? (
-              <Button
-                variant="soft"
-                onClick={() => { void refreshUsers(usersPageToken); }}
-                disabled={usersLoading}
-              >
-                Next page
+      {canManageUsers ? (
+        <Card>
+          <Flex direction="column" gap="3">
+            <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
+              <Heading as="h3" size="5">User moderation</Heading>
+              <ResultCountControl
+                itemLabelSingular="user"
+                itemLabelPlural="users"
+                pageStart={userPagination.pageStart}
+                pageEnd={userPagination.pageEnd}
+                totalCount={users.length}
+                onShowLess={() => setUserPageIndex((current) => clampPageIndex(users.length, current - 1))}
+                onShowMore={() => setUserPageIndex((current) => clampPageIndex(users.length, current + 1))}
+              />
+            </Flex>
+            <Flex gap="3" wrap="wrap" align="center">
+              <Button onClick={() => { void refreshUsers(); }} disabled={usersLoading}>
+                {usersLoading ? "Refreshing..." : "Refresh"}
               </Button>
+              {usersPageToken ? (
+                <Button
+                  variant="soft"
+                  onClick={() => { void refreshUsers(usersPageToken); }}
+                  disabled={usersLoading}
+                >
+                  Next page
+                </Button>
+              ) : null}
+            </Flex>
+            {userError ? <Text color="tomato">{userError}</Text> : null}
+            <Separator size="4" />
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>UID</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Roles</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {visibleUsers.map((entry) => {
+                  const busyDisabled = actionBusyId === `user:${entry.uid}:disabled`;
+                  const busyRoles = actionBusyId === `user:${entry.uid}:roles`;
+                  return (
+                    <Table.Row key={entry.uid}>
+                      <Table.Cell>{entry.email ?? "—"}</Table.Cell>
+                      <Table.Cell><Text style={{ fontFamily: "monospace" }}>{entry.uid}</Text></Table.Cell>
+                      <Table.Cell>
+                        <Flex gap="2" wrap="wrap">
+                          {entry.roles.length ? entry.roles.map((role) => (
+                            <Badge key={`${entry.uid}:${role}`} color={role === "super_admin" ? "orange" : "blue"}>
+                              {normalizeRoleLabel(role)}
+                            </Badge>
+                          )) : <Text color="gray">None</Text>}
+                        </Flex>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color={entry.disabled ? "red" : "green"}>{entry.disabled ? "Disabled" : "Active"}</Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Flex gap="2" wrap="wrap">
+                          <Button
+                            size="1"
+                            variant="soft"
+                            color={entry.disabled ? "green" : "tomato"}
+                            disabled={busyDisabled}
+                            onClick={() => { void handleToggleDisabled(entry); }}
+                          >
+                            {entry.disabled ? "Enable" : "Disable"}
+                          </Button>
+                          <Button
+                            size="1"
+                            variant="soft"
+                            disabled={busyRoles}
+                            onClick={() => { void handleSetRoles(entry, ["moderator"]); }}
+                          >
+                            Set Moderator
+                          </Button>
+                          <Button
+                            size="1"
+                            variant="soft"
+                            disabled={busyRoles}
+                            onClick={() => { void handleSetRoles(entry, ["super_admin"]); }}
+                          >
+                            Set Super Admin
+                          </Button>
+                          <Button
+                            size="1"
+                            variant="ghost"
+                            disabled={busyRoles}
+                            onClick={() => { void handleSetRoles(entry, []); }}
+                          >
+                            Clear Roles
+                          </Button>
+                        </Flex>
+                      </Table.Cell>
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table.Root>
+            {!users.length && !usersLoading ? (
+              <Text color="gray">No users returned from Firebase Auth.</Text>
             ) : null}
           </Flex>
-          {userError ? <Text color="tomato">{userError}</Text> : null}
-          <Separator size="4" />
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>UID</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Roles</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {visibleUsers.map((entry) => {
-                const busyDisabled = actionBusyId === `user:${entry.uid}:disabled`;
-                const busyRoles = actionBusyId === `user:${entry.uid}:roles`;
-                return (
-                  <Table.Row key={entry.uid}>
-                    <Table.Cell>{entry.email ?? "—"}</Table.Cell>
-                    <Table.Cell><Text style={{ fontFamily: "monospace" }}>{entry.uid}</Text></Table.Cell>
-                    <Table.Cell>
-                      <Flex gap="2" wrap="wrap">
-                        {entry.roles.length ? entry.roles.map((role) => (
-                          <Badge key={`${entry.uid}:${role}`} color={role === "super_admin" ? "orange" : "blue"}>
-                            {normalizeRoleLabel(role)}
-                          </Badge>
-                        )) : <Text color="gray">None</Text>}
-                      </Flex>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Badge color={entry.disabled ? "red" : "green"}>{entry.disabled ? "Disabled" : "Active"}</Badge>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Flex gap="2" wrap="wrap">
-                        <Button
-                          size="1"
-                          variant="soft"
-                          color={entry.disabled ? "green" : "tomato"}
-                          disabled={busyDisabled}
-                          onClick={() => { void handleToggleDisabled(entry); }}
-                        >
-                          {entry.disabled ? "Enable" : "Disable"}
-                        </Button>
-                        {isSuperAdmin ? (
-                          <>
-                            <Button
-                              size="1"
-                              variant="soft"
-                              disabled={busyRoles}
-                              onClick={() => { void handleSetRoles(entry, ["moderator"]); }}
-                            >
-                              Set Moderator
-                            </Button>
-                            <Button
-                              size="1"
-                              variant="soft"
-                              disabled={busyRoles}
-                              onClick={() => { void handleSetRoles(entry, ["super_admin"]); }}
-                            >
-                              Set Super Admin
-                            </Button>
-                            <Button
-                              size="1"
-                              variant="ghost"
-                              disabled={busyRoles}
-                              onClick={() => { void handleSetRoles(entry, []); }}
-                            >
-                              Clear Roles
-                            </Button>
-                          </>
-                        ) : null}
-                      </Flex>
-                    </Table.Cell>
-                  </Table.Row>
-                );
-              })}
-            </Table.Body>
-          </Table.Root>
-          {!users.length && !usersLoading ? (
-            <Text color="gray">No users returned from Firebase Auth.</Text>
-          ) : null}
-        </Flex>
-      </Card>
+        </Card>
+      ) : null}
     </Flex>
   );
 }
