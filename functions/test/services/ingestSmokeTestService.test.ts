@@ -7,8 +7,21 @@ import {
   IngestSmokeTestService,
   SmokeTestServiceError,
 } from "../../src/services/ingestSmokeTestService.js";
-import type { IngestService } from "../../src/services/ingestService.js";
+import type { IngestRequest, IngestService } from "../../src/services/ingestService.js";
 import type { SmokeTestPlan } from "../../src/services/smokeTest.js";
+
+function withFunctionsEmulator<T>(enabled: boolean, fn: () => T): T {
+  const previous = process.env.FUNCTIONS_EMULATOR;
+  if (enabled) process.env.FUNCTIONS_EMULATOR = "true";
+  else delete process.env.FUNCTIONS_EMULATOR;
+  try {
+    return fn();
+  }
+  finally {
+    if (previous === undefined) delete process.env.FUNCTIONS_EMULATOR;
+    else process.env.FUNCTIONS_EMULATOR = previous;
+  }
+}
 
 function buildPlan(): SmokeTestPlan {
   return {
@@ -56,7 +69,10 @@ describe("IngestSmokeTestService", () => {
       storagePath: "ingest/v2/user-1/scoped-device-1/batch-1.json.gz",
       visibility: "public" as BatchVisibility,
     };
-    const ingestMock = vi.fn(async () => ingestResult);
+    const ingestMock = vi.fn(async (request: IngestRequest) => {
+      void request;
+      return ingestResult;
+    });
     const ingest = { ingest: ingestMock as unknown as IngestService["ingest"] };
 
     const service = new IngestSmokeTestService({
@@ -79,7 +95,7 @@ describe("IngestSmokeTestService", () => {
       deviceId: plan.primaryDeviceId,
       visibility: "public",
     }));
-    const ingestArgs = ingestMock.mock.calls[0]?.[0];
+    const ingestArgs = ingestMock.mock.calls[0][0];
     expect(JSON.parse(ingestArgs.rawBody)).toEqual(plan.payload);
 
     expect(writes[0]).toMatchObject({
@@ -149,10 +165,40 @@ describe("authorizeSmokeTestUser", () => {
     } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
   });
 
-  it("rejects legacy smoke-test accounts without super-admin claims", () => {
+  it("allows the smoke tester in the local emulator", () => {
+    withFunctionsEmulator(true, () => {
+      expect(() => authorizeSmokeTestUser({
+        uid: "smoke-1",
+        email: "smoke-tester@crowdpm.dev",
+        roles: ["smoke-test"],
+      } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).not.toThrow();
+    });
+  });
+
+  it("rejects legacy smoke-test accounts outside the local emulator", () => {
+    withFunctionsEmulator(false, () => {
+      expect(() => authorizeSmokeTestUser({
+        uid: "smoke-1",
+        email: "smoke-tester@crowdpm.dev",
+        roles: ["smoke-test"],
+      } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
+    });
+  });
+
+  it("rejects non-smoke users in the local emulator", () => {
+    withFunctionsEmulator(true, () => {
+      expect(() => authorizeSmokeTestUser({
+        uid: "user-1",
+        email: "user@example.com",
+        roles: [],
+      } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
+    });
+  });
+
+  it("rejects legacy smoke-test accounts with the wrong email", () => {
     expect(() => authorizeSmokeTestUser({
       uid: "smoke-1",
-      email: "smoke-tester@crowdpm.dev",
+      email: "other@example.com",
       roles: ["smoke-test"],
     } as unknown as Parameters<typeof authorizeSmokeTestUser>[0])).toThrow(SmokeTestServiceError);
   });

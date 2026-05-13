@@ -15,6 +15,19 @@ type BatchRecord = {
 
 let batchRecords = new Map<string, BatchRecord>();
 
+async function withFunctionsEmulator<T>(enabled: boolean, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.FUNCTIONS_EMULATOR;
+  if (enabled) process.env.FUNCTIONS_EMULATOR = "true";
+  else delete process.env.FUNCTIONS_EMULATOR;
+  try {
+    return await fn();
+  }
+  finally {
+    if (previous === undefined) delete process.env.FUNCTIONS_EMULATOR;
+    else process.env.FUNCTIONS_EMULATOR = previous;
+  }
+}
+
 function makeQuery() {
   const filters: Array<{ field: string; value: unknown }> = [];
   let limitValue: number | null = null;
@@ -71,7 +84,11 @@ const mockDb = {
     if (name !== "batches") throw new Error(`unexpected collection ${name}`);
     return {
       where: (...args: [string, string, unknown]) => makeQuery().where(...args),
-      orderBy: (...args: unknown[]) => makeQuery().orderBy(...args),
+      orderBy: (field: string, direction?: string) => {
+        void field;
+        void direction;
+        return makeQuery().orderBy();
+      },
       limit: (...args: [number]) => makeQuery().limit(...args),
       doc: (id: string) => makeDoc(id),
     };
@@ -128,6 +145,7 @@ beforeEach(() => {
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
     if (auth === "Bearer mod") return { uid: "mod-1", roles: ["moderator"] };
     if (auth === "Bearer super") return { uid: "admin-1", roles: ["super_admin"] };
+    if (auth === "Bearer smoke") return { uid: "smoke-1", email: "smoke-tester@crowdpm.dev", roles: [] };
     return { uid: "user-1", roles: [] };
   });
   mocks.writeModerationAudit.mockResolvedValue(undefined);
@@ -182,6 +200,35 @@ describe("GET /v1/admin/submissions", () => {
       message: "You do not have permission to access this resource.",
     });
     await app.close();
+  });
+
+  it("allows the smoke tester to list submissions in the local emulator", async () => {
+    await withFunctionsEmulator(true, async () => {
+      const app = await buildApp();
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/admin/submissions",
+        headers: { authorization: "Bearer smoke" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().submissions).toHaveLength(1);
+      await app.close();
+    });
+  });
+
+  it("denies the smoke tester outside the local emulator", async () => {
+    await withFunctionsEmulator(false, async () => {
+      const app = await buildApp();
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/admin/submissions",
+        headers: { authorization: "Bearer smoke" },
+      });
+
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    });
   });
 });
 
