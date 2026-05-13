@@ -181,6 +181,12 @@ export type AdminSubmissionListResponse = {
   submissions: AdminSubmissionSummary[];
 };
 
+export type DemoBatchSetting = {
+  deviceId: string;
+  batchId: string;
+  summary: AdminSubmissionSummary;
+} | null;
+
 export type AdminSubmissionUpdateRequest = {
   moderationState: ModerationState;
   reason?: string | null;
