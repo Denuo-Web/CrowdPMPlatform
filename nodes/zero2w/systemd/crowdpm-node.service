@@ -1,0 +1,14 @@
+[Unit]
+Description=CrowdPM Zero 2 W prototype node
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/crowdpm-node/app
+ExecStart=/opt/crowdpm-node/venv/bin/python /opt/crowdpm-node/app/run_node.py --state-dir /opt/crowdpm-node/state --http-port 80 --hostname crowdpm-node
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
