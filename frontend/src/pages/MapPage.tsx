@@ -55,6 +55,7 @@ const MAP_EMPTY_STATE_DESCRIPTION = "Explore public sensor data below, or pair y
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
+const EXPANDED_BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batchesExpanded", uid ?? "guest", EXPANDED_BATCH_FETCH_LIMIT] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
 const Map3D = lazy(() => import("../components/Map3D"));
 const TERMINAL_BATCH_ERROR_MESSAGES = ["unauthorized", "authentication required", "not_found", "batch not found"] as const;
@@ -230,7 +231,6 @@ function getStoredTimelineIndex(storageKey: string, batchKey: string, maxIndex: 
 
 export default function MapPage({ mapAppearance }: MapPageProps) {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const userId = user?.uid;
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
@@ -301,7 +301,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     [batchesQuery.data]
   );
   const batchBrowserQuery = useQuery<VisibleBatchSummary[]>({
-    queryKey: ["batchesExpanded", user?.uid ?? "guest", EXPANDED_BATCH_FETCH_LIMIT],
+    queryKey: EXPANDED_BATCHES_QUERY_KEY(user?.uid ?? null),
     queryFn: () => loadBatchSummaries(EXPANDED_BATCH_FETCH_LIMIT, EXPANDED_BATCH_FETCH_LIMIT),
     enabled: isBatchBrowserOpen && !isAuthLoading,
     placeholderData: () => visibleBatches,
@@ -642,6 +642,18 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     }
   }, [isMapViewportActivated, user?.uid, userScopedSelectionKey]);
 
+  const upsertBatchSummary = useCallback((summary: VisibleBatchSummary) => {
+    const mergeSummaries = (prev: VisibleBatchSummary[] = []) => {
+      const filtered = prev.filter((batch) => (
+        batch.batchId !== summary.batchId || batch.deviceId !== summary.deviceId
+      ));
+      return sortBatchesByProcessedAtDesc([summary, ...filtered]);
+    };
+
+    queryClient.setQueryData<VisibleBatchSummary[]>(BATCHES_QUERY_KEY(user?.uid ?? null), mergeSummaries);
+    queryClient.setQueryData<VisibleBatchSummary[]>(EXPANDED_BATCHES_QUERY_KEY(user?.uid ?? null), mergeSummaries);
+  }, [queryClient, user?.uid]);
+
   const handleDemoBatchSelect = useCallback(async () => {
     setDemoBatchLoading(true);
     try {
@@ -652,10 +664,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       }
 
       const key = encodeBatchKey(demoBatch.deviceId, demoBatch.batchId);
-      queryClient.setQueryData<BatchSummary[]>(BATCHES_QUERY_KEY(userId ?? null), (prev = []) => {
-        const filtered = prev.filter((batch) => encodeBatchKey(batch.deviceId, batch.batchId) !== key);
-        return sortBatchesByProcessedAtDesc([demoBatch, ...filtered]);
-      });
+      upsertBatchSummary({ ...demoBatch, access: "public" });
       handleBatchSelect(key);
     }
     catch (err) {
@@ -665,7 +674,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     finally {
       setDemoBatchLoading(false);
     }
-  }, [handleBatchSelect, queryClient, userId]);
+  }, [handleBatchSelect, upsertBatchSummary]);
 
   const handleMapZoomChange = useCallback((zoom: number) => {
     const nextZoom = Math.min(Math.max(zoom, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
