@@ -1,0 +1,40 @@
+Test Plan
+CrowdPM Platform: Fullstack PM2.5 Mapping
+Jaron Rosenau, Jack Armstrong, Skylar Soon, Mark Sparhawk
+CS462 Spring 2026
+Oregon State University
+
+Project Links
+Task Board - Asana: https://app.asana.com/1/941689499454829/project/1211814553979599/board
+Project Wiki - GitHub Wiki: https://github.com/Denuo-Web/CrowdPMPlatform/wiki
+Repository - GitHub Repo: https://github.com/Denuo-Web/CrowdPMPlatform/
+Website - CrowdPM Platform: https://crowdpmplatform.web.app/
+
+Testing Scope and Needs
+This sprint focuses on the highest-risk CrowdPM features: map/public pages, sign in and sign out, device activation and pairing, the user dashboard, admin moderation, node purchase, and the ingest pipeline.
+
+- Public map and data visibility: public batches should appear, while private and quarantined data stays hidden.
+- Authentication and access: protected routes should only work for the correct users.
+- Device flow: pairing, authorization, registration, and access-token steps should work end to end.
+- Dashboard and batch management: users should be able to view devices and batches, change visibility, and delete their own data.
+- Admin moderation: moderator-only actions and quarantine controls should stay protected.
+- Node purchase: product selection and Stripe checkout should use the correct options and pricing.
+- Ingest pipeline: uploads should be accepted, stored, processed, and shown in the correct visibility state.
+
+Testing Methods
+We are using white-box testing and black-box testing for this sprint. We are not using TDD.
+
+- White-box testing: Vitest backend tests for auth checks, role checks, pairing errors, Stripe validation, and ingest logic.
+- Black-box testing: end-to-end checks for device onboarding, map visibility behavior, dashboard flows, and frontend smoke tests.
+
+Team Assignments
+The Kanban board includes testing tasks for the areas above and assigns them as follows:
+
+- Mark: device end-to-end ingest flow from pair to visibility
+- Skylar: frontend smoke and regression testing
+- Jaron: node purchase and Stripe testing
+- Jack: role, access, and moderation testing
+
+Evidence
+Asana board link: https://app.asana.com/1/941689499454829/project/1211814553979599/board
+Screenshot: add the current board screenshot showing testing tasks assigned to team members.

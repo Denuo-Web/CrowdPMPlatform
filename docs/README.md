@@ -16,6 +16,7 @@ CrowdPM documentation is organized by audience and environment. Avoid copying th
 | `deployment.md` | Maintainers | Deployed Firebase release checklist and rollback process. |
 | `hardware-builder.md` | Hardware builders | Device pairing, DPoP, access tokens, ingest payload contract. |
 | `openapi-swagger-ui.md` | API users | View `functions/src/openapi.yaml` in Swagger UI locally. |
+| `test-plan.txt` | Capstone team | Sprint test scope, methods, ownership, and Kanban evidence. |
 | `INSTALL-openjdk25-linux.md` | Linux contributors | JDK 25 setup notes for Firebase emulators. |
 | `INSTALL-openjdk25-mac.md` | macOS contributors | JDK 25 setup notes for Firebase emulators. |
 

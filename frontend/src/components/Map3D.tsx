@@ -154,6 +154,13 @@ function signature(series: MeasurementPoint[]) {
   ].join(":");
 }
 
+function markerRadiusMeters(precision: number | null): number {
+  if (typeof precision !== "number" || !Number.isFinite(precision)) {
+    return 10;
+  }
+  return Math.max(5, precision / 2);
+}
+
 function createLayers(
   series: MeasurementPoint[],
   selectedIndex: number,
@@ -184,7 +191,7 @@ function createLayers(
         return [...base, 200] as [number, number, number, number];
       },
       getScale: (d) => {
-        const radiusMeters = Math.max(0.5, (d.precision ?? 20) / 2);
+        const radiusMeters = markerRadiusMeters(d.precision ?? null);
         return [radiusMeters, radiusMeters, radiusMeters];
       },
       pickable: true,
@@ -228,7 +235,7 @@ function createLayers(
       return [...base, 220] as [number, number, number, number];
     },
     getScale: (d) => {
-      const radiusMeters = Math.max(0.5, (d.precision ?? 20) / 2);
+      const radiusMeters = markerRadiusMeters(d.precision ?? null);
       return [radiusMeters, radiusMeters, radiusMeters];
     },
     pickable: true,
