@@ -39,7 +39,9 @@ So the correct shipped flow is:
 12. The node polls `POST /device/token`, completes `POST /device/register`, stores its `device_id`, and switches to normal paired mode.
 13. After pairing completes, the node can stop advertising the setup AP.
 14. While away from known Wi-Fi, the node stores PM2.5 measurements locally in SQLite.
-15. When it returns to the provisioned Wi-Fi, it requests a fresh access token and uploads queued batches automatically.
+15. Measurements are grouped into local batches over a time window instead of uploading one point at a time.
+16. A Wi-Fi connect or disconnect closes the current local batch so movement across coverage zones creates a natural batch boundary.
+17. When the node reaches the provisioned Wi-Fi again, it requests a fresh access token and uploads any closed local batches automatically.
 
 ## What was implemented
 
@@ -49,6 +51,7 @@ So the correct shipped flow is:
 - Live pairing flow against CrowdPM deployed endpoints
 - Persistent device state and key storage
 - Local SQLite measurement queue for offline batches
+- Time-windowed local batches that close on Wi-Fi transitions or point-count limits
 - Automatic retry and batch flush when the configured Wi-Fi is reachable again
 
 ## Important product notes

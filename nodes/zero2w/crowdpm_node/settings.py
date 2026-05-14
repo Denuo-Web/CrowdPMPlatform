@@ -31,6 +31,7 @@ class AppSettings:
     pairing_timeout_seconds: int = 15 * 60
     sample_interval_seconds: int = 15
     flush_batch_size: int = 60
+    batch_window_seconds: int = 15 * 60
     setup_ap_connection_name: str = "crowdpm-setup-ap"
     station_connection_name: str = "crowdpm-station"
     setup_ap_ifname: str = "uap0"

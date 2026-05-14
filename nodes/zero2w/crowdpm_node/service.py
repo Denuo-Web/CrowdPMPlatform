@@ -23,15 +23,36 @@ def utcnow() -> datetime:
 def normalize_utc_timestamp(value: str | None) -> str | None:
     if not value:
         return value
-    if value.endswith("Z"):
-        return value
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError:
-        return value
+        if value.endswith("Z"):
+            try:
+                parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            except ValueError:
+                return value
+        else:
+            return value
     if parsed.tzinfo is None:
-        return value
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_utc_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    if value.endswith("Z"):
+        try:
+            return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class NodeService:
@@ -101,7 +122,7 @@ class NodeService:
                 "pairing": asdict(self.state.pairing),
                 "sensors": asdict(self.state.sensors),
                 "network": self.network.system_snapshot(include_visible_networks=include_visible_networks),
-                "queue": {"pending_count": self.queue.pending_count()},
+                "queue": self.queue.status_summary(),
             }
 
     def configure_wifi(self, ssid: str, password: str) -> None:
@@ -144,7 +165,9 @@ class NodeService:
         with self._lock:
             self._sync_sensor_status()
             station = self.network.station_state()
+            previous_ssid = self.state.wifi.connected_ssid
             self.state.wifi.connected_ssid = self.network.current_station_ssid()
+            self._handle_wifi_transition(previous_ssid, self.state.wifi.connected_ssid)
             if self.state.wifi.connected_ssid:
                 self.state.wifi.last_error = None
             elif station["state"].lower() not in {"connected"} and self.state.wifi.ssid and time.time() - self._last_station_attempt > 20:
@@ -173,9 +196,20 @@ class NodeService:
                 else:
                     self._set_portal_stage("connecting_wifi", f"Trying to join {self.state.wifi.ssid}.")
 
+            self._maybe_finalize_open_batch()
             self._maybe_queue_sample()
+            self._maybe_finalize_open_batch()
             self._maybe_flush_queue()
             self._persist_state()
+
+    def _handle_wifi_transition(self, previous_ssid: str | None, current_ssid: str | None) -> None:
+        if previous_ssid == current_ssid:
+            return
+        if not previous_ssid and not current_ssid:
+            return
+        self._close_open_batches(f"wifi_transition:{previous_ssid or 'offline'}->{current_ssid or 'offline'}")
+        self._access_token = None
+        self._access_token_expires_at = None
 
     def _ensure_setup_ap(self) -> None:
         try:
@@ -202,6 +236,27 @@ class NodeService:
         self.state.sensors.last_sample_at = utc_now_iso()
         errors = [message for message in (pms.last_error, gps.last_error) if message]
         self.state.sensors.last_error = "; ".join(errors) if errors else None
+
+    def _close_open_batches(self, reason: str) -> None:
+        closed_points = self.queue.close_open_batches()
+        if closed_points:
+            self.log(
+                "queue",
+                f"closed local batch reason={reason} points={closed_points} uploadable={self.queue.pending_closed_batch_count()}",
+            )
+
+    def _maybe_finalize_open_batch(self) -> None:
+        open_batch = self.queue.current_open_batch()
+        if not open_batch:
+            return
+        if open_batch.point_count >= self.settings.flush_batch_size:
+            self._close_open_batches(f"point_limit:{open_batch.point_count}")
+            return
+        started_at = parse_utc_timestamp(open_batch.started_at)
+        if not started_at:
+            return
+        if utcnow() - started_at >= timedelta(seconds=self.settings.batch_window_seconds):
+            self._close_open_batches(f"time_window:{self.settings.batch_window_seconds}s")
 
     def _advance_pairing(self) -> None:
         pairing = self.state.pairing
@@ -311,8 +366,12 @@ class NodeService:
             point["altitude"] = self.state.sensors.altitude
         if self.state.sensors.precision is not None:
             point["precision"] = self.state.sensors.precision
-        self.queue.enqueue_point(point, temperature_c, humidity_pct)
-        self.log("queue", f"queued point pending={self.queue.pending_count()}")
+        open_batch = self.queue.current_open_batch()
+        batch_id = open_batch.batch_id if open_batch else self.queue.next_batch_id()
+        self.queue.enqueue_point(point, temperature_c, humidity_pct, batch_id=batch_id)
+        current_batch = self.queue.current_open_batch()
+        open_points = current_batch.point_count if current_batch else 0
+        self.log("queue", f"queued point pending={self.queue.pending_count()} open_batch_points={open_points}")
 
     def _maybe_flush_queue(self) -> None:
         if not self.state.pairing.device_id or not self.state.wifi.connected_ssid:
@@ -356,7 +415,10 @@ class NodeService:
             )
             self.queue.mark_uploaded(ids)
             self.state.pairing.last_error = None
-            self.log("ingest", f"uploaded batch size={len(points)} pending={self.queue.pending_count()}")
+            self.log(
+                "ingest",
+                f"uploaded batch local_batch={pending[0].batch_id} size={len(points)} pending={self.queue.pending_count()}",
+            )
         except Exception as exc:
             self.queue.mark_error([row.id for row in pending], str(exc))
             self.state.pairing.last_error = f"Ingest failed: {exc}"
