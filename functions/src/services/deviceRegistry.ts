@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { firestore } from "firebase-admin";
 import { db } from "../lib/fire.js";
+import { httpError } from "../lib/httpError.js";
 import { revokeTokensForDevice } from "./deviceTokens.js";
 import { toDate } from "../lib/time.js";
 import { decrementActiveDeviceCount, writeDeviceWithQuota } from "./accountEntitlements.js";
@@ -128,4 +129,54 @@ export async function revokeDevice(deviceId: string, initiatedBy: string, reason
     })));
   }
   await revokeTokensForDevice(deviceId);
+}
+
+export async function suspendDevice(deviceId: string, initiatedBy: string, reason?: string): Promise<{
+  before: { status: string | null; registryStatus: string | null };
+  after: { status: "SUSPENDED"; registryStatus: "suspended"; suspendedBy: string };
+}> {
+  const targetDb = db();
+  const existing = await targetDb.collection("devices").doc(deviceId).get();
+  if (!existing.exists) {
+    throw httpError(404, "not_found", "Device not found");
+  }
+
+  const data = existing.data() ?? {};
+  const ownerUserIds = Array.isArray(data.ownerUserIds)
+    ? data.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+    : (typeof data.accId === "string" && data.accId.length > 0 ? [data.accId] : []);
+  const currentStatus = typeof data.status === "string" ? data.status.toUpperCase() : "";
+  const currentRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : "";
+  const wasActive = currentStatus !== "REVOKED" && currentStatus !== "SUSPENDED"
+    && currentRegistryStatus !== "revoked" && currentRegistryStatus !== "suspended";
+  const updates: Record<string, unknown> = {
+    status: "SUSPENDED",
+    registryStatus: "suspended",
+    suspendedAt: new Date(),
+    suspendedBy: initiatedBy,
+  };
+  if (reason) {
+    updates.suspensionReason = reason;
+  }
+
+  await targetDb.collection("devices").doc(deviceId).set(updates, { merge: true });
+  if (wasActive) {
+    await Promise.all(ownerUserIds.map((userId) => decrementActiveDeviceCount({
+      userId,
+      targetDb,
+    })));
+  }
+  await revokeTokensForDevice(deviceId);
+
+  return {
+    before: {
+      status: typeof data.status === "string" ? data.status : null,
+      registryStatus: typeof data.registryStatus === "string" ? data.registryStatus : null,
+    },
+    after: {
+      status: "SUSPENDED",
+      registryStatus: "suspended",
+      suspendedBy: initiatedBy,
+    },
+  };
 }

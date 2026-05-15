@@ -1,4 +1,6 @@
+import crypto from "node:crypto";
 import { calculateJwkThumbprint, compactVerify, importJWK, type JWK } from "jose";
+import { db } from "./fire.js";
 import { httpError } from "./httpError.js";
 
 type VerifyOptions = {
@@ -21,6 +23,7 @@ export type VerifiedDpop = {
 const decoder = new TextDecoder();
 const DEFAULT_DPOP_MAX_AGE_SECONDS = 120;
 const DEFAULT_DPOP_CLOCK_SKEW_SECONDS = 5;
+const DEFAULT_REPLAY_LEDGER_TTL_SECONDS = 300;
 
 function unauthorized(message: string) {
   return httpError(401, "invalid_token", message);
@@ -92,4 +95,55 @@ export async function verifyDpopProof(proof: string | undefined, options: Verify
   }
 
   return { thumbprint, jwk: protectedJwk, iat, jti, ath: typeof ath === "string" ? ath : undefined };
+}
+
+export function calculateDpopAth(accessToken: string): string {
+  return crypto.createHash("sha256").update(accessToken).digest("base64url");
+}
+
+function replayLedgerDocId(thumbprint: string, jti: string): string {
+  return crypto.createHash("sha256").update(`${thumbprint}\n${jti}`).digest("hex");
+}
+
+function isAlreadyExistsError(err: unknown): boolean {
+  const candidate = err as { code?: unknown; message?: unknown } | null;
+  return candidate?.code === 6
+    || candidate?.code === "already-exists"
+    || candidate?.code === "ALREADY_EXISTS"
+    || String(candidate?.message ?? "").toLowerCase().includes("already exists");
+}
+
+export async function checkDpopReplay(args: {
+  thumbprint: string;
+  jti: string;
+  iat: number;
+  htu: string;
+  method: string;
+  accessTokenJti?: string;
+  ttlSeconds?: number;
+}): Promise<void> {
+  const now = Date.now();
+  const ttlMs = Math.max(1, args.ttlSeconds ?? DEFAULT_REPLAY_LEDGER_TTL_SECONDS) * 1000;
+  const issuedAtMs = Number.isFinite(args.iat) ? args.iat * 1000 : now;
+  const expiresAt = new Date(Math.max(now, issuedAtMs) + ttlMs);
+  const docId = replayLedgerDocId(args.thumbprint, args.jti);
+
+  try {
+    await db().collection("dpopReplay").doc(docId).create({
+      thumbprint: args.thumbprint,
+      jti: args.jti,
+      iat: args.iat,
+      htu: args.htu,
+      method: args.method.toUpperCase(),
+      accessTokenJti: args.accessTokenJti ?? null,
+      createdAt: new Date(now),
+      expiresAt,
+    });
+  }
+  catch (err) {
+    if (isAlreadyExistsError(err)) {
+      throw unauthorized("DPoP proof replay detected");
+    }
+    throw err;
+  }
 }

@@ -16,7 +16,7 @@ type LegalDocumentLinkProps = {
   onOpen: (documentId: LegalDocumentId) => void;
 };
 
-const LAST_UPDATED = "May 11, 2026";
+const LAST_UPDATED = "May 14, 2026";
 const COMPANY_NAME = "Denuo Web LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
@@ -216,10 +216,12 @@ function TermsOfService() {
         </P>
         <P>
           Batch visibility controls whether measurement batches are public or private. Public batches
-          may appear on the public map and public API responses with PM2.5 values, coordinates,
-          timestamps, device identifiers, device names, and batch metadata. Private batches are
-          limited to your account and authorized administrators, subject to operational, security, and
-          legal needs.
+          may appear on the public map and public API responses only after they are approved for
+          publication, with PM2.5 values, submitted coordinates, timestamps, device identifiers,
+          device names, and batch metadata. Unless a feature expressly says otherwise, public
+          coordinates and timestamps are published at the precision submitted by the device and may
+          reveal sensitive location or movement patterns. Private batches are limited to your account
+          and authorized administrators, subject to operational, security, and legal needs.
         </P>
         <P>
           Do not submit measurements from locations where you do not have the right to collect or
@@ -359,6 +361,12 @@ function PrivacyPolicy() {
           reused by others once made available.
         </P>
         <P>
+          CrowdPM does not intentionally publish private batches through the public map or public API.
+          Public API responses are limited to approved public batches, but the coordinates and
+          timestamps in those approved batches may be precise enough to infer where a device traveled,
+          where it was stored, or when someone was nearby.
+        </P>
+        <P>
           If you do not want location-linked measurements to be public, keep the relevant device or
           batch visibility set to private and avoid submitting sensitive labels or names.
         </P>
@@ -406,8 +414,16 @@ function PrivacyPolicy() {
         </P>
         <P>
           You may request access, correction, export, or deletion of personal information by contacting
-          us. Some records may be retained where required for security, legal compliance, backups,
-          audit integrity, or legitimate operational purposes.
+          us. Batch data can be reviewed through account dashboard features and exported through
+          available product interfaces or by verified request. Deletion requests may result in
+          deletion, de-identification, or visibility changes depending on the record type and legal
+          requirements.
+        </P>
+        <P>
+          Some records may be retained where required for security, legal compliance, tax and order
+          records, backups, abuse investigations, audit integrity, dispute resolution, or legitimate
+          operational purposes. We cannot delete copies of public approved data already downloaded,
+          cached, or copied by others before a deletion or visibility change is completed.
         </P>
       </Section>
 
@@ -419,7 +435,16 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="8. Children">
+      <Section title="8. Not an Official Health or Safety System">
+        <P>
+          CrowdPM measurements and maps are provided for community awareness, research, and
+          educational use. They are not official regulatory, medical, emergency-response, industrial
+          hygiene, or safety alerts, and they should not be used as the sole basis for health,
+          evacuation, workplace, or regulatory decisions.
+        </P>
+      </Section>
+
+      <Section title="9. Children">
         <P>
           CrowdPM is not directed to children under 13, and we do not knowingly collect personal
           information from children under 13. Contact us if you believe a child provided personal
@@ -427,7 +452,7 @@ function PrivacyPolicy() {
         </P>
       </Section>
 
-      <Section title="9. Contact">
+      <Section title="10. Contact">
         <P>
           Contact {COMPANY_NAME} at{" "}
           <Link href={`mailto:${COMPANY_CONTACT_EMAIL}`} color="iris" highContrast>

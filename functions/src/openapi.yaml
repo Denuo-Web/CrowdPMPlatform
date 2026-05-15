@@ -39,9 +39,9 @@ paths:
         variants are $420, and the combined CO2 + NO2 variant is $480 before
         tax. The selected quantity can be 1 through 10 devices. If a valid
         bearer token is supplied, the completed hardware receipt is tied to that
-        account. The API lazily provisions the backing Stripe product + price for
-        each variant the first time that variant is requested, then reuses the
-        stored identifiers on later requests.
+        account. The backing live Stripe product + price must be seeded in
+        Firestore `paymentCatalog` before public checkout is enabled; local and
+        test environments may opt into automatic catalog creation.
       security: []
       requestBody:
         required: false
@@ -570,7 +570,8 @@ paths:
       operationId: suspendDevice
       summary: Suspend a device
       description: >
-        Marks a device as suspended. Suspended devices cannot submit new measurements.
+        Marks a device as suspended, revokes outstanding device tokens, and writes
+        a moderation audit event. Suspended devices cannot submit new measurements.
       security:
         - BearerAuth: []
       parameters:
@@ -580,13 +581,25 @@ paths:
           schema:
             type: string
           description: Identifier of the device to suspend.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminDeviceSuspendRequest'
       responses:
         '204':
           description: Device suspended.
+        '400':
+          description: Invalid device id or request body.
         '401':
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to suspend the device.
+        '404':
+          description: Device not found.
+        '429':
+          description: Rate limited.
   /v1/admin/submissions:
     get:
       operationId: listAdminSubmissions
@@ -1270,6 +1283,14 @@ components:
         reason:
           type: string
           nullable: true
+          maxLength: 500
+    AdminDeviceSuspendRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+          maxLength: 500
     AdminRole:
       type: string
       enum:

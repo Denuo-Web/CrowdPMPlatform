@@ -5,12 +5,14 @@ import {
   Box,
   Button,
   Card,
+  Dialog,
   Flex,
   Heading,
   Select,
   Separator,
   Table,
   Text,
+  TextArea,
 } from "@radix-ui/themes";
 import {
   getAdminDemoBatch,
@@ -62,6 +64,63 @@ function mergeDemoBatchOptions(
 type SubmissionFilterState = "all" | ModerationState;
 type VisibilityFilterState = "all" | BatchVisibility;
 
+type PendingConfirmation =
+  | {
+    kind: "submission";
+    entry: AdminSubmissionSummary;
+    moderationState: ModerationState;
+  }
+  | {
+    kind: "toggleDisabled";
+    entry: AdminUserSummary;
+    nextDisabled: boolean;
+  }
+  | {
+    kind: "roles";
+    entry: AdminUserSummary;
+    roles: AdminRole[];
+  };
+
+function describeRoles(roles: AdminRole[]): string {
+  return roles.length ? roles.map((role) => normalizeRoleLabel(role)).join(", ") : "No admin roles";
+}
+
+function confirmationCopy(action: PendingConfirmation | null): {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmColor?: "tomato" | "green";
+} {
+  if (!action) {
+    return {
+      title: "Confirm action",
+      description: "Review this administrative change before continuing.",
+      confirmLabel: "Confirm",
+    };
+  }
+  if (action.kind === "submission") {
+    return {
+      title: action.moderationState === "quarantined" ? "Quarantine submission" : "Approve submission",
+      description: `${action.moderationState === "quarantined" ? "Quarantine" : "Approve"} batch ${action.entry.batchId} from ${action.entry.deviceName || action.entry.deviceId}.`,
+      confirmLabel: action.moderationState === "quarantined" ? "Quarantine" : "Approve",
+      confirmColor: action.moderationState === "quarantined" ? "tomato" : "green",
+    };
+  }
+  if (action.kind === "toggleDisabled") {
+    return {
+      title: action.nextDisabled ? "Disable user" : "Enable user",
+      description: `${action.nextDisabled ? "Disable" : "Enable"} ${action.entry.email ?? action.entry.uid}. Disabling revokes the user's refresh tokens and device tokens.`,
+      confirmLabel: action.nextDisabled ? "Disable user" : "Enable user",
+      confirmColor: action.nextDisabled ? "tomato" : "green",
+    };
+  }
+  return {
+    title: "Change admin roles",
+    description: `Set roles for ${action.entry.email ?? action.entry.uid} to: ${describeRoles(action.roles)}.`,
+    confirmLabel: "Update roles",
+  };
+}
+
 export default function AdminModerationPage() {
   const { isSuperAdmin, canAccessAdmin } = useAuth();
 
@@ -86,6 +145,8 @@ export default function AdminModerationPage() {
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
   const [submissionPageIndex, setSubmissionPageIndex] = useState(0);
   const [userPageIndex, setUserPageIndex] = useState(0);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmationReason, setConfirmationReason] = useState("");
 
   const canManageUsers = canAccessAdmin && isSuperAdmin;
 
@@ -198,53 +259,76 @@ export default function AdminModerationPage() {
     }
   }, [userPageIndex, users.length]);
 
-  const handleModerationChange = useCallback(async (entry: AdminSubmissionSummary, moderationState: ModerationState) => {
+  const handleModerationChange = useCallback((entry: AdminSubmissionSummary, moderationState: ModerationState) => {
     if (!canAccessAdmin) return;
-    const reason = moderationState === "quarantined"
-      ? window.prompt("Optional moderation reason", entry.moderationReason ?? "")
-      : "";
-    setActionBusyId(`submission:${entry.deviceId}:${entry.batchId}`);
-    setSubmissionError(null);
-    try {
-      await moderateAdminSubmission(entry.deviceId, entry.batchId, {
-        moderationState,
-        reason: reason ?? undefined,
-      });
-      await refreshSubmissions();
-    }
-    catch (err) {
-      setSubmissionError(err instanceof Error ? err.message : "Unable to update submission moderation.");
-    }
-    finally {
-      setActionBusyId(null);
-    }
-  }, [canAccessAdmin, refreshSubmissions]);
+    setPendingConfirmation({ kind: "submission", entry, moderationState });
+    setConfirmationReason(moderationState === "quarantined" ? entry.moderationReason ?? "" : "");
+  }, [canAccessAdmin]);
 
-  const handleToggleDisabled = useCallback(async (entry: AdminUserSummary) => {
+  const handleToggleDisabled = useCallback((entry: AdminUserSummary) => {
     if (!canManageUsers) return;
-    const nextDisabled = !entry.disabled;
-    const reason = window.prompt("Optional moderation reason", "");
-    setActionBusyId(`user:${entry.uid}:disabled`);
+    setPendingConfirmation({ kind: "toggleDisabled", entry, nextDisabled: !entry.disabled });
+    setConfirmationReason("");
+  }, [canManageUsers]);
+
+  const handleSetRoles = useCallback((entry: AdminUserSummary, roles: AdminRole[]) => {
+    if (!canManageUsers) return;
+    setPendingConfirmation({ kind: "roles", entry, roles });
+    setConfirmationReason("");
+  }, [canManageUsers]);
+
+  const handleCancelConfirmation = useCallback(() => {
+    setPendingConfirmation(null);
+    setConfirmationReason("");
+  }, []);
+
+  const handleConfirmAction = useCallback(async () => {
+    const action = pendingConfirmation;
+    if (!action) return;
+    const reason = confirmationReason.trim();
+    const normalizedReason = reason.length ? reason : undefined;
+    setPendingConfirmation(null);
+    setConfirmationReason("");
+
+    if (action.kind === "submission") {
+      setActionBusyId(`submission:${action.entry.deviceId}:${action.entry.batchId}`);
+      setSubmissionError(null);
+      try {
+        await moderateAdminSubmission(action.entry.deviceId, action.entry.batchId, {
+          moderationState: action.moderationState,
+          reason: normalizedReason,
+        });
+        await refreshSubmissions();
+      }
+      catch (err) {
+        setSubmissionError(err instanceof Error ? err.message : "Unable to update submission moderation.");
+      }
+      finally {
+        setActionBusyId(null);
+      }
+      return;
+    }
+
+    if (action.kind === "toggleDisabled") {
+      setActionBusyId(`user:${action.entry.uid}:disabled`);
+      setUserError(null);
+      try {
+        await updateAdminUser(action.entry.uid, { disabled: action.nextDisabled, reason: normalizedReason });
+        await refreshUsers();
+      }
+      catch (err) {
+        setUserError(err instanceof Error ? err.message : "Unable to update user status.");
+      }
+      finally {
+        setActionBusyId(null);
+      }
+      return;
+    }
+
+    setActionBusyId(`user:${action.entry.uid}:roles`);
     setUserError(null);
     try {
-      await updateAdminUser(entry.uid, { disabled: nextDisabled, reason: reason ?? undefined });
-      await refreshUsers();
-    }
-    catch (err) {
-      setUserError(err instanceof Error ? err.message : "Unable to update user status.");
-    }
-    finally {
-      setActionBusyId(null);
-    }
-  }, [canManageUsers, refreshUsers]);
-
-  const handleSetRoles = useCallback(async (entry: AdminUserSummary, roles: AdminRole[]) => {
-    if (!canManageUsers) return;
-    const reason = window.prompt("Optional role change reason", "");
-    setActionBusyId(`user:${entry.uid}:roles`);
-    setUserError(null);
-    try {
-      await updateAdminUser(entry.uid, { roles, reason: reason ?? undefined });
+      await updateAdminUser(action.entry.uid, { roles: action.roles, reason: normalizedReason });
       await refreshUsers();
     }
     catch (err) {
@@ -253,7 +337,7 @@ export default function AdminModerationPage() {
     finally {
       setActionBusyId(null);
     }
-  }, [canManageUsers, refreshUsers]);
+  }, [confirmationReason, pendingConfirmation, refreshSubmissions, refreshUsers]);
 
   const handleDemoBatchChange = useCallback(async (value: string) => {
     if (value === NO_DEMO_BATCH_KEY) return;
@@ -287,8 +371,52 @@ export default function AdminModerationPage() {
     );
   }
 
+  const confirmCopy = confirmationCopy(pendingConfirmation);
+
   return (
-    <Flex direction="column" gap="5">
+    <>
+      <Dialog.Root open={Boolean(pendingConfirmation)} onOpenChange={(open) => { if (!open) handleCancelConfirmation(); }}>
+        <Dialog.Content
+          size="3"
+          style={{
+            width: "min(520px, 96vw)",
+            maxWidth: "520px",
+          }}
+        >
+          <Dialog.Title>{confirmCopy.title}</Dialog.Title>
+          <Dialog.Description>
+            {confirmCopy.description}
+          </Dialog.Description>
+          <Flex direction="column" gap="2" mt="4">
+            <Text as="label" size="2" weight="medium" htmlFor="admin-confirmation-reason">
+              Audit reason
+            </Text>
+            <TextArea
+              id="admin-confirmation-reason"
+              value={confirmationReason}
+              maxLength={500}
+              rows={4}
+              placeholder="Optional but recommended for audit review."
+              onChange={(event) => setConfirmationReason(event.currentTarget.value)}
+            />
+            <Text size="1" color={confirmationReason.length > 450 ? "tomato" : "gray"}>
+              {confirmationReason.length}/500 characters
+            </Text>
+          </Flex>
+          <Flex justify="end" gap="3" mt="5">
+            <Dialog.Close>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </Dialog.Close>
+            <Button
+              color={confirmCopy.confirmColor}
+              onClick={() => { void handleConfirmAction(); }}
+            >
+              {confirmCopy.confirmLabel}
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
+      <Flex direction="column" gap="5">
       <Card>
         <Flex direction="column" gap="3">
           <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
@@ -537,6 +665,7 @@ export default function AdminModerationPage() {
           </Flex>
         </Card>
       ) : null}
-    </Flex>
+      </Flex>
+    </>
   );
 }

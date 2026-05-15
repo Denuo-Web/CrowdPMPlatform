@@ -1,0 +1,5 @@
+requests>=2.32.0
+cryptography>=44.0.0
+pyserial>=3.5
+adafruit-blinka>=9.1.0
+adafruit-circuitpython-dht>=4.0.12

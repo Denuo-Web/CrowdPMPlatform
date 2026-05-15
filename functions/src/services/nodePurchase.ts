@@ -230,6 +230,12 @@ function extractExpandableId(value: string | { id: string } | null | undefined):
   return null;
 }
 
+function allowStripeCatalogAutoCreate(): boolean {
+  return process.env.STRIPE_CATALOG_AUTO_CREATE === "true"
+    || process.env.FUNCTIONS_EMULATOR === "true"
+    || process.env.NODE_ENV === "test";
+}
+
 function normalizeBaseUrl(rawBaseUrl: string): string {
   try {
     const parsed = new URL(rawBaseUrl);
@@ -318,6 +324,13 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
   const stored = readStoredCatalog(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
   if (stored && isCurrentCatalog(stored, config)) {
     return stored;
+  }
+  if (!allowStripeCatalogAutoCreate()) {
+    throw httpError(
+      500,
+      "stripe_catalog_not_seeded",
+      `Stripe catalog for ${config.productName} is missing or stale. Seed paymentCatalog before enabling checkout.`
+    );
   }
 
   let product: Stripe.Product;
