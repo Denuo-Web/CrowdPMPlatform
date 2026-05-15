@@ -19,6 +19,7 @@ import type {
   NodePurchaseReceipt,
   NodePurchaseVariantId,
   PublicBatchDetail,
+  PublicBatchMapResponse,
   PublicBatchSummary,
   SubscriptionOffer,
   SubscriptionOfferId,
@@ -128,6 +129,7 @@ export type {
   NodePurchaseReceipt,
   NodePurchaseVariantId,
   PublicBatchDetail,
+  PublicBatchMapResponse,
   PublicBatchSummary,
   SubscriptionOffer,
   SubscriptionOfferId,
@@ -260,6 +262,21 @@ export async function fetchPublicBatchDetail(deviceId: string, batchId: string):
   const safeDevice = encodeURIComponent(deviceId);
   const safeBatch = encodeURIComponent(batchId);
   return requestJson<PublicBatchDetail>(`/v1/public/batches/${safeDevice}/${safeBatch}`);
+}
+
+export async function fetchPublicBatchMap(params?: {
+  limit?: number;
+  since?: string;
+}): Promise<PublicBatchMapResponse> {
+  const qs = new URLSearchParams();
+  if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+    qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+  }
+  if (typeof params?.since === "string" && params.since.trim().length > 0) {
+    qs.set("since", params.since.trim());
+  }
+  const suffix = qs.toString();
+  return requestJson<PublicBatchMapResponse>(suffix ? `/v1/public/batches/map?${suffix}` : "/v1/public/batches/map");
 }
 
 export async function fetchDemoBatch(): Promise<PublicBatchSummary | null> {
