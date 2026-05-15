@@ -4,7 +4,7 @@ import { db } from "./fire.js";
 export type ModerationAuditEntry = {
   actorUid: string;
   actorRoles: AdminRole[];
-  targetType: "submission" | "user";
+  targetType: "submission" | "user" | "device";
   targetId: string;
   action: string;
   reason?: string | null;

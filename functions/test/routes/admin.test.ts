@@ -5,26 +5,20 @@ import { toHttpError } from "../../src/lib/httpError.js";
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
-  dbSet: vi.fn(),
-}));
-
-const mockDb = {
-  collection: vi.fn((name: string) => {
-    if (name !== "devices") throw new Error(`unexpected collection ${name}`);
-    return {
-      doc: () => ({
-        set: mocks.dbSet,
-      }),
-    };
-  }),
-};
-
-vi.mock("../../src/lib/fire.js", () => ({
-  db: () => mockDb,
+  suspendDevice: vi.fn(),
+  writeModerationAudit: vi.fn(),
 }));
 
 vi.mock("../../src/auth/firebaseVerify.js", () => ({
   requireUser: mocks.requireUser,
+}));
+
+vi.mock("../../src/services/deviceRegistry.js", () => ({
+  suspendDevice: mocks.suspendDevice,
+}));
+
+vi.mock("../../src/lib/moderationAudit.js", () => ({
+  writeModerationAudit: mocks.writeModerationAudit,
 }));
 
 async function buildApp() {
@@ -41,7 +35,8 @@ async function buildApp() {
 
 beforeEach(() => {
   mocks.requireUser.mockReset();
-  mocks.dbSet.mockReset();
+  mocks.suspendDevice.mockReset();
+  mocks.writeModerationAudit.mockReset();
 
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
@@ -50,7 +45,11 @@ beforeEach(() => {
     if (auth === "Bearer admin") return { uid: "admin-1", admin: true, roles: ["admin"] };
     return { uid: "user-123", email: "user@example.com", roles: [] };
   });
-  mocks.dbSet.mockResolvedValue(undefined);
+  mocks.suspendDevice.mockResolvedValue({
+    before: { status: "ACTIVE", registryStatus: "active" },
+    after: { status: "SUSPENDED", registryStatus: "suspended", suspendedBy: "admin-1" },
+  });
+  mocks.writeModerationAudit.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -65,10 +64,33 @@ describe("POST /v1/admin/devices/:id/suspend", () => {
       method: "POST",
       url: "/v1/admin/devices/device-1/suspend",
       headers: { authorization: "Bearer admin" },
+      payload: { reason: "abuse report" },
     });
 
     expect(res.statusCode).toBe(204);
-    expect(mocks.dbSet).toHaveBeenCalledWith({ status: "SUSPENDED" }, { merge: true });
+    expect(mocks.suspendDevice).toHaveBeenCalledWith("device-1", "admin-1", "abuse report");
+    expect(mocks.writeModerationAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actorUid: "admin-1",
+      targetType: "device",
+      targetId: "devices/device-1",
+      action: "device.suspended",
+      reason: "abuse report",
+    }));
+    await app.close();
+  });
+
+  it("validation: invalid reason returns 400", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/devices/device-1/suspend",
+      headers: { authorization: "Bearer admin" },
+      payload: { reason: "x".repeat(501) },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(mocks.suspendDevice).not.toHaveBeenCalled();
     await app.close();
   });
 

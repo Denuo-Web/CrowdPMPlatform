@@ -7,7 +7,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Firebase project access with permission to deploy Hosting, Functions, Firestore rules/indexes, and Storage rules.
 - Firebase CLI authenticated with `firebase login`.
 - Clean `main` checkout at the commit being released.
-- CI green or equivalent local checks passing.
+- CI green or equivalent local checks passing: `pnpm lint`, `pnpm --filter crowdpm-functions test`, and `pnpm build`.
 - Frontend environment values ready for the deployed Firebase project.
 - Functions runtime configuration ready, especially the Firebase secrets used by deployed functions.
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
@@ -15,9 +15,11 @@ This guide covers the single deployed Firebase environment. Use explicit project
 ```bash
 source ~/.nvm/nvm.sh && nvm use 24
 git checkout main
-git pull --rebase
-git status
+git pull --ff-only
+git status --short
 ```
+
+Do not release if `git status --short` prints any local changes, if the checkout is not `main`, or if local `main` is not the commit intended for release.
 
 ## Project Selection
 
@@ -46,11 +48,15 @@ For a new deployed Firebase project, verify these services before the first rele
 
 The functions code reads runtime values from `process.env`.
 
+The repository, CI, and Firebase Functions runtime are aligned on Node.js 24. Do not deploy a Functions runtime with Node.js 22 while building or testing on Node.js 24.
+
 Required deployed Firebase secrets:
 
 - `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign device registration and access tokens.
 - `STRIPE_SECRET_KEY`: Stripe secret key for creating node checkout sessions.
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
+
+Stripe Checkout uses catalog records stored in Firestore `paymentCatalog`. Do not rely on request-time catalog mutation in production: create the live Stripe products/prices deliberately, then seed matching `paymentCatalog` documents before exposing purchase links. `STRIPE_CATALOG_AUTO_CREATE=true` is only for local/emulator/test setup.
 
 Common optional values:
 
@@ -60,6 +66,7 @@ Common optional values:
 - `DEVICE_TOKEN_AUDIENCE`
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
+- `CORS_ALLOWED_ORIGINS`: comma-separated additional browser origins allowed to call non-public APIs. Public read APIs under `/v1/public/` allow browser reads from any origin; admin, user, payment, pairing, and ingest APIs only emit CORS headers for configured first-party origins.
 - `FIRST_SUPER_ADMIN_EMAIL`: optional post-deploy bootstrap target for the first super admin.
 - `FIRST_SUPER_ADMIN_PASSWORD`: optional one-time password used only if the bootstrap user does not already exist.
 - `FIRST_SUPER_ADMIN_DISPLAY_NAME`: optional display name for a created bootstrap user.
@@ -67,11 +74,27 @@ Common optional values:
 
 Keep secrets out of git. Deployed functions use Firebase Secret Manager for `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. The CI workflow syncs those three secrets from GitHub Actions into Firebase, then writes only non-secret runtime env vars into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
 
+## Pre-Launch Release Gates
+
+Before inviting unknown public traffic, confirm each item outside the repo:
+
+- Firebase project: `FIREBASE_PROJECT_ID` points to the intended production project, Hosting and Functions URLs are correct, Firestore/Storage/Auth are enabled, and Firebase budget alerts are active.
+- GitHub `deployed` environment: required variables and secrets are set, environment protection/review rules are enabled, and deploy credentials use either Workload Identity Federation or the intended service account key.
+- Stripe live mode: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are live-mode values for the intended account, the webhook endpoint is monitored, and failed webhook alerts are enabled.
+- Google Maps: browser API keys are restricted to deployed origins and required Maps APIs, and the vector map ID is for the production project.
+- First admin bootstrap: `FIRST_SUPER_ADMIN_EMAIL` identifies the initial operator account, the account uses a strong password and MFA, and bootstrap credentials are removed after use.
+- Edge and abuse controls: Cloud Armor, API Gateway, Firebase/App Check, or equivalent edge controls are configured where applicable; rate and cost alerts have owners.
+- Incident playbooks: document owners and steps for API abuse, credential leakage, runaway Firebase cost, Stripe webhook failure, payment/refund failure, public data takedown, and admin account compromise.
+- Admin readiness: keep super-admin membership minimal, rehearse role changes, user disable/enable, submission quarantine/approval, device suspension/revocation, and moderation audit review.
+- Payments and fulfillment: run live-mode checkout and webhook tests end to end, verify tax and US shipping behavior, refunds/cancellations, subscription lifecycle, receipt records, and node fulfillment SOPs before exposing public purchase links.
+- Legal/data policy: Terms and Privacy text must be reviewed against actual behavior for retention, export/deletion, geolocation precision, public approved batches, and non-regulatory/non-medical/non-safety disclaimers.
+
 ## Build And Deploy
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
+pnpm --filter crowdpm-functions test
 pnpm build
 printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
 printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
@@ -114,6 +137,7 @@ The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 - `DEVICE_TOKEN_AUDIENCE`
 - `DEVICE_ACCESS_TOKEN_TTL_SECONDS`
 - `DEVICE_REGISTRATION_TOKEN_TTL_SECONDS`
+- `CORS_ALLOWED_ORIGINS`
 - `PUBLIC_APP_BASE_URL`
 
 The three function secrets must exist in Firebase Secret Manager and are referenced by deployed functions through the `secrets` option.

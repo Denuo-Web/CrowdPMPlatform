@@ -2,8 +2,9 @@ import { onRequest } from "firebase-functions/v2/https";
 import type { Request } from "firebase-functions/v2/https";
 import { normalizeBatchVisibility } from "../lib/batchVisibility.js";
 import { verifyDeviceAccessToken } from "./deviceTokens.js";
-import { verifyDpopProof } from "../lib/dpop.js";
+import { calculateDpopAth, checkDpopReplay, verifyDpopProof } from "../lib/dpop.js";
 import { canonicalRequestUrl } from "../lib/http.js";
+import { applyCorsHeaders } from "../lib/corsPolicy.js";
 import { ingestService, type IngestBody } from "./ingestService.js";
 import { httpError, toHttpError } from "../lib/httpError.js";
 
@@ -11,7 +12,9 @@ type RequestWithRawBody = Request & { rawBody?: Buffer | string };
 
 type GatewayResponse = {
   status(code: number): GatewayResponse;
+  end(): void;
   json(payload: unknown): void;
+  getHeader?(name: string): number | string | string[] | undefined;
   setHeader(name: string, value: string): void;
 };
 
@@ -20,12 +23,14 @@ type IngestFn = (request: Parameters<typeof ingestService.ingest>[0]) => ReturnT
 type IngestGatewayDependencies = {
   verifyDeviceAccessToken: typeof verifyDeviceAccessToken;
   verifyDpopProof: typeof verifyDpopProof;
+  checkDpopReplay: typeof checkDpopReplay;
   ingest: IngestFn;
 };
 
 const defaultDependencies: IngestGatewayDependencies = {
   verifyDeviceAccessToken,
   verifyDpopProof,
+  checkDpopReplay,
   ingest: (request) => ingestService.ingest(request),
 };
 
@@ -57,6 +62,12 @@ export async function ingestGatewayHandler(
   res: GatewayResponse,
   dependencies: IngestGatewayDependencies = defaultDependencies
 ): Promise<void> {
+  applyCorsHeaders(req, res, { methods: "POST, OPTIONS" });
+  if (req.method.toUpperCase() === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
   const raw = normalizeRawBody(req);
   const body = (req.body ?? {}) as IngestBody;
 
@@ -78,10 +89,19 @@ export async function ingestGatewayHandler(
       method: req.method.toUpperCase(),
       htu,
       expectedThumbprint: accessToken.cnf.jkt,
+      expectedAth: calculateDpopAth(token),
     });
     if (verifiedProof.thumbprint !== accessToken.cnf.jkt) {
       throw httpError(401, "invalid_token", "DPoP key mismatch");
     }
+    await dependencies.checkDpopReplay({
+      thumbprint: verifiedProof.thumbprint,
+      jti: verifiedProof.jti,
+      iat: verifiedProof.iat,
+      htu,
+      method: req.method,
+      accessTokenJti: accessToken.jti,
+    });
 
     const deviceIdFromToken = accessToken.device_id;
     const payloadDeviceId = body.points?.[0]?.device_id || body.device_id;
@@ -111,6 +131,6 @@ export async function ingestGatewayHandler(
   }
 }
 
-export const ingestGateway = onRequest({ cors: true, secrets: ["DEVICE_TOKEN_PRIVATE_KEY"] }, async (req, res) => {
+export const ingestGateway = onRequest({ secrets: ["DEVICE_TOKEN_PRIVATE_KEY"] }, async (req, res) => {
   await ingestGatewayHandler(req as RequestWithRawBody, res as unknown as GatewayResponse);
 });

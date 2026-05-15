@@ -8,6 +8,7 @@ type MockResponse = {
   payload: unknown;
   headers: Record<string, string>;
   status: (code: number) => MockResponse;
+  end: () => void;
   json: (payload: unknown) => void;
   setHeader: (name: string, value: string) => void;
 };
@@ -20,6 +21,9 @@ function createMockResponse(): MockResponse {
     status(code: number) {
       response.statusCode = code;
       return response;
+    },
+    end() {
+      response.payload = null;
     },
     json(payload: unknown) {
       response.payload = payload;
@@ -63,6 +67,7 @@ describe("ingestGatewayHandler", () => {
     const deps = {
       verifyDeviceAccessToken: vi.fn(),
       verifyDpopProof: vi.fn(),
+      checkDpopReplay: vi.fn(),
       ingest: vi.fn(),
     };
 
@@ -83,6 +88,7 @@ describe("ingestGatewayHandler", () => {
     const deps = {
       verifyDeviceAccessToken: vi.fn(async () => { throw new RateLimitError(9); }),
       verifyDpopProof: vi.fn(),
+      checkDpopReplay: vi.fn(),
       ingest: vi.fn(),
     };
 
@@ -92,14 +98,15 @@ describe("ingestGatewayHandler", () => {
     await ingestGatewayHandler(req as never, res, deps as never);
 
     expect(res.statusCode).toBe(429);
-    expect(res.headers).toEqual({ "retry-after": "9" });
+    expect(res.headers).toMatchObject({ "retry-after": "9" });
     expect(res.payload).toEqual({ error: "rate_limited", retry_after: 9 });
   });
 
   it("returns success payload for valid ingest requests", async () => {
     const deps = {
-      verifyDeviceAccessToken: vi.fn(async () => ({ cnf: { jkt: "jkt-1" }, device_id: "device-123" })),
-      verifyDpopProof: vi.fn(async () => ({ thumbprint: "jkt-1" })),
+      verifyDeviceAccessToken: vi.fn(async () => ({ cnf: { jkt: "jkt-1" }, device_id: "device-123", jti: "token-jti-1" })),
+      verifyDpopProof: vi.fn(async () => ({ thumbprint: "jkt-1", jti: "proof-jti-1", iat: 1_700_000_000 })),
+      checkDpopReplay: vi.fn(),
       ingest: vi.fn(async () => ({
         accepted: true,
         batchId: "batch-1",
@@ -132,8 +139,46 @@ describe("ingestGatewayHandler", () => {
     expect(res.statusCode).toBe(202);
     expect(res.payload).toMatchObject({ accepted: true, batchId: "batch-1", deviceId: "device-123" });
     expect(deps.verifyDeviceAccessToken).toHaveBeenCalledWith("test-token");
-    expect(deps.verifyDpopProof).toHaveBeenCalled();
+    expect(deps.verifyDpopProof).toHaveBeenCalledWith("proof-token", expect.objectContaining({
+      expectedAth: expect.any(String),
+      expectedThumbprint: "jkt-1",
+    }));
+    expect(deps.checkDpopReplay).toHaveBeenCalledWith(expect.objectContaining({
+      accessTokenJti: "token-jti-1",
+      jti: "proof-jti-1",
+      thumbprint: "jkt-1",
+    }));
     expect(deps.ingest).toHaveBeenCalled();
+  });
+
+  it("rejects replayed DPoP proof identifiers before ingesting", async () => {
+    const deps = {
+      verifyDeviceAccessToken: vi.fn(async () => ({ cnf: { jkt: "jkt-1" }, device_id: "device-123", jti: "token-jti-1" })),
+      verifyDpopProof: vi.fn(async () => ({ thumbprint: "jkt-1", jti: "proof-jti-1", iat: 1_700_000_000 })),
+      checkDpopReplay: vi.fn(async () => {
+        throw httpError(401, "invalid_token", "DPoP proof replay detected");
+      }),
+      ingest: vi.fn(),
+    };
+
+    const req = createRequest({
+      headers: {
+        host: "localhost:5001",
+        authorization: "Bearer test-token",
+        dpop: "proof-token",
+      },
+      body: { device_id: "device-123", points: [] },
+    });
+    const res = createMockResponse();
+
+    await ingestGatewayHandler(req as never, res, deps as never);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.payload).toMatchObject({
+      error: "invalid_token",
+      message: "DPoP proof replay detected",
+    });
+    expect(deps.ingest).not.toHaveBeenCalled();
   });
 
   it("normalizes downstream structured failures", async () => {
@@ -142,6 +187,7 @@ describe("ingestGatewayHandler", () => {
         throw httpError(403, "DEVICE_FORBIDDEN", "device not allowed");
       }),
       verifyDpopProof: vi.fn(),
+      checkDpopReplay: vi.fn(),
       ingest: vi.fn(),
     };
 

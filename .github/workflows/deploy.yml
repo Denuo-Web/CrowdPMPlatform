@@ -20,6 +20,7 @@ jobs:
       DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE }}
       DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS }}
       DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
+      CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || vars.CORS_ALLOWED_ORIGINS }}
       FIRST_SUPER_ADMIN_EMAIL: ${{ secrets.FIRST_SUPER_ADMIN_EMAIL || vars.FIRST_SUPER_ADMIN_EMAIL }}
       FIRST_SUPER_ADMIN_PASSWORD: ${{ secrets.FIRST_SUPER_ADMIN_PASSWORD }}
       FIRST_SUPER_ADMIN_DISPLAY_NAME: ${{ secrets.FIRST_SUPER_ADMIN_DISPLAY_NAME || vars.FIRST_SUPER_ADMIN_DISPLAY_NAME }}
@@ -132,7 +133,7 @@ jobs:
           done
 
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools@15.5.1
+        run: npm install -g firebase-tools@15.17.0
 
       - name: Confirm Firebase target project
         run: firebase projects:list | grep "$FIREBASE_PROJECT_ID"
@@ -162,11 +163,15 @@ jobs:
             [ -n "$DEVICE_TOKEN_AUDIENCE" ] && printf 'DEVICE_TOKEN_AUDIENCE=%s\n' "$DEVICE_TOKEN_AUDIENCE"
             [ -n "$DEVICE_ACCESS_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_ACCESS_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_ACCESS_TOKEN_TTL_SECONDS"
             [ -n "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_REGISTRATION_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS"
+            [ -n "$CORS_ALLOWED_ORIGINS" ] && printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
             printf 'PUBLIC_APP_BASE_URL=%s\n' "$public_app_base_url"
           } > "$env_file"
 
       - name: Lint
         run: corepack pnpm lint
+
+      - name: Functions tests
+        run: corepack pnpm --filter crowdpm-functions test
 
       - name: Build frontend
         run: corepack pnpm --filter crowdpm-frontend build

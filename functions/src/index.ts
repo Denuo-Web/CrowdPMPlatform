@@ -17,6 +17,7 @@ import { nodePurchaseRoutes } from "./routes/nodePurchase.js";
 import { ensureLocalSuperAdmin } from "./lib/localSuperAdmin.js";
 import { toHttpError } from "./lib/httpError.js";
 import { RateLimitError } from "./lib/rateLimiter.js";
+import { fastifyCorsOptionsForRequest } from "./lib/corsPolicy.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -66,7 +67,11 @@ const rateLimitsEnabled = process.env.ENABLE_RATE_LIMITS === "true"
 
 const apiSetup = (async () => {
   await ensureLocalSuperAdmin();
-  await api.register(cors, { origin: true });
+  await api.register(cors, {
+    delegator: (req, callback) => {
+      callback(null, fastifyCorsOptionsForRequest(req));
+    },
+  });
   if (rateLimitsEnabled) {
     await api.register(rateLimit, {
       max: 100,
@@ -95,7 +100,6 @@ const apiSetup = (async () => {
 });
 
 export const crowdpmApi = https.onRequest({
-  cors: true,
   secrets: ["DEVICE_TOKEN_PRIVATE_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
 }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
