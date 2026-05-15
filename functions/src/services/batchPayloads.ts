@@ -25,7 +25,6 @@ export type BatchMetadataDocument = {
   schemaVersion: typeof BATCH_SCHEMA_VERSION;
   batchId: string;
   deviceId: string;
-  ownerUserId: string;
   ownerUserIds: string[];
   deviceNameSnapshot: string | null;
   storagePath: string;
@@ -46,11 +45,11 @@ function pathSegment(value: string): string {
   return encodeURIComponent(value.trim());
 }
 
-export function buildBatchStoragePath(args: { ownerUserId: string; deviceId: string; batchId: string }): string {
+export function buildBatchStoragePath(args: { primaryOwnerUserId: string; deviceId: string; batchId: string }): string {
   return [
     "ingest",
     "v2",
-    pathSegment(args.ownerUserId),
+    pathSegment(args.primaryOwnerUserId),
     pathSegment(args.deviceId),
     `${pathSegment(args.batchId)}.json.gz`,
   ].join("/");

@@ -152,7 +152,7 @@ beforeEach(() => {
         uid: "admin-1",
         email: "admin@example.com",
         disabled: false,
-        customClaims: { admin: true, roles: ["super_admin"] },
+        customClaims: { roles: ["super_admin"] },
         metadata: {
           creationTime: "2024-01-01T00:00:00.000Z",
           lastSignInTime: "2024-01-02T00:00:00.000Z",
@@ -164,7 +164,7 @@ beforeEach(() => {
   mocks.requireUser.mockImplementation(async (req) => {
     const auth = req.headers?.authorization;
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
-    if (auth === "Bearer super") return { uid: "admin-1", roles: ["super_admin"], admin: true };
+    if (auth === "Bearer super") return { uid: "admin-1", roles: ["super_admin"] };
     if (auth === "Bearer mod") return { uid: "mod-1", roles: ["moderator"] };
     return { uid: "user-x", roles: [] };
   });
@@ -217,6 +217,7 @@ describe("PATCH /v1/admin/users/:uid", () => {
       roles: ["moderator"],
     }));
     expect(authApi.setCustomUserClaims).toHaveBeenCalled();
+    expect(users.get("user-1")?.customClaims).toEqual({ roles: ["moderator"] });
     expect(authApi.updateUser).toHaveBeenCalledWith("user-1", { disabled: true });
     expect(authApi.revokeRefreshTokens).toHaveBeenCalledWith("user-1");
     expect(mocks.revokeTokensForDevice).toHaveBeenCalledWith("device-1");

@@ -50,7 +50,6 @@ async function run() {
     uid: userRecord.uid,
     email: userRecord.email ?? null,
     roles,
-    admin: roles.includes("super_admin"),
   }, null, 2));
 }
 

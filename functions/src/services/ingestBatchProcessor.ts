@@ -15,7 +15,6 @@ export type ProcessIngestBatchRequest = {
   compressedBytes: number;
   visibility: BatchVisibility;
   payload: IngestPayload;
-  ownerUserId: string;
   ownerUserIds: string[];
   deviceName: string | null;
 };
@@ -31,7 +30,6 @@ export async function processIngestBatch(request: ProcessIngestBatchRequest): Pr
     schemaVersion: BATCH_SCHEMA_VERSION,
     batchId: request.batchId,
     deviceId: request.deviceId,
-    ownerUserId: request.ownerUserId,
     ownerUserIds: request.ownerUserIds,
     deviceNameSnapshot: request.deviceName,
     storagePath: request.storagePath,

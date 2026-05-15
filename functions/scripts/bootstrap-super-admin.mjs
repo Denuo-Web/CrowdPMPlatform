@@ -71,7 +71,6 @@ async function run() {
     uid: userRecord.uid,
     email: userRecord.email ?? email,
     roles: ["super_admin"],
-    admin: true,
     created,
   }, null, 2));
 }

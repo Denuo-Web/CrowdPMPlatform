@@ -1,5 +1,6 @@
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import type { BatchVisibility } from "@crowdpm/types";
+import { normalizeOwnerIds } from "./deviceOwnership.js";
 import { db } from "./fire.js";
 import {
   defaultBatchVisibilityForSubscription,
@@ -43,14 +44,8 @@ export async function getDeviceDefaultBatchVisibility(snapshot: DocumentSnapshot
   if (explicit === "public") {
     return "public";
   }
-  const ownerUserIdRaw = snapshot.get("ownerUserId");
-  const ownerUserIdsRaw = snapshot.get("ownerUserIds");
-  const ownerUserId = typeof ownerUserIdRaw === "string" && ownerUserIdRaw.length > 0 ? ownerUserIdRaw : null;
-  const ownerUserIds = Array.isArray(ownerUserIdsRaw)
-    ? ownerUserIdsRaw.filter((id): id is string => typeof id === "string" && id.length > 0)
-    : [];
-  const candidates = Array.from(new Set([ownerUserId, ...ownerUserIds].filter((id): id is string => Boolean(id))));
-  for (const candidate of candidates) {
+  const ownerUserIds = normalizeOwnerIds({ ownerUserIds: snapshot.get("ownerUserIds") });
+  for (const candidate of ownerUserIds) {
     const pref = await getUserDefaultBatchVisibility(candidate);
     if (explicit === "private") {
       return pref === "private" ? "private" : "public";

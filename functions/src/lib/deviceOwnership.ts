@@ -3,6 +3,7 @@ import { db } from "./fire.js";
 
 export type DeviceOwnershipFields = {
   ownerUserIds?: unknown;
+  accId?: unknown;
 };
 
 export type DeviceDocData = firestore.DocumentData | undefined;
@@ -23,6 +24,15 @@ export function normalizeOwnerIds(data: DeviceOwnershipFields | undefined): stri
     }
   }
   return Array.from(ids);
+}
+
+export function primaryOwnerUserId(data: DeviceOwnershipFields | undefined): string | null {
+  const ownerUserIds = normalizeOwnerIds(data);
+  const accId = toOwnerId(data?.accId);
+  if (accId && ownerUserIds.includes(accId)) {
+    return accId;
+  }
+  return ownerUserIds[0] ?? null;
 }
 
 export function userOwnsDevice(data: DeviceOwnershipFields | undefined, userId: string): boolean {

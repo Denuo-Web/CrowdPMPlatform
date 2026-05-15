@@ -46,36 +46,6 @@ class QueueDb:
         rows = conn.execute("PRAGMA table_info(measurements)").fetchall()
         return {str(row["name"]) for row in rows}
 
-    def _migrate_legacy_batches(self, conn: sqlite3.Connection) -> None:
-        legacy_rows = conn.execute("SELECT COUNT(*) AS c FROM measurements WHERE batch_id IS NULL").fetchone()
-        if legacy_rows and int(legacy_rows["c"]):
-            migrated_at = utc_now_iso()
-            pending_batch_id = self.next_batch_id(prefix="legacy-pending")
-            uploaded_batch_id = self.next_batch_id(prefix="legacy-uploaded")
-            conn.execute(
-                """
-                UPDATE measurements
-                SET batch_id = CASE
-                    WHEN uploaded_at IS NULL THEN ?
-                    ELSE ?
-                  END,
-                    batch_closed_at = CASE
-                    WHEN uploaded_at IS NULL THEN ?
-                    ELSE COALESCE(uploaded_at, created_at, ?)
-                  END
-                WHERE batch_id IS NULL
-                """,
-                (pending_batch_id, uploaded_batch_id, migrated_at, migrated_at),
-            )
-        conn.execute(
-            """
-            UPDATE measurements
-            SET batch_closed_at = COALESCE(batch_closed_at, uploaded_at, created_at, ?)
-            WHERE uploaded_at IS NOT NULL AND batch_closed_at IS NULL
-            """,
-            (utc_now_iso(),),
-        )
-
     def _initialize(self) -> None:
         with closing(self._connect()) as conn:
             conn.execute(
@@ -98,7 +68,6 @@ class QueueDb:
                 conn.execute("ALTER TABLE measurements ADD COLUMN batch_id TEXT")
             if "batch_closed_at" not in columns:
                 conn.execute("ALTER TABLE measurements ADD COLUMN batch_closed_at TEXT")
-            self._migrate_legacy_batches(conn)
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_measurements_pending_batches

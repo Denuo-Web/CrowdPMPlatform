@@ -93,7 +93,7 @@ Primary Fastify routes are exported through the `crowdpmApi` HTTPS Function. The
 - Admin and moderation: `/v1/admin/*`
 - Ingest gateway: `POST /ingestGateway`
 
-Ingest batches are stored as gzipped JSON in Cloud Storage at `ingest/v2/{ownerUserId}/{deviceId}/{batchId}.json.gz`. Firestore stores one metadata document per batch at `batches/{batchId}`; individual measurement points are not duplicated into Firestore.
+Ingest batches are stored as gzipped JSON in Cloud Storage at `ingest/v2/{primaryOwnerUserId}/{deviceId}/{batchId}.json.gz`. Firestore stores one metadata document per batch at `batches/{batchId}`; individual measurement points are not duplicated into Firestore.
 
 ## Documentation
 

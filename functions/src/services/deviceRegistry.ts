@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { firestore } from "firebase-admin";
+import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
 import { db } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { revokeTokensForDevice } from "./deviceTokens.js";
@@ -27,9 +28,7 @@ function normalizeDevice(id: string, data: DocumentData | undefined): DeviceReco
   if (!data) return null;
   const accId = typeof data.accId === "string" ? data.accId : null;
   if (!accId) return null;
-  const ownerUserIds = Array.isArray(data.ownerUserIds)
-    ? data.ownerUserIds.filter((uid): uid is string => typeof uid === "string" && uid.length > 0)
-    : [accId];
+  const ownerUserIds = normalizeOwnerIds(data);
   const lowerRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : null;
   const allowedStatuses = ["active", "revoked", "suspended"] as const;
   const normalizedStatus = (lowerRegistryStatus && allowedStatuses.includes(lowerRegistryStatus as typeof allowedStatuses[number]))
@@ -105,9 +104,7 @@ export async function revokeDevice(deviceId: string, initiatedBy: string, reason
   const targetDb = db();
   const existing = await targetDb.collection("devices").doc(deviceId).get();
   const data = existing.data() ?? {};
-  const ownerUserIds = Array.isArray(data.ownerUserIds)
-    ? data.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
-    : (typeof data.accId === "string" && data.accId.length > 0 ? [data.accId] : []);
+  const ownerUserIds = normalizeOwnerIds(data);
   const currentStatus = typeof data.status === "string" ? data.status.toUpperCase() : "";
   const currentRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : "";
   const wasActive = currentStatus !== "REVOKED" && currentStatus !== "SUSPENDED"
@@ -142,9 +139,7 @@ export async function suspendDevice(deviceId: string, initiatedBy: string, reaso
   }
 
   const data = existing.data() ?? {};
-  const ownerUserIds = Array.isArray(data.ownerUserIds)
-    ? data.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
-    : (typeof data.accId === "string" && data.accId.length > 0 ? [data.accId] : []);
+  const ownerUserIds = normalizeOwnerIds(data);
   const currentStatus = typeof data.status === "string" ? data.status.toUpperCase() : "";
   const currentRegistryStatus = typeof data.registryStatus === "string" ? data.registryStatus.toLowerCase() : "";
   const wasActive = currentStatus !== "REVOKED" && currentStatus !== "SUSPENDED"
