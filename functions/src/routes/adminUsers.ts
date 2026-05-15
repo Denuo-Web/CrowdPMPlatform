@@ -1,6 +1,4 @@
 import {
-  normalizeAdminRoles,
-  readAdminRolesFromClaims,
   type AdminUserSummary,
   type AdminUserUpdateRequest,
   type AdminUsersListResponse,
@@ -9,6 +7,7 @@ import type { auth as FirebaseAuth } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { app, db } from "../lib/fire.js";
+import { normalizeAdminRoles, readAdminRolesFromClaims } from "../lib/adminRoles.js";
 import { httpError } from "../lib/httpError.js";
 import { normalizeTimestamp } from "../lib/httpValidation.js";
 import { writeModerationAudit } from "../lib/moderationAudit.js";
