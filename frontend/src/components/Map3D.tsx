@@ -76,6 +76,10 @@ type GoogleMapsOverlayPrivateState = {
   _onAddVectorOverlay?: () => void;
 };
 
+function isGoogleMapsOverlayNotInitializedError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("Not initialized");
+}
+
 function waitForNextAnimationFrame(): Promise<number> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(resolve);
@@ -281,11 +285,49 @@ function pickLargestCaptureCanvas(root: HTMLDivElement | null): HTMLCanvasElemen
 function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   if (!overlay) return;
   const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
-  internalOverlay._overlay?.requestRedraw?.();
+  if (!internalOverlay._map || !internalOverlay._overlay?.getMap?.()) return;
+
+  try {
+    internalOverlay._overlay.requestRedraw?.();
+  }
+  catch (error) {
+    if (!isGoogleMapsOverlayNotInitializedError(error)) {
+      throw error;
+    }
+  }
 }
 
 function guardOverlayLifecycle(overlay: GoogleMapsOverlay) {
   const internalOverlay = overlay as unknown as GoogleMapsOverlayPrivateState;
+  const originalSetMap = overlay.setMap.bind(overlay);
+
+  overlay.setMap = (map: google.maps.Map | null) => {
+    try {
+      originalSetMap(map);
+    }
+    catch (error) {
+      if (map !== null || !isGoogleMapsOverlayNotInitializedError(error)) {
+        throw error;
+      }
+
+      try {
+        internalOverlay._overlay?.setMap?.(null);
+      }
+      catch (detachError) {
+        void detachError;
+      }
+      try {
+        internalOverlay._positioningOverlay?.setMap?.(null);
+      }
+      catch (detachError) {
+        void detachError;
+      }
+
+      internalOverlay._overlay = null;
+      internalOverlay._positioningOverlay = null;
+      internalOverlay._map = null;
+    }
+  };
 
   if (typeof internalOverlay._onAdd === "function") {
     const originalOnAdd = internalOverlay._onAdd.bind(overlay);
@@ -593,7 +635,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const defaultCenterLat = defaultCenter?.lat;
   const defaultCenterLng = defaultCenter?.lng;
   const syncOverlayRef = useRef<((options?: { forceCenter?: boolean }) => void) | null>(null);
-  const hasRenderableData = data.length > 0;
 
   useEffect(() => { latestDataRef.current = data; }, [data]);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -759,10 +800,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         map.addListener("heading_changed", markUserControl)
       ];
 
-      if (!currentSeries.length) {
-        return;
-      }
-
       type MapWithCapabilities = google.maps.Map & {
         getMapCapabilities?: () => { isWebGLOverlayViewAvailable?: boolean };
       };
@@ -827,7 +864,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       if (overlayRef.current === localOverlay) overlayRef.current = null;
       if (mapRef.current === localMap) mapRef.current = null;
     };
-  }, [appearance, defaultCenterLat, defaultCenterLng, hasRenderableData, interleaved]);
+  }, [appearance, defaultCenterLat, defaultCenterLng, interleaved]);
 
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
