@@ -149,7 +149,6 @@ describe("IngestService", () => {
     expect(processIngestBatch).toHaveBeenCalledWith(expect.objectContaining({
       deviceId: "device-1",
       storagePath: result.storagePath,
-      ownerUserId: "user-1",
       ownerUserIds: ["user-1"],
       deviceName: "Bike Node",
       compressedBytes: saves[0].payload.byteLength,

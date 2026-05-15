@@ -1,4 +1,5 @@
-export const VALID_ROLES = new Set(["super_admin", "moderator"]);
+export const VALID_ROLES = ["super_admin", "moderator"];
+const VALID_ROLE_SET = new Set(VALID_ROLES);
 
 export function parseRoles(input) {
   const values = (input || "")
@@ -7,7 +8,7 @@ export function parseRoles(input) {
     .filter((value) => value.length > 0);
 
   const unique = Array.from(new Set(values));
-  const invalid = unique.filter((role) => !VALID_ROLES.has(role));
+  const invalid = unique.filter((role) => !VALID_ROLE_SET.has(role));
   if (invalid.length) {
     throw new Error(`Invalid role(s): ${invalid.join(", ")}. Allowed: super_admin, moderator`);
   }
@@ -22,9 +23,6 @@ export function applyAdminRoleClaims(existingClaims, roles) {
 
   if (roles.length) {
     claims.roles = roles;
-  }
-  if (roles.includes("super_admin")) {
-    claims.admin = true;
   }
 
   return Object.keys(claims).length ? claims : null;

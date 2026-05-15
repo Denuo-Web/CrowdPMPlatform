@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import {
   getDeviceDefaultBatchVisibility,
 } from "../lib/batchVisibility.js";
-import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
+import { normalizeOwnerIds, primaryOwnerUserId } from "../lib/deviceOwnership.js";
 import { bucket as getBucket, db as getDb } from "../lib/fire.js";
 import { normalizeVisibility } from "../lib/httpValidation.js";
 import { IngestPayload } from "../lib/validation.js";
@@ -121,18 +121,8 @@ export class IngestService {
       throw new IngestServiceError("device_forbidden", "device not allowed", 403);
     }
     const ownerUserIds = normalizeOwnerIds(devData);
-    const accIdRaw = devSnap.get("accId");
-    const accId = typeof accIdRaw === "string" && accIdRaw.trim().length > 0
-      ? accIdRaw.trim()
-      : null;
-    const effectiveOwnerUserIds = ownerUserIds.length
-      ? ownerUserIds
-      : accId
-        ? [accId]
-        : [];
-    const ownerUserId = accId && effectiveOwnerUserIds.includes(accId)
-      ? accId
-      : effectiveOwnerUserIds[0] ?? null;
+    const effectiveOwnerUserIds = ownerUserIds;
+    const ownerUserId = primaryOwnerUserId(devData);
     if (!ownerUserId || !effectiveOwnerUserIds.length) {
       throw new IngestServiceError("device_forbidden", "device owner unavailable", 403);
     }
@@ -149,7 +139,7 @@ export class IngestService {
       request.visibility,
       ownerDefaultVisibility ?? defaultBatchVisibilityForSubscription(ownerSubscription),
     );
-    const storagePath = buildBatchStoragePath({ ownerUserId, deviceId, batchId });
+    const storagePath = buildBatchStoragePath({ primaryOwnerUserId: ownerUserId, deviceId, batchId });
     const batchPayload = { ...parsedBody, device_id: deviceId };
     const encoded = encodeBatchPayload(batchPayload);
     let reservation: UploadQuotaReservation | null = null;
@@ -180,7 +170,6 @@ export class IngestService {
         compressedBytes: encoded.buffer.byteLength,
         visibility,
         payload: batchPayload,
-        ownerUserId,
         ownerUserIds: effectiveOwnerUserIds,
         deviceName: typeof devSnap.get("name") === "string" && devSnap.get("name").trim().length > 0
           ? devSnap.get("name").trim()

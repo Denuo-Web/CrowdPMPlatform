@@ -164,7 +164,6 @@ function seedBatch(id: string, overrides?: Record<string, unknown>) {
       batchId: id,
       deviceId: "device-1",
       deviceNameSnapshot: "North",
-      ownerUserId: "user-123",
       ownerUserIds: ["user-123"],
       storagePath,
       count: 1,
@@ -221,7 +220,7 @@ describe("GET /v1/batches", () => {
     const app = await buildApp();
     seedBatch("batch-a", { processedAt: "2024-01-01T00:00:00.000Z" });
     seedBatch("batch-b", { processedAt: "2024-01-03T00:00:00.000Z", visibility: "private" });
-    seedBatch("batch-other", { ownerUserId: "other", ownerUserIds: ["other"] });
+    seedBatch("batch-other", { ownerUserIds: ["other"] });
 
     const res = await app.inject({ method: "GET", url: "/v1/batches", headers: { authorization: "Bearer ok" } });
 
@@ -266,7 +265,7 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
 
   it("rejects callers that do not own the batch", async () => {
     const app = await buildApp();
-    seedBatch("batch-1", { ownerUserId: "other", ownerUserIds: ["other"] });
+    seedBatch("batch-1", { ownerUserIds: ["other"] });
 
     const res = await app.inject({ method: "GET", url: "/v1/batches/device-1/batch-1", headers: { authorization: "Bearer ok" } });
 
@@ -279,7 +278,7 @@ describe("GET /v1/batches/:deviceId/:batchId", () => {
 describe("PATCH /v1/batches/:deviceId/:batchId", () => {
   it("updates visibility on the root batch document", async () => {
     const app = await buildApp();
-    seedBatch("batch-1", { visibility: "private" });
+    seedBatch("batch-1", { visibility: "private", ownerUserIds: ["user-123", "user-456"] });
 
     const res = await app.inject({
       method: "PATCH",
@@ -297,6 +296,17 @@ describe("PATCH /v1/batches/:deviceId/:batchId", () => {
         merge: true,
       },
     ]);
+    expect(mocks.applyBatchVisibilityChange).toHaveBeenCalledTimes(2);
+    expect(mocks.applyBatchVisibilityChange).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      userId: "user-123",
+      fromVisibility: "private",
+      toVisibility: "public",
+    }));
+    expect(mocks.applyBatchVisibilityChange).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      userId: "user-456",
+      fromVisibility: "private",
+      toVisibility: "public",
+    }));
     await app.close();
   });
 });
@@ -304,7 +314,7 @@ describe("PATCH /v1/batches/:deviceId/:batchId", () => {
 describe("DELETE /v1/batches/:deviceId/:batchId", () => {
   it("deletes storage payload and root batch metadata", async () => {
     const app = await buildApp();
-    seedBatch("batch-1");
+    seedBatch("batch-1", { ownerUserIds: ["user-123", "user-456"] });
 
     const res = await app.inject({ method: "DELETE", url: "/v1/batches/device-1/batch-1", headers: { authorization: "Bearer ok" } });
 
@@ -312,6 +322,15 @@ describe("DELETE /v1/batches/:deviceId/:batchId", () => {
     expect(res.json()).toEqual({ status: "deleted", deviceId: "device-1", batchId: "batch-1" });
     expect(mocks.bucketDelete).toHaveBeenCalledWith({ ignoreNotFound: true });
     expect(batchDeleteCalls).toEqual(["batch-1"]);
+    expect(mocks.applyStoredBatchDeletion).toHaveBeenCalledTimes(2);
+    expect(mocks.applyStoredBatchDeletion).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      userId: "user-123",
+      visibility: "public",
+    }));
+    expect(mocks.applyStoredBatchDeletion).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      userId: "user-456",
+      visibility: "public",
+    }));
     await app.close();
   });
 });

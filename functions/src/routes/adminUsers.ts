@@ -1,8 +1,9 @@
-import type {
-  AdminRole,
-  AdminUserSummary,
-  AdminUserUpdateRequest,
-  AdminUsersListResponse,
+import {
+  normalizeAdminRoles,
+  readAdminRolesFromClaims,
+  type AdminUserSummary,
+  type AdminUserUpdateRequest,
+  type AdminUsersListResponse,
 } from "@crowdpm/types";
 import type { auth as FirebaseAuth } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
@@ -18,7 +19,7 @@ import {
   requestUserId,
   requirePermissionGuard,
 } from "../lib/routeGuards.js";
-import { hasRole, rolesFromClaims, rolesFromToken } from "../lib/rbac.js";
+import { hasRole, rolesFromToken } from "../lib/rbac.js";
 import { revokeTokensForDevice } from "../services/deviceTokens.js";
 
 const listUsersQuerySchema = z.object({
@@ -36,10 +37,6 @@ const updateUserBodySchema = z.object({
   message: "Provide roles or disabled to update.",
 });
 
-function uniqueRoles(rawRoles: AdminRole[] | undefined): AdminRole[] {
-  return Array.from(new Set((rawRoles ?? []).filter((role) => role === "super_admin" || role === "moderator")));
-}
-
 function normalizeReason(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -47,7 +44,7 @@ function normalizeReason(value: unknown): string | null {
 }
 
 function toSummary(record: FirebaseAuth.UserRecord): AdminUserSummary {
-  const roles = uniqueRoles(rolesFromClaims(record.customClaims as Record<string, unknown> | undefined));
+  const roles = readAdminRolesFromClaims(record.customClaims as Record<string, unknown> | undefined);
   return {
     uid: record.uid,
     email: record.email ?? null,
@@ -113,14 +110,14 @@ export const adminUsersRoutes: FastifyPluginAsync = async (fastify) => {
 
     const actor = getRequestUser(req);
     const actorRoles = rolesFromToken(actor);
-    const requestedRoles = parsed.data.roles ? uniqueRoles(parsed.data.roles) : undefined;
+    const requestedRoles = parsed.data.roles ? normalizeAdminRoles(parsed.data.roles) : undefined;
     if (requestedRoles !== undefined && !hasRole(actor, "super_admin")) {
       throw httpError(403, "forbidden", "Only super admins can modify roles.");
     }
 
     const authApi = app().auth();
     const targetBefore = await authApi.getUser(uid);
-    const beforeRoles = uniqueRoles(rolesFromClaims(targetBefore.customClaims as Record<string, unknown> | undefined));
+    const beforeRoles = readAdminRolesFromClaims(targetBefore.customClaims as Record<string, unknown> | undefined);
     const beforeDisabled = targetBefore.disabled;
 
     if (requestedRoles !== undefined) {
@@ -129,9 +126,6 @@ export const adminUsersRoutes: FastifyPluginAsync = async (fastify) => {
       delete nextClaims.admin;
       if (requestedRoles.length) {
         nextClaims.roles = requestedRoles;
-      }
-      if (requestedRoles.includes("super_admin")) {
-        nextClaims.admin = true;
       }
       await authApi.setCustomUserClaims(uid, Object.keys(nextClaims).length ? nextClaims : null);
     }
@@ -145,7 +139,7 @@ export const adminUsersRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const targetAfter = await authApi.getUser(uid);
-    const afterRoles = uniqueRoles(rolesFromClaims(targetAfter.customClaims as Record<string, unknown> | undefined));
+    const afterRoles = readAdminRolesFromClaims(targetAfter.customClaims as Record<string, unknown> | undefined);
     const afterDisabled = targetAfter.disabled;
     const reason = normalizeReason(parsed.data.reason);
 

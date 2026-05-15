@@ -2,6 +2,7 @@ import type { BatchDetail, BatchSummary } from "@crowdpm/types";
 import type { firestore } from "firebase-admin";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
 import { bucket, db } from "../lib/fire.js";
 import { normalizeModerationState } from "../lib/moderation.js";
 import { timestampToMillis } from "../lib/time.js";
@@ -36,8 +37,15 @@ function asString(value: unknown): string {
 }
 
 function batchOwnerIds(data: firestore.DocumentData | undefined): string[] {
-  if (!data || !Array.isArray(data.ownerUserIds)) return [];
-  return data.ownerUserIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+  return normalizeOwnerIds(data);
+}
+
+function requireBatchOwnerIds(data: firestore.DocumentData | undefined): string[] {
+  const ownerUserIds = batchOwnerIds(data);
+  if (!ownerUserIds.length) {
+    throw httpError(500, "invalid_batch_owner", "Batch owner metadata is missing.");
+  }
+  return ownerUserIds;
 }
 
 function userOwnsBatch(data: firestore.DocumentData | undefined, userId: string): boolean {
@@ -187,15 +195,14 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
       throw httpError(403, "forbidden", "You do not have access to this batch.");
     }
     const previousVisibility = normalizeVisibility(data.visibility);
+    const ownerUserIds = requireBatchOwnerIds(data);
 
-    await applyBatchVisibilityChange({
-      userId: typeof data.ownerUserId === "string" && data.ownerUserId.trim().length > 0
-        ? data.ownerUserId.trim()
-        : user.uid,
+    await Promise.all(ownerUserIds.map((ownerUserId) => applyBatchVisibilityChange({
+      userId: ownerUserId,
       fromVisibility: previousVisibility,
       toVisibility: visibility,
       targetDb: db(),
-    });
+    })));
     await ref.set({
       visibility,
       updatedAt: new Date(),
@@ -240,13 +247,12 @@ export const batchesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     await ref.delete();
-    await applyStoredBatchDeletion({
-      userId: typeof data.ownerUserId === "string" && data.ownerUserId.trim().length > 0
-        ? data.ownerUserId.trim()
-        : user.uid,
+    const ownerUserIds = requireBatchOwnerIds(data);
+    await Promise.all(ownerUserIds.map((ownerUserId) => applyStoredBatchDeletion({
+      userId: ownerUserId,
       visibility: currentVisibility,
       targetDb: db(),
-    });
+    })));
     return { status: "deleted", deviceId, batchId };
   });
 };

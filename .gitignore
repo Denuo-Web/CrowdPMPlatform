@@ -29,3 +29,5 @@ functions/.secret.local
 
 nodes/zero2w/crowdpm_node/__pycache__/
 nodes/zero2w/__pycache__/
+nodes/zero2w/tests/__pycache__/
+*.pyc

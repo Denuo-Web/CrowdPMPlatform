@@ -11,7 +11,7 @@ const DEFAULT_DISPLAY_NAME = process.env.FIRST_SUPER_ADMIN_DISPLAY_NAME?.trim() 
 function withSuperAdminClaims(claims: Record<string, unknown> | undefined): Record<string, unknown> {
   const next = { ...(claims ?? {}) };
   next.roles = ["super_admin"];
-  next.admin = true;
+  delete next.admin;
   return next;
 }
 

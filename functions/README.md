@@ -58,7 +58,7 @@ The OpenAPI document lives at `src/openapi.yaml`.
 
 - Firestore device records: `devices/{deviceId}`
 - Firestore batch metadata: `batches/{batchId}`
-- Gzipped ingest payloads: Cloud Storage `ingest/v2/{ownerUserId}/{deviceId}/{batchId}.json.gz`
+- Gzipped ingest payloads: Cloud Storage `ingest/v2/{primaryOwnerUserId}/{deviceId}/{batchId}.json.gz`
 
 ## Tests
 

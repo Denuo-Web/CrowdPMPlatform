@@ -6,10 +6,6 @@ import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SphereGeometry } from "@luma.gl/engine";
 import type { Layer } from "@deck.gl/core";
 import { getMapsLoader } from "../lib/mapsLoader";
-import {
-  disposeGoogleMapsOverlayExternalFramebuffer,
-  patchGoogleMapsOverlayExternalFramebuffer
-} from "../lib/googleMapsOverlayInterop";
 import { logError, logWarning } from "../lib/logger";
 import { canCaptureCanvas } from "../lib/videoExport";
 
@@ -795,7 +791,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         ),
         interleaved
       });
-      patchGoogleMapsOverlayExternalFramebuffer(overlay);
       guardOverlayLifecycle(overlay);
       localOverlay = overlay;
       overlay.setMap(map);
@@ -822,7 +817,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       cameraStateRef.current = readMapCameraState(localMap ?? mapRef.current);
       const overlay = overlayRef.current;
       if (overlay) {
-        disposeGoogleMapsOverlayExternalFramebuffer(overlay);
         overlay.setMap(null);
         if (typeof overlay.finalize === "function") overlay.finalize();
       }

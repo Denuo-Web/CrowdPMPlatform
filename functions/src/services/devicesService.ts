@@ -1,6 +1,7 @@
 import type { firestore } from "firebase-admin";
 import type { Firestore } from "firebase-admin/firestore";
 import type { DeviceSummary } from "@crowdpm/types";
+import { normalizeOwnerIds } from "../lib/deviceOwnership.js";
 import { db as getDb } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
 import { loadOwnedDeviceDocs, userOwnsDevice } from "../lib/deviceOwnership.js";
@@ -53,6 +54,7 @@ export class DevicesService {
       targetDb: this.deps.db,
       now: this.deps.now(),
       deviceData: {
+        accId: userId,
         name: params.name,
         ownerUserIds: [userId],
         status: "ACTIVE",
@@ -84,12 +86,9 @@ export class DevicesService {
     const createdAt = normalizeTimestamp(data?.createdAt) ?? null;
     const lastSeenAt = normalizeTimestamp(data?.lastSeenAt) ?? null;
 
-    const ownerUserIds = Array.isArray(data?.ownerUserIds)
-      ? data?.ownerUserIds.filter((value): value is string => typeof value === "string" && value.length > 0)
-      : null;
+    const ownerUserIds = normalizeOwnerIds(data);
 
     const extras = data && typeof data === "object" ? { ...data } : {};
-    delete extras.ownerUserId;
 
     return {
       ...extras,
@@ -97,7 +96,7 @@ export class DevicesService {
       name: typeof data?.name === "string" ? data.name : null,
       status: typeof data?.status === "string" ? data.status : null,
       registryStatus: typeof data?.registryStatus === "string" ? data.registryStatus : null,
-      ownerUserIds,
+      ownerUserIds: ownerUserIds.length ? ownerUserIds : null,
       publicDeviceId: typeof data?.publicDeviceId === "string" ? data.publicDeviceId : null,
       ownerScope: typeof data?.ownerScope === "string" ? data.ownerScope : null,
       createdAt,

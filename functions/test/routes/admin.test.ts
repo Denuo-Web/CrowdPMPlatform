@@ -42,7 +42,7 @@ beforeEach(() => {
     const auth = req.headers?.authorization;
     if (!auth) throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
     if (auth === "Bearer invalid") throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
-    if (auth === "Bearer admin") return { uid: "admin-1", admin: true, roles: ["admin"] };
+    if (auth === "Bearer admin") return { uid: "admin-1", roles: ["super_admin"] };
     return { uid: "user-123", email: "user@example.com", roles: [] };
   });
   mocks.suspendDevice.mockResolvedValue({

@@ -49,7 +49,6 @@ describe("ensureLocalSuperAdmin", () => {
     });
     expect(mocks.setCustomUserClaims).toHaveBeenCalledWith("admin-1", {
       roles: ["super_admin"],
-      admin: true,
     });
   });
 
@@ -65,7 +64,6 @@ describe("ensureLocalSuperAdmin", () => {
     expect(mocks.setCustomUserClaims).toHaveBeenCalledWith("admin-1", {
       organization: "crowdpm",
       roles: ["super_admin"],
-      admin: true,
     });
   });
 
