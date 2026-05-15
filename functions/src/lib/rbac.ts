@@ -1,5 +1,6 @@
 import type { DecodedIdToken } from "firebase-admin/auth";
-import { readAdminRolesFromClaims, type AdminRole } from "@crowdpm/types";
+import type { AdminRole } from "@crowdpm/types";
+import { readAdminRolesFromClaims } from "./adminRoles.js";
 
 export type { AdminRole };
 
