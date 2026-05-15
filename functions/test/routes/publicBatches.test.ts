@@ -210,6 +210,42 @@ describe("GET /v1/public/batches", () => {
   });
 });
 
+describe("GET /v1/public/batches/map", () => {
+  it("returns approved public batch details in a single response", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({ method: "GET", url: "/v1/public/batches/map?since=2024-01-01T00:00:00.000Z" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["cache-control"]).toBe("public, max-age=30");
+    expect(res.json()).toEqual({
+      batches: [
+        expect.objectContaining({
+          batchId: "batch-approved",
+          deviceId: "device-1",
+          visibility: "public",
+          moderationState: "approved",
+          points: [expect.objectContaining({ value: 11 })],
+        }),
+      ],
+    });
+    await app.close();
+  });
+
+  it("returns 400 for an invalid since query", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({ method: "GET", url: "/v1/public/batches/map?since=not-a-date" });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({
+      error: "invalid_request",
+      message: "since must be a valid ISO timestamp or epoch milliseconds.",
+    });
+    await app.close();
+  });
+});
+
 describe("GET /v1/public/batches/:deviceId/:batchId", () => {
   it("returns gzipped detail for approved public batches", async () => {
     const app = await buildApp();

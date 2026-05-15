@@ -4,6 +4,7 @@ import { timestampToMillis, type IngestPoint, type UserThemeAppearance } from "@
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
+  fetchPublicBatchMap,
   fetchDemoBatch,
   fetchPublicBatchDetail,
   listBatches,
@@ -34,6 +35,7 @@ const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
 const SEE_ALL_BATCHES_KEY = "__see_all_batches__";
 const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
 const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const SHOW_ALL_PUBLIC_BATCH_LIMIT = 200;
 const EXPANDED_BATCH_FETCH_LIMIT = 500;
 const VIDEO_EXPORT_DURATION_MS = 12_000;
 const VIDEO_EXPORT_FPS = 30;
@@ -379,31 +381,14 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       if (!batchDetailQueryKey || !selectedBatchKey) return [];
       if (selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
         const cutoff = Date.now() - SHOW_ALL_PUBLIC_LOOKBACK_MS;
-        const publicSummaries = await listPublicBatches(100);
-        const recentSummaries = publicSummaries.filter((batch) => {
-          const processedAtMs = timestampToMillis(batch.processedAt);
-          return processedAtMs !== null && processedAtMs >= cutoff;
+        const cutoffIso = new Date(Math.floor(cutoff / 60_000) * 60_000).toISOString();
+        const mapResponse = await fetchPublicBatchMap({
+          limit: SHOW_ALL_PUBLIC_BATCH_LIMIT,
+          since: cutoffIso,
         });
-        if (!recentSummaries.length) return [];
 
-        const details = await Promise.all(
-          recentSummaries.map(async (batch) => {
-            try {
-              return await fetchPublicBatchDetail(batch.deviceId, batch.batchId);
-            }
-            catch (err) {
-              logWarning("Unable to load public batch detail", {
-                deviceId: batch.deviceId,
-                batchId: batch.batchId
-              }, err);
-              return null;
-            }
-          })
-        );
-
-        return details
+        return mapResponse.batches
           .flatMap((detail) => {
-            if (!detail) return [];
             const batchKey = encodeBatchKey(detail.deviceId, detail.batchId);
             return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey });
           })

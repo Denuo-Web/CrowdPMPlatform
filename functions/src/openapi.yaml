@@ -752,7 +752,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 100
+            maximum: 500
       responses:
         '200':
           description: Public batches returned.
@@ -762,6 +762,34 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/PublicBatchSummary'
+  /v1/public/batches/map:
+    get:
+      operationId: getPublicBatchMap
+      summary: Retrieve public approved batches for the map
+      description: >
+        Returns public approved batch details in a single response for map rendering.
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO timestamp or epoch milliseconds used to filter recent batches.
+      responses:
+        '200':
+          description: Public batch map payload returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicBatchMapResponse'
   /v1/public/batches/{deviceId}/{batchId}:
     get:
       operationId: getPublicBatchDetail
@@ -1249,6 +1277,15 @@ components:
     PublicBatchDetail:
       allOf:
         - $ref: '#/components/schemas/BatchDetail'
+    PublicBatchMapResponse:
+      type: object
+      properties:
+        batches:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicBatchDetail'
+      required:
+        - batches
     AdminSubmissionSummary:
       allOf:
         - $ref: '#/components/schemas/BatchSummary'

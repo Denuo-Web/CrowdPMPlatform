@@ -170,6 +170,9 @@ export type BatchDetail = BatchSummary & {
 
 export type PublicBatchSummary = BatchSummary;
 export type PublicBatchDetail = BatchDetail;
+export type PublicBatchMapResponse = {
+  batches: PublicBatchDetail[];
+};
 
 export type AdminSubmissionSummary = BatchSummary & {
   moderationReason?: string | null;
