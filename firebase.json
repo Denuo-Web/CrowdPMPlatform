@@ -22,6 +22,9 @@
     "ui": { "enabled": true }
   },
   "hosting": {
+    "predeploy": [
+      "pnpm --filter crowdpm-frontend build"
+    ],
     "public": "frontend/dist",
     "headers": [
       {
@@ -68,6 +71,10 @@
         ]
       }
     ],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "rewrites": [
+      { "source": "/api", "function": "crowdpmApi" },
+      { "source": "/api/**", "function": "crowdpmApi" },
+      { "source": "**", "destination": "/index.html" }
+    ]
   }
 }

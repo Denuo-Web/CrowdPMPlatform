@@ -20,7 +20,7 @@ Create `frontend/.env.local` from `frontend/.env.example`.
 
 Required values:
 
-- `VITE_API_BASE`: `crowdpmApi` Functions base URL, not the Hosting URL.
+- `VITE_API_BASE`: recommended value is `/api`, which the local Vite dev server proxies to `crowdpmApi` and Firebase Hosting rewrites to the same function in deployed environments. A full Functions base URL also works.
 - `VITE_GOOGLE_MAPS_API_KEY`: Google Maps JavaScript API key.
 - `VITE_GOOGLE_MAP_ID`: vector map ID for WebGL overlays.
 - `VITE_FIREBASE_API_KEY`

@@ -7,6 +7,27 @@ function firstHeaderValue(value: string | string[] | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function stripApiEntryPrefix(url: string | undefined): string {
+  const raw = typeof url === "string" && url.length > 0 ? url : "/";
+  if (!raw.startsWith("/api")) {
+    return raw;
+  }
+
+  const nextChar = raw.charAt("/api".length);
+  if (nextChar && nextChar !== "/" && nextChar !== "?") {
+    return raw;
+  }
+
+  const stripped = raw.slice("/api".length);
+  if (!stripped) {
+    return "/";
+  }
+  if (stripped.startsWith("?")) {
+    return `/${stripped}`;
+  }
+  return stripped;
+}
+
 export function canonicalRequestUrl(url: string | undefined, headers: IncomingHttpHeaders): string {
   const proto = firstHeaderValue(headers["x-forwarded-proto"])
     || firstHeaderValue(headers[":scheme"])

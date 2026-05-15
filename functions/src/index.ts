@@ -18,6 +18,7 @@ import { ensureLocalSuperAdmin } from "./lib/localSuperAdmin.js";
 import { toHttpError } from "./lib/httpError.js";
 import { RateLimitError } from "./lib/rateLimiter.js";
 import { fastifyCorsOptionsForRequest } from "./lib/corsPolicy.js";
+import { stripApiEntryPrefix } from "./lib/http.js";
 adminApp();
 
 const api = Fastify({ logger: true });
@@ -104,6 +105,7 @@ export const crowdpmApi = https.onRequest({
 }, (req, res) => {
   const requestWithRawBody = req as RequestWithRawBody;
   requestWithRawBody.rawBody = requestWithRawBody.rawBody ?? undefined;
+  requestWithRawBody.url = stripApiEntryPrefix(requestWithRawBody.url);
   apiSetup.then(() => api.server.emit("request", req, res));
 });
 

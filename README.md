@@ -46,7 +46,7 @@ cp functions/.env.example functions/.env.local
 Edit `frontend/.env.local` with a Google Maps JavaScript API key, vector map ID, Firebase web app config, and the local API base:
 
 ```bash
-VITE_API_BASE=http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi
+VITE_API_BASE=/api
 VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 ```
 
