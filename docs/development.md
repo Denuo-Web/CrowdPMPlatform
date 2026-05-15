@@ -40,7 +40,7 @@ cp functions/.env.example functions/.env.local
 
 Frontend values that normally need editing:
 
-- `VITE_API_BASE=http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi`
+- `VITE_API_BASE=/api`
 - `VITE_GOOGLE_MAPS_API_KEY`
 - `VITE_GOOGLE_MAP_ID`
 - `VITE_FIREBASE_*` web app values

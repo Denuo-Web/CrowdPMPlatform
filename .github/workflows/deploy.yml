@@ -112,7 +112,6 @@ jobs:
           gcloud config set project "$FIREBASE_PROJECT_ID"
           required_keys=(
             FRONTEND_URL
-            VITE_API_BASE
             VITE_GOOGLE_MAPS_API_KEY
             VITE_GOOGLE_MAP_ID
             VITE_FIREBASE_API_KEY
@@ -299,6 +298,26 @@ jobs:
         if: ${{ env.FRONTEND_URL }}
         run: |
           curl --fail --silent --show-error "$FRONTEND_URL" >/dev/null
+
+      - name: Frontend asset MIME check
+        if: ${{ env.FRONTEND_URL }}
+        run: |
+          html="$(curl --fail --silent --show-error "$FRONTEND_URL")"
+          asset_path="$(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | head -n1)"
+          test -n "$asset_path" || { echo "Unable to find a built JS asset in the deployed HTML."; exit 1; }
+
+          response_headers="$(mktemp)"
+          curl --fail --silent --show-error -D "$response_headers" -o /dev/null "${FRONTEND_URL%/}$asset_path"
+          content_type="$(awk -F': ' 'tolower($1) == "content-type" { print tolower($2) }' "$response_headers" | tr -d '\r' | tail -n1)"
+          rm -f "$response_headers"
+
+          echo "$content_type" | grep -Eq 'javascript|ecmascript' \
+            || { echo "Unexpected asset content type for $asset_path: ${content_type:-missing}"; exit 1; }
+
+      - name: Frontend API rewrite check
+        if: ${{ env.FRONTEND_URL }}
+        run: |
+          curl --fail --silent --show-error "${FRONTEND_URL%/}/api/health"
 
       - name: API health check
         if: ${{ env.FUNCTIONS_HEALTH_URL }}

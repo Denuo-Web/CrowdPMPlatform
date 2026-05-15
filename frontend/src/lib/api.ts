@@ -28,20 +28,12 @@ import type {
 } from "@crowdpm/types";
 
 const rawBase = import.meta.env.VITE_API_BASE as string | undefined;
-const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "";
+const BASE = rawBase ? rawBase.trim().replace(/\/$/, "") : "/api";
 const FIREBASE_HOSTING_DOMAINS = ["web.app", "firebaseapp.com"] as const;
 
-function ensureBase(): string {
-  if (!BASE) {
-    throw new Error("VITE_API_BASE is not configured. Set it to your Functions API (see README).");
-  }
-  return BASE;
-}
-
 function buildUrl(path: string): string {
-  const base = ensureBase();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${normalizedPath}`;
+  return `${BASE}${normalizedPath}`;
 }
 
 function isFirebaseHostingHost(hostname: string | null | undefined): boolean {
@@ -97,9 +89,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       }
     })();
     const snippet = bodyText.trim().replace(/\s+/g, " ").slice(0, 160);
-    const hint = isFirebaseHostingHost(hostname)
-      ? "Ensure VITE_API_BASE points to your Functions endpoint instead of the Hosting URL."
-      : "Ensure VITE_API_BASE points to your Functions endpoint.";
+    const hint = url.startsWith("/api")
+      ? "Ensure /api is proxied or rewritten to crowdpmApi, or set VITE_API_BASE to the Functions endpoint."
+      : isFirebaseHostingHost(hostname)
+        ? "Ensure VITE_API_BASE points to your Functions endpoint instead of the Hosting URL."
+        : "Ensure VITE_API_BASE points to your Functions endpoint.";
     const responsePreview = snippet ? ` Response starts with: ${snippet}` : "";
     throw new Error(`Expected JSON from ${host} but received ${contentType || "unknown content"}. ${hint}${responsePreview}`);
   }
