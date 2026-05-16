@@ -1,0 +1,100 @@
+---
+- name: Deploy CrowdPM Zero 2 W node
+  hosts: crowdpm_zero2w
+  gather_facts: true
+  vars:
+    root_dir: /opt/crowdpm-node
+    app_dir: "{{ root_dir }}/app"
+    state_dir: "{{ root_dir }}/state"
+    venv_dir: "{{ root_dir }}/venv"
+    staging_dir: "{{ ansible_user_dir }}/.crowdpm-node-staging"
+    source_dir: "{{ playbook_dir }}/.."
+  tasks:
+    - name: Install system packages
+      become: true
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - iw
+          - python3-dev
+          - python3-pip
+          - python3-venv
+          - rsync
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create staging directory
+      ansible.builtin.file:
+        path: "{{ staging_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Sync node source to staging
+      ansible.posix.synchronize:
+        src: "{{ source_dir }}/"
+        dest: "{{ staging_dir }}/"
+        delete: true
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=__pycache__"
+          - "--exclude=.venv"
+          - "--exclude=.codex-tmp"
+          - "--exclude=firebase-debug.log"
+
+    - name: Create runtime directories
+      become: true
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ app_dir }}"
+        - "{{ state_dir }}"
+        - "{{ venv_dir }}"
+
+    - name: Promote staged source into app directory
+      become: true
+      ansible.builtin.command:
+        argv:
+          - rsync
+          - -a
+          - --delete
+          - "{{ staging_dir }}/"
+          - "{{ app_dir }}/"
+      changed_when: true
+
+    - name: Create Python virtual environment
+      become: true
+      ansible.builtin.command:
+        cmd: "python3 -m venv {{ venv_dir }}"
+        creates: "{{ venv_dir }}/bin/python"
+
+    - name: Upgrade pip
+      become: true
+      ansible.builtin.pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_dir }}"
+
+    - name: Install Python dependencies
+      become: true
+      ansible.builtin.pip:
+        requirements: "{{ app_dir }}/requirements.txt"
+        virtualenv: "{{ venv_dir }}"
+
+    - name: Install systemd unit
+      become: true
+      ansible.builtin.copy:
+        src: "{{ app_dir }}/systemd/crowdpm-node.service"
+        dest: /etc/systemd/system/crowdpm-node.service
+        remote_src: true
+        mode: "0644"
+
+    - name: Enable and restart service
+      become: true
+      ansible.builtin.systemd_service:
+        name: crowdpm-node.service
+        daemon_reload: true
+        enabled: true
+        state: restarted

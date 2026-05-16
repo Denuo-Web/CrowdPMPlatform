@@ -30,6 +30,9 @@ export class RateLimitError extends Error {
   }
 }
 
+// Process-local limiter for lightweight backpressure. Deployed abuse controls
+// that must hold across Cloud Functions instances need Cloud Armor/API Gateway
+// or a shared store-backed limiter.
 export const globalRateLimiter = new MemoryRateLimiter();
 
 export function rateLimitOrThrow(key: string, limit: number, windowMs: number) {

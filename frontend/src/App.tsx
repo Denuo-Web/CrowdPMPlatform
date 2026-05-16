@@ -1,72 +1,17 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useState } from "react";
 import type { UserThemeSettings } from "@crowdpm/types";
 import type { AuthMode } from "./components/AuthDialog";
-import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
-import { LegalDocumentDialog, LegalDocumentLink, type LegalDocumentId } from "./components/LegalDocumentDialog";
 import { APP_ROUTES, getAppTabFromPath, getRouteForAppTab, isActivationRoute, type RoutedAppTab } from "./lib/appRoutes";
-import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { logWarning } from "./lib/logger";
 import { pushAppLocation, replaceAppLocation, replaceCurrentUrl, useBrowserLocation } from "./lib/locationStore";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
-import {
-  confirmThemeSaveCheckoutSession,
-  createThemeSaveCheckoutSession,
-} from "./lib/api";
-import {
-  Theme,
-  Box,
-  Button,
-  Callout,
-  DropdownMenu,
-  Flex,
-  Heading,
-  Text,
-  Avatar,
-  Separator,
-  Link,
-  IconButton,
-  Dialog,
-} from "@radix-ui/themes";
-import { GitHubLogoIcon, HamburgerMenuIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
-import HomePage from "./pages/HomePage";
-
-const TEAM_MEMBERS: Array<{
-  name: string;
-  role: string;
-  email: string;
-  github: string;
-  linkedin: string;
-}> = [
-  {
-    name: "Jaron Rosenau",
-    role: "Team Lead",
-    email: "rosenauj@oregonstate.edu",
-    github: "https://github.com/denuoweb",
-    linkedin: "https://www.linkedin.com/in/jaronrosenau/",
-  },
-  {
-    name: "Jack Armstrong",
-    role: "Team Manager",
-    email: "armsjack@oregonstate.edu",
-    github: "https://github.com/JackArmstrong22",
-    linkedin: "https://www.linkedin.com/in/jack-t-armstrong/",
-  },
-  {
-    name: "Skylar Soon",
-    role: "Developer",
-    email: "soonsk@oregonstate.edu",
-    github: "https://github.com/skylarsoon",
-    linkedin: "https://www.linkedin.com/in/skylar-soon/",
-  },
-  {
-    name: "Mark Sparhawk",
-    role: "Developer",
-    email: "sparhawm@oregonstate.edu",
-    github: "https://github.com/MarkSparhawk",
-    linkedin: "https://www.linkedin.com/in/mark-sparhawk/",
-  },
-];
+import { Theme } from "@radix-ui/themes";
+import { ActivationModal } from "./components/ActivationModal";
+import { AppMainContent, type SubscriptionCheckoutNotice } from "./components/AppMainContent";
+import { AppNavigation } from "./components/AppNavigation";
+import { TeamModal } from "./components/TeamModal";
+import { ThemePreferencesModal, type ThemeCheckoutNotice } from "./components/ThemePreferencesModal";
 
 const THEME_SHORTCUT_IGNORED_SELECTOR = [
   "[contenteditable]",
@@ -78,30 +23,12 @@ const THEME_SHORTCUT_IGNORED_SELECTOR = [
   "textarea",
 ].join(",");
 
-const MapPage = lazy(() => import("./pages/MapPage"));
-const UserDashboard = lazy(() => import("./pages/UserDashboard"));
-const AdminModerationPage = lazy(() => import("./pages/AdminModerationPage"));
 const AuthDialog = lazy(async () => {
   const module = await import("./components/AuthDialog");
   return { default: module.AuthDialog };
 });
-const ActivationPage = lazy(async () => {
-  const module = await import("./pages/ActivationPage");
-  return { default: module.ActivationPage };
-});
-const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
-const AboutPage = lazy(() => import("./pages/AboutPage"));
-const NodePage = lazy(() => import("./pages/NodePage"));
-const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
-const ThemeSettingsControls = lazy(async () => {
-  const module = await import("./components/ThemeSettingsControls");
-  return { default: module.ThemeSettingsControls };
-});
-const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
 type AppTab = RoutedAppTab;
-type ThemeCheckoutNotice = "success" | "cancelled" | null;
-type SubscriptionCheckoutNotice = "success" | "cancelled" | null;
 
 function readThemeCheckoutNotice(search: string): ThemeCheckoutNotice {
   const status = new URLSearchParams(search).get("themeCheckout");
@@ -213,10 +140,6 @@ export default function App() {
     setThemeModalRequested(true);
   }, []);
 
-  const openTeamModal = useCallback(() => {
-    setTeamModalOpen(true);
-  }, []);
-
   const handleProtectedTabClick = (target: "dashboard" | "admin") => {
     if (user) {
       if (target === "admin" && !canAccessAdmin) return;
@@ -305,18 +228,6 @@ export default function App() {
     replaceAppLocation(APP_ROUTES.dashboard);
   }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
 
-  const tabPanelFallback = (
-    <Flex
-      direction="column"
-      align="center"
-      justify="center"
-      gap="3"
-      style={{ padding: "var(--space-8)", textAlign: "center" }}
-    >
-      <Text size="2" color="gray">Loading...</Text>
-    </Flex>
-  );
-
   return (
     <Theme
       appearance={activeTheme.appearance}
@@ -342,297 +253,36 @@ export default function App() {
         onThemeSaved={() => setThemeDraft(null)}
       />
 
-      {/* ---- Branded top bar (fixed across all pages) ---- */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 99,
-          display: "flex",
-          flexDirection: "column",
-          pointerEvents: "none",
-        }}
-      >
-        {/* Accent gradient line */}
-        <div
-          style={{
-            height: 3,
-            background: "linear-gradient(90deg, var(--accent-9), var(--accent-7), var(--accent-9))",
-            opacity: 0.9,
-          }}
-        />
-        {/* Logo bar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "var(--space-3) var(--space-4)",
-            paddingLeft: "calc(var(--space-4) + 2.5px)",
-            color: mapHeaderForegroundColor,
-            background: mapHeaderBackground,
-            backdropFilter: activeTab === "map" ? "none" : "blur(12px)",
-            WebkitBackdropFilter: activeTab === "map" ? "none" : "blur(12px)",
-            pointerEvents: "auto",
-          }}
-        >
-          {/* Clickable logo + title — navigates back to the lightweight landing page */}
-            <button
-              type="button"
-              onClick={() => navigateToTab("home")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-              gap: 10,
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              color: "inherit",
-            }}
-            aria-label="Return to home"
-          >
-            <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-hidden>
-              <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
-              <path
-                d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
-              <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
-              <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
-            </svg>
-            <span
-              style={{
-                fontSize: "var(--font-size-4)",
-                fontWeight: 700,
-                color: "currentColor",
-                letterSpacing: 0,
-                textShadow: "0 1px 4px var(--gray-a6)",
-              }}
-            >
-              CrowdPM
-            </span>
-            <span
-              style={{
-                fontSize: "var(--font-size-1)",
-                color: airQualityNetworkColor,
-                fontWeight: 400,
-                letterSpacing: 0,
-                textTransform: "uppercase",
-              }}
-            >
-              Air Quality Network
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* ---- Hamburger navigation menu ---- */}
-      <Box style={{ position: "fixed", top: 68, left: "var(--space-4)", zIndex: 100 }}>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <IconButton
-              variant="solid"
-              size="3"
-              aria-label="Navigation menu"
-              style={{
-                backdropFilter: "blur(12px)",
-                backgroundColor: "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)",
-                color: "var(--gray-12)",
-                boxShadow: "var(--shadow-4)",
-                border: "1px solid var(--gray-a6)",
-              }}
-            >
-              <HamburgerMenuIcon width={18} height={18} />
-            </IconButton>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content sideOffset={8} align="start">
-            <DropdownMenu.Item
-              onSelect={() => navigateToTab("home")}
-              style={activeTab === "home" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              Home
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onSelect={() => navigateToTab("map")}
-              style={activeTab === "map" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              Explore Map
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onSelect={() => navigateToTab("node")}
-              style={activeTab === "node" ? { fontWeight: 600 } : undefined}
-              disabled={isLoading}
-            >
-              Products
-            </DropdownMenu.Item>
-            {isSignedIn ? (
-              <>
-                <DropdownMenu.Item
-                  onSelect={() => handleProtectedTabClick("dashboard")}
-                  style={activeTab === "dashboard" ? { fontWeight: 600 } : undefined}
-                  disabled={isLoading}
-                >
-                  User Dashboard
-                </DropdownMenu.Item>
-                {canAccessAdmin ? (
-                  <DropdownMenu.Item
-                    onSelect={() => handleProtectedTabClick("admin")}
-                    style={activeTab === "admin" ? { fontWeight: 600 } : undefined}
-                    disabled={isLoading}
-                  >
-                    Admin
-                  </DropdownMenu.Item>
-                ) : null}
-                <DropdownMenu.Item
-                  onSelect={() => navigateToTab("about")}
-                  style={activeTab === "about" ? { fontWeight: 600 } : undefined}
-                  disabled={isLoading}
-                >
-                  About
-                </DropdownMenu.Item>
-              </>
-            ) : (
-              <DropdownMenu.Item
-                onSelect={() => navigateToTab("about")}
-                style={activeTab === "about" ? { fontWeight: 600 } : undefined}
-                disabled={isLoading}
-              >
-                About
-              </DropdownMenu.Item>
-            )}
-            <DropdownMenu.Separator />
-            {user ? (
-              <DropdownMenu.Item color="red" onSelect={handleSignOut}>
-                Sign out
-              </DropdownMenu.Item>
-            ) : (
-              <>
-                <DropdownMenu.Item onSelect={() => openAuthDialog("login")} disabled={isLoading}>
-                  Log in
-                </DropdownMenu.Item>
-                <DropdownMenu.Item onSelect={() => openAuthDialog("signup")} disabled={isLoading}>
-                  Sign up
-                </DropdownMenu.Item>
-              </>
-            )}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
-      </Box>
-
-      <main
-        id="main-content"
-        style={activeTab === "map"
-          ? {
-            minHeight: "100vh",
-            height: "100dvh",
-            overflowY: "hidden",
-          }
-          : {
-            minHeight: "100vh",
-          }}
-      >
-        {activeTab === "map" ? (
-          /* Full-bleed map — fills the entire viewport */
-          <Box
-            style={{
-              width: "100%",
-              height: "100dvh",
-              paddingBottom: MAP_VIEWPORT_BOTTOM_INSET,
-              boxSizing: "border-box",
-            }}
-          >
-            <Suspense fallback={tabPanelFallback}>
-              <MapPage key={`map:${userScopedKey}`} mapAppearance={activeTheme.appearance} />
-            </Suspense>
-          </Box>
-        ) : (
-          /* All other tabs get the branded header + content layout */
-          <Box
-            style={{
-              minHeight: "100vh",
-              backgroundColor: "var(--color-surface)",
-              backgroundImage:
-                "radial-gradient(120% 80% at 0% 0%, var(--accent-a4), transparent), radial-gradient(80% 80% at 100% 0%, var(--gray-a3), transparent)",
-            }}
-          >
-            {/* ---- Page content ---- */}
-            <Box
-              style={{
-                maxWidth: 1100,
-                margin: "0 auto",
-                padding: "var(--space-5) var(--space-6)",
-                paddingTop: 64,
-                paddingBottom: "max(var(--space-6), env(safe-area-inset-bottom, 0px) + var(--space-5))",
-              }}
-            >
-              <Box
-                style={{
-                  borderRadius: "var(--radius-4)",
-                  background: "var(--color-panel-solid)",
-                  boxShadow: "var(--shadow-3)",
-                  padding: "var(--space-4)",
-                }}
-              >
-                <Suspense fallback={tabPanelFallback}>
-                  {activeTab === "home" ? (
-                    <HomePage
-                      isSignedIn={isSignedIn}
-                      onExploreMap={() => navigateToTab("map")}
-                      onOpenDashboard={() => handleProtectedTabClick("dashboard")}
-                      onOpenActivation={openActivationModal}
-                      onOpenAbout={() => navigateToTab("about")}
-                      onOpenProducts={() => navigateToTab("node")}
-                      onOpenAuth={openAuthDialog}
-                    />
-                  ) : activeTab === "dashboard" && user ? (
-                    <UserDashboard
-                      key={`dashboard:${userScopedKey}`}
-                      onRequestActivation={openActivationModal}
-                      onOpenThemeModal={openThemeModal}
-                      subscriptionCheckoutNotice={subscriptionCheckoutNotice}
-                      subscriptionCheckoutSessionId={subscriptionCheckoutSessionId}
-                      onSubscriptionCheckoutHandled={handleSubscriptionCheckoutHandled}
-                      refreshToken={dashboardRefreshToken}
-                    />
-                  ) : activeTab === "admin" && user && canAccessAdmin ? (
-                    <AdminModerationPage key={`admin:${userScopedKey}`} />
-                  ) : activeTab === "pairing-info" ? (
-                    <PairingInfoPage onOpenActivation={openActivationModal} />
-                  ) : activeTab === "about" ? (
-                    <AboutPage onOpenTeamModal={openTeamModal} />
-                  ) : activeTab === "node" ? (
-                    <NodePage />
-                  ) : activeTab === "api-docs" ? (
-                    <ApiDocsPage />
-                  ) : (
-                    <Flex
-                      direction="column"
-                      align="center"
-                      justify="center"
-                      gap="3"
-                      style={{ padding: "var(--space-8)", textAlign: "center" }}
-                    >
-                      <Heading size="5">Sign in to access CrowdPM</Heading>
-                      <Text size="2" color="gray" style={{ maxWidth: 360 }}>
-                        Log in to explore the CrowdPM map, review batches, and access the coordination resources.
-                      </Text>
-                    </Flex>
-                  )}
-                </Suspense>
-              </Box>
-            </Box>
-          </Box>
-        )}
-      </main>
+      <AppNavigation
+        activeTab={activeTab}
+        isLoading={isLoading}
+        isSignedIn={isSignedIn}
+        canAccessAdmin={canAccessAdmin}
+        mapHeaderBackground={mapHeaderBackground}
+        mapHeaderForegroundColor={mapHeaderForegroundColor}
+        airQualityNetworkColor={airQualityNetworkColor}
+        onNavigate={navigateToTab}
+        onProtectedTabClick={handleProtectedTabClick}
+        onOpenAuth={openAuthDialog}
+        onSignOut={() => { void handleSignOut(); }}
+      />
+      <AppMainContent
+        activeTab={activeTab}
+        isSignedIn={isSignedIn}
+        canAccessAdmin={canAccessAdmin}
+        userScopedKey={userScopedKey}
+        mapAppearance={activeTheme.appearance}
+        dashboardRefreshToken={dashboardRefreshToken}
+        subscriptionCheckoutNotice={subscriptionCheckoutNotice}
+        subscriptionCheckoutSessionId={subscriptionCheckoutSessionId}
+        onNavigate={navigateToTab}
+        onProtectedTabClick={handleProtectedTabClick}
+        onOpenActivation={openActivationModal}
+        onOpenThemeModal={openThemeModal}
+        onSubscriptionCheckoutHandled={handleSubscriptionCheckoutHandled}
+        onOpenTeamModal={() => setTeamModalOpen(true)}
+        onOpenAuth={openAuthDialog}
+      />
       <Suspense fallback={null}>
         {isAuthDialogOpen ? (
           <AuthDialog
@@ -645,379 +295,5 @@ export default function App() {
         ) : null}
       </Suspense>
     </Theme>
-  );
-}
-
-type ActivationModalProps = {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  onActivationComplete: () => void;
-};
-
-function ActivationModal({ open, onOpenChange, onActivationComplete }: ActivationModalProps) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Content
-        size="4"
-        style={{
-          width: "min(760px, 96vw)",
-          maxWidth: "760px",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        <Suspense fallback={<Text size="2" color="gray">Loading activation...</Text>}>
-          <ActivationPage layout="dialog" onActivationComplete={onActivationComplete} />
-        </Suspense>
-      </Dialog.Content>
-    </Dialog.Root>
-  );
-}
-
-type ThemePreferencesModalProps = {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  checkoutNotice: ThemeCheckoutNotice;
-  checkoutSessionId: string | null;
-  theme: UserThemeSettings;
-  onThemeChange: (next: UserThemeSettings) => void;
-  onThemeSaved: () => void;
-};
-
-function ThemePreferencesModal({
-  open,
-  onOpenChange,
-  checkoutNotice,
-  checkoutSessionId,
-  theme,
-  onThemeChange,
-  onThemeSaved,
-}: ThemePreferencesModalProps) {
-  const { user } = useAuth();
-  const { settings, refresh, isLoading, isSaving, updateSettings } = useUserSettings();
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
-  const [isConfirmingCheckout, setIsConfirmingCheckout] = useState(false);
-  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
-  const confirmationAttemptKeyRef = useRef<string | null>(null);
-  const controlsDisabled = isLoading || isSaving || isStartingCheckout || isConfirmingCheckout;
-  const hasUnsavedChanges = JSON.stringify(theme) !== JSON.stringify(settings.theme);
-  const saveDisabled = controlsDisabled || !user || !settings.themeSaveUnlocked || !hasUnsavedChanges;
-  const unlockDisabled = controlsDisabled || !user || settings.themeSaveUnlocked;
-  const checkoutNoticeMessage = !open
-    ? null
-    : checkoutNotice === "success"
-      ? (settings.themeSaveUnlocked
-        ? "Theme saving is now unlocked for this account."
-        : "Theme purchase completed. If saving is still locked, give the account a moment to refresh.")
-      : checkoutNotice === "cancelled"
-        ? "Theme save unlock checkout was cancelled before payment completed."
-        : null;
-  const message = actionMessage ?? checkoutNoticeMessage;
-
-  const handleDialogOpenChange = useCallback((next: boolean) => {
-    if (!next) {
-      setActionMessage(null);
-      setError(null);
-      setIsStartingCheckout(false);
-      setIsConfirmingCheckout(false);
-      setOpenLegalDocument(null);
-    }
-    onOpenChange(next);
-  }, [onOpenChange]);
-
-  useEffect(() => {
-    if (!open || checkoutNotice !== "success" || !user) {
-      return;
-    }
-    const confirmationKey = `${user.uid}:${checkoutSessionId ?? "none"}`;
-    if (confirmationAttemptKeyRef.current === confirmationKey) {
-      return;
-    }
-    confirmationAttemptKeyRef.current = confirmationKey;
-    let isCancelled = false;
-
-    void (async () => {
-      try {
-        setActionMessage(null);
-        setError(null);
-        setIsConfirmingCheckout(true);
-        if (checkoutSessionId) {
-          await confirmThemeSaveCheckoutSession(checkoutSessionId);
-        }
-        await refresh();
-      }
-      catch (err) {
-        if (isCancelled) return;
-        if (err instanceof Error && err.message === "theme_save_pending") {
-          setError("Theme purchase is still processing. Please try again in a moment.");
-          return;
-        }
-        setError(err instanceof Error ? err.message : "Unable to refresh theme entitlements.");
-      }
-      finally {
-        if (!isCancelled) {
-          setIsConfirmingCheckout(false);
-        }
-      }
-    })();
-    return () => {
-      isCancelled = true;
-    };
-  }, [checkoutNotice, checkoutSessionId, open, refresh, user]);
-
-  const handleSave = async () => {
-    if (!user) {
-      setActionMessage(null);
-      setError("Sign in to save theme preferences.");
-      return;
-    }
-    if (!settings.themeSaveUnlocked) {
-      setActionMessage(null);
-      setError("Purchase the theme save unlock to persist theme preferences.");
-      return;
-    }
-    if (!hasUnsavedChanges) {
-      setActionMessage("No theme changes to save.");
-      setError(null);
-      return;
-    }
-
-    setActionMessage(null);
-    setError(null);
-    try {
-      await updateSettings({ theme });
-      onThemeSaved();
-      setActionMessage("Theme preferences saved.");
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update theme preferences.");
-    }
-  };
-
-  const handlePurchaseThemeSave = async () => {
-    if (!user) {
-      setActionMessage(null);
-      setError("Sign in to purchase and save theme preferences.");
-      return;
-    }
-
-    setActionMessage(null);
-    setError(null);
-    setIsStartingCheckout(true);
-    try {
-      const session = await createThemeSaveCheckoutSession();
-      window.location.assign(session.url);
-      return;
-    }
-    catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to open theme checkout right now.");
-      setIsStartingCheckout(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={handleDialogOpenChange}>
-      <Dialog.Content
-        size="3"
-        style={{
-          width: "min(460px, 96vw)",
-          maxWidth: "460px",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        <Dialog.Title>Theme</Dialog.Title>
-        <Dialog.Description>
-          Preview changes live, then save them when you are ready.
-        </Dialog.Description>
-        <Flex direction="column" gap="3" mt="4">
-          {!user ? (
-            <Callout.Root color="amber" variant="surface">
-              <Callout.Text>
-                Sign in to purchase the theme save unlock and save theme preferences to your account.
-              </Callout.Text>
-            </Callout.Root>
-          ) : !settings.themeSaveUnlocked ? (
-            <Callout.Root color="amber" variant="surface">
-              <Callout.Text>
-                Theme saving is locked for this account. Live preview stays available, but saving
-                requires a one-time $3 theme save unlock.
-              </Callout.Text>
-            </Callout.Root>
-          ) : (
-            <Callout.Root color="green" variant="surface">
-              <Callout.Text>
-                Theme saving is unlocked for this account.
-              </Callout.Text>
-            </Callout.Root>
-          )}
-
-          {open ? (
-            <Suspense fallback={<Text size="2" color="gray">Loading theme settings...</Text>}>
-              <ThemeSettingsControls
-                value={theme}
-                onChange={onThemeChange}
-                disabled={controlsDisabled}
-              />
-            </Suspense>
-          ) : null}
-
-          {!settings.themeSaveUnlocked ? (
-            <Flex direction="column" gap="2">
-              <Button
-                size="3"
-                variant="solid"
-                onClick={() => { void handlePurchaseThemeSave(); }}
-                disabled={unlockDisabled}
-              >
-                {isStartingCheckout ? "Opening Checkout..." : "Unlock Theme Saving - $3"}
-              </Button>
-              <Text size="1" color="gray">
-                Sold by Denuo Web LLC as a one-time digital expansion purchase. No shipping applies,
-                applicable sales tax is calculated in Stripe Checkout, and theme save unlock purchases
-                are subject to the{" "}
-                <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
-                  Terms
-                </LegalDocumentLink>
-                ,{" "}
-                <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
-                  License
-                </LegalDocumentLink>
-                , and{" "}
-                <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
-                  Privacy Policy
-                </LegalDocumentLink>
-                .
-              </Text>
-            </Flex>
-          ) : null}
-
-          <Flex justify="end" gap="3" mt="2">
-            <Button variant="soft" color="gray" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-            <Button onClick={() => { void handleSave(); }} disabled={saveDisabled}>
-              Save
-            </Button>
-          </Flex>
-        </Flex>
-        {error ? (
-          <Text color="tomato" size="2" mt="3">{error}</Text>
-        ) : null}
-        {message ? (
-          <Text color="green" size="2" mt="3">{message}</Text>
-        ) : null}
-      </Dialog.Content>
-      <LegalDocumentDialog
-        documentId={openLegalDocument}
-        onOpenChange={(next) => {
-          if (!next) setOpenLegalDocument(null);
-        }}
-      />
-    </Dialog.Root>
-  );
-}
-
-type TeamModalProps = {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  isSignedIn: boolean;
-};
-
-function TeamModal({ open, onOpenChange, isSignedIn }: TeamModalProps) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Content
-        size="4"
-        style={{
-          width: "min(560px, 96vw)",
-          maxWidth: "560px",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        <Heading as="h2" size="5" trim="start">
-          <ExternalLink href={PROJECT_LINKS.osuEecsProgram} color="iris" highContrast>
-            OSU EECS
-          </ExternalLink>{" "}
-          Capstone Team
-        </Heading>
-        <Text size="2" color="gray" mt="2">
-          Key collaborators for the capstone effort and their primary roles.
-        </Text>
-        <Flex direction="column" gap="3" mt="4">
-          {TEAM_MEMBERS.map((member) => (
-            <Flex key={member.name} align="center" gap="3" style={{ width: "100%" }}>
-              <Flex align="center" gap="3" style={{ flex: 1, minWidth: 0 }}>
-                <Avatar
-                  radius="full"
-                  size="2"
-                  fallback={member.name.charAt(0).toUpperCase() || "?"}
-                />
-                <Text size="2" weight="medium">
-                  <Link href={`mailto:${member.email}`} color="iris" highContrast>
-                    {member.name}
-                  </Link>
-                </Text>
-              </Flex>
-              <Text
-                size="1"
-                color="gray"
-                style={{ minWidth: "120px", textAlign: "right" }}
-              >
-                {member.role}
-              </Text>
-              <Flex gap="2">
-                <IconButton
-                  asChild
-                  variant="soft"
-                  size="1"
-                  radius="full"
-                  aria-label={`${member.name} GitHub profile`}
-                >
-                  <ExternalAnchor href={member.github}>
-                    <GitHubLogoIcon />
-                  </ExternalAnchor>
-                </IconButton>
-                <IconButton
-                  asChild
-                  variant="soft"
-                  size="1"
-                  radius="full"
-                  aria-label={`${member.name} LinkedIn profile`}
-                >
-                  <ExternalAnchor href={member.linkedin}>
-                    <LinkedInLogoIcon />
-                  </ExternalAnchor>
-                </IconButton>
-              </Flex>
-            </Flex>
-          ))}
-        </Flex>
-        {isSignedIn ? (
-          <>
-            <Separator my="4" />
-            <Text size="2" color="gray">
-              Coordination links
-            </Text>
-            <Flex direction="column" gap="2" mt="2">
-              {PROJECT_RESOURCE_LINKS.map((resource) => (
-                <ExternalLink
-                  key={resource.href}
-                  href={resource.href}
-                  color="iris"
-                  highContrast
-                  size="2"
-                >
-                  {resource.label}
-                </ExternalLink>
-              ))}
-            </Flex>
-          </>
-        ) : null}
-      </Dialog.Content>
-    </Dialog.Root>
   );
 }

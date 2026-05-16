@@ -90,6 +90,9 @@ const mockBucket = {
       if (!payload) throw new Error("missing payload");
       return [payload];
     },
+    save: async (payload: Buffer | string) => {
+      storagePayloads.set(path, Buffer.isBuffer(payload) ? payload : Buffer.from(payload, "utf8"));
+    },
   })),
 };
 
@@ -217,7 +220,8 @@ describe("GET /v1/public/batches/map", () => {
     const res = await app.inject({ method: "GET", url: "/v1/public/batches/map?since=2024-01-01T00:00:00.000Z" });
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers["cache-control"]).toBe("public, max-age=30");
+    expect(res.headers["cache-control"]).toBe("public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+    expect(res.headers.etag).toMatch(/^"public-map-/);
     expect(res.json()).toEqual({
       batches: [
         expect.objectContaining({
@@ -229,6 +233,25 @@ describe("GET /v1/public/batches/map", () => {
         }),
       ],
     });
+    await app.close();
+  });
+
+  it("returns 304 when the materialized map ETag still matches", async () => {
+    const app = await buildApp();
+
+    const first = await app.inject({ method: "GET", url: "/v1/public/batches/map" });
+    const etag = first.headers.etag;
+    const second = await app.inject({
+      method: "GET",
+      url: "/v1/public/batches/map",
+      headers: { "if-none-match": String(etag) },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(etag).toMatch(/^"public-map-/);
+    expect(second.statusCode).toBe(304);
+    expect(second.body).toBe("");
+    expect(second.headers.etag).toBe(etag);
     await app.close();
   });
 

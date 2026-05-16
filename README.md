@@ -69,6 +69,7 @@ Local URLs:
 ```bash
 pnpm dev                                  # frontend, functions emulator, TS watch
 pnpm lint                                 # workspace ESLint
+pnpm typecheck                            # frontend TypeScript no-emit check
 pnpm --filter crowdpm-functions test      # functions Vitest suite
 pnpm build                                # build all workspaces
 pnpm --filter crowdpm-frontend build      # frontend only
