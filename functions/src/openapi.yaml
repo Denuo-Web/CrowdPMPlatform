@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.1
 info:
   title: CrowdPM API
   version: 1.0.0
@@ -110,6 +110,40 @@ paths:
           description: Rate limited.
         '500':
           description: Stripe or application configuration is missing.
+        '502':
+          description: Stripe returned an upstream error.
+  /v1/theme-purchase/confirm:
+    post:
+      operationId: confirmThemeSaveCheckoutSession
+      summary: Confirm a completed theme save checkout
+      description: >
+        Retrieves a completed Stripe Checkout session, verifies that it belongs
+        to the signed-in account, and grants the one-time theme save unlock.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmCheckoutRequest'
+      responses:
+        '200':
+          description: Theme save unlock granted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmThemeSaveCheckoutResponse'
+        '400':
+          description: Invalid request payload or checkout session type.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Checkout session belongs to another user.
+        '409':
+          description: Checkout session is still pending.
+        '429':
+          description: Rate limited.
         '502':
           description: Stripe returned an upstream error.
   /v1/subscription/checkout-session:
@@ -460,6 +494,8 @@ paths:
                   $ref: '#/components/schemas/Device'
         '401':
           description: Authentication required.
+        '429':
+          description: Rate limited.
     post:
       summary: Register a device
       description: >
@@ -469,7 +505,7 @@ paths:
       security:
         - BearerAuth: []
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -485,7 +521,11 @@ paths:
           description: Invalid request payload.
         '401':
           description: Missing or invalid bearer token.
-  /v1/devices/{id}/revoke:
+        '403':
+          description: Device quota exceeded for the current account plan.
+        '429':
+          description: Rate limited.
+  /v1/devices/{deviceId}/revoke:
     post:
       operationId: revokeDevice
       summary: Revoke a device
@@ -495,7 +535,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - name: id
+        - name: deviceId
           in: path
           required: true
           schema:
@@ -503,12 +543,16 @@ paths:
       responses:
         '200':
           description: Device revoked.
+        '400':
+          description: Invalid device id.
         '401':
           description: Missing or invalid bearer token.
         '403':
           description: Caller does not own the device.
         '404':
           description: Device not found.
+        '429':
+          description: Rate limited.
   /v1/device-activation:
     get:
       operationId: getActivationSession
@@ -531,10 +575,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActivationSession'
+        '400':
+          description: Invalid activation query.
         '401':
           description: Missing or invalid bearer token.
         '404':
           description: Session not found.
+        '429':
+          description: Rate limited.
   /v1/device-activation/authorize:
     post:
       operationId: authorizeActivationSession
@@ -561,10 +609,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActivationSession'
+        '400':
+          description: Invalid authorization payload.
         '401':
           description: Missing credentials or MFA requirement not satisfied.
         '404':
           description: Session not found.
+        '429':
+          description: Rate limited.
   /v1/admin/devices/{id}/suspend:
     post:
       operationId: suspendDevice
@@ -598,6 +650,58 @@ paths:
           description: Caller lacks permission to suspend the device.
         '404':
           description: Device not found.
+        '429':
+          description: Rate limited.
+  /v1/admin/demo-batch:
+    get:
+      operationId: getAdminDemoBatch
+      summary: Retrieve the configured demo batch
+      description: >
+        Returns the public approved batch selected for the demo map experience,
+        or null when no valid demo batch is configured.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Demo batch setting returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoBatchSetting'
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to view submissions.
+        '429':
+          description: Rate limited.
+    put:
+      operationId: setAdminDemoBatch
+      summary: Configure the demo batch
+      description: >
+        Sets the public approved batch used as the demo map entry point.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoBatchUpdateRequest'
+      responses:
+        '200':
+          description: Demo batch setting updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoBatch'
+        '400':
+          description: Invalid request payload or batch is not public and approved.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller lacks permission to moderate submissions.
+        '404':
+          description: Batch not found.
         '429':
           description: Rate limited.
   /v1/admin/submissions:
@@ -637,6 +741,8 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to view submissions.
+        '429':
+          description: Rate limited.
   /v1/admin/submissions/{deviceId}/{batchId}:
     patch:
       operationId: moderateSubmission
@@ -669,12 +775,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminSubmissionSummary'
+        '400':
+          description: Invalid request payload, device id, or batch id.
         '401':
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to moderate submissions.
         '404':
           description: Submission not found.
+        '429':
+          description: Rate limited.
   /v1/admin/users:
     get:
       operationId: listAdminUsers
@@ -707,6 +817,8 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to manage users.
+        '429':
+          description: Rate limited.
   /v1/admin/users/{uid}:
     patch:
       operationId: updateAdminUser
@@ -738,6 +850,25 @@ paths:
           description: Missing or invalid bearer token.
         '403':
           description: Caller lacks permission to manage users.
+        '429':
+          description: Rate limited.
+  /v1/public/demo-batch:
+    get:
+      operationId: getPublicDemoBatch
+      summary: Retrieve the public demo batch
+      description: >
+        Returns the public approved batch selected for anonymous demo map use,
+        or null when no valid demo batch is configured.
+      security: []
+      responses:
+        '200':
+          description: Public demo batch returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicDemoBatchSetting'
+        '429':
+          description: Rate limited.
   /v1/public/batches:
     get:
       operationId: listPublicBatches
@@ -762,6 +893,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/PublicBatchSummary'
+        '400':
+          description: Invalid query parameters.
+        '429':
+          description: Rate limited.
   /v1/public/batches/map:
     get:
       operationId: getPublicBatchMap
@@ -790,6 +925,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicBatchMapResponse'
+        '400':
+          description: Invalid query parameters.
+        '429':
+          description: Rate limited.
   /v1/public/batches/{deviceId}/{batchId}:
     get:
       operationId: getPublicBatchDetail
@@ -815,8 +954,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicBatchDetail'
+        '400':
+          description: Invalid device id or batch id.
         '404':
           description: Batch not found or not publicly visible.
+        '429':
+          description: Rate limited.
+        '500':
+          description: Batch payload could not be read from storage.
   /v1/batches:
     get:
       operationId: listBatches
@@ -825,6 +970,14 @@ paths:
         Returns the most recent batches owned by the authenticated caller.
       security:
         - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
       responses:
         '200':
           description: Batch summaries returned.
@@ -834,8 +987,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/BatchSummary'
+        '400':
+          description: Invalid query parameters.
         '401':
           description: Missing or invalid bearer token.
+        '429':
+          description: Rate limited.
   /v1/batches/{deviceId}/{batchId}:
     get:
       operationId: getBatchDetail
@@ -864,12 +1021,101 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BatchDetail'
+        '400':
+          description: Invalid device id or batch id.
         '401':
           description: Missing or invalid bearer token.
         '403':
           description: Caller does not own the referenced batch.
         '404':
           description: Device or batch not found, or payload unavailable.
+        '429':
+          description: Rate limited.
+        '500':
+          description: Batch payload could not be read from storage.
+    patch:
+      operationId: updateBatchVisibility
+      summary: Update batch visibility
+      description: >
+        Updates visibility for a stored ingest batch belonging to a device the
+        caller owns.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Device identifier associated with the batch.
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ingest batch identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchVisibilityUpdateRequest'
+      responses:
+        '200':
+          description: Updated batch summary returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSummary'
+        '400':
+          description: Invalid request payload, device id, or batch id.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller does not own the referenced batch.
+        '404':
+          description: Device or batch not found.
+        '429':
+          description: Rate limited.
+    delete:
+      operationId: deleteBatch
+      summary: Delete a stored batch
+      description: >
+        Deletes a stored ingest batch and its payload for a device the caller owns.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Device identifier associated with the batch.
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ingest batch identifier.
+      responses:
+        '200':
+          description: Batch deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteBatchResponse'
+        '400':
+          description: Invalid device id or batch id.
+        '401':
+          description: Missing or invalid bearer token.
+        '403':
+          description: Caller does not own the referenced batch.
+        '404':
+          description: Device or batch not found.
+        '429':
+          description: Rate limited.
+        '500':
+          description: Batch payload could not be deleted from storage.
   /v1/user/settings:
     get:
       operationId: getUserSettings
@@ -886,6 +1132,8 @@ paths:
                 $ref: '#/components/schemas/UserSettings'
         '401':
           description: Missing or invalid bearer token.
+        '429':
+          description: Rate limited.
     put:
       operationId: updateUserSettings
       summary: Update user settings
@@ -913,6 +1161,8 @@ paths:
           description: Theme saving is not unlocked for the account.
         '401':
           description: Missing or invalid bearer token.
+        '429':
+          description: Rate limited.
 components:
   securitySchemes:
     BearerAuth:
@@ -950,6 +1200,31 @@ components:
           type: string
           format: uri
           description: Hosted Stripe Checkout URL to open in the browser.
+    ConfirmCheckoutRequest:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+          minLength: 1
+          description: Stripe Checkout session identifier to confirm.
+      additionalProperties: false
+    ConfirmThemeSaveCheckoutResponse:
+      type: object
+      required:
+        - confirmed
+        - sessionId
+        - unlockGranted
+      properties:
+        confirmed:
+          type: boolean
+          example: true
+        sessionId:
+          type: string
+        unlockGranted:
+          type: boolean
+          example: true
     NodePurchaseCheckoutRequest:
       type: object
       additionalProperties: false
@@ -987,19 +1262,17 @@ components:
           type: string
           enum: [completed]
         paymentStatus:
-          type: string
-          nullable: true
+          type: [string, 'null']
         variantId:
-          type: string
-          nullable: true
+          type: [string, 'null']
           enum:
             - standard
             - no2
             - co2
             - co2_no2
+            - null
         variantLabel:
-          type: string
-          nullable: true
+          type: [string, 'null']
         quantity:
           type: integer
           minimum: 1
@@ -1008,45 +1281,42 @@ components:
           type: string
           example: usd
         unitAmount:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
           description: Per-device pre-tax price in the smallest currency unit.
         amountSubtotal:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         amountTax:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         amountShipping:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         amountDiscount:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         amountTotal:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         completedAt:
-          type: string
+          type: [string, 'null']
           format: date-time
-          nullable: true
         customerEmail:
-          type: string
-          nullable: true
+          type: [string, 'null']
         shippingName:
-          type: string
-          nullable: true
+          type: [string, 'null']
         shippingAddress:
-          type: object
-          nullable: true
+          type: [object, 'null']
           additionalProperties:
-            type: string
-            nullable: true
+            type: [string, 'null']
     DeviceStatus:
       type: string
       enum:
         - ACTIVE
         - SUSPENDED
+        - REVOKED
+    DeviceRegistryStatus:
+      type: [string, 'null']
+      enum:
+        - active
+        - suspended
+        - revoked
+        - null
     Device:
       type: object
       description: A registered CrowdPM device.
@@ -1055,34 +1325,45 @@ components:
           type: string
           description: Device identifier.
         name:
-          type: string
+          type: [string, 'null']
           description: Friendly name supplied by the owner.
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/DeviceStatus'
+            - type: 'null'
+          description: Moderation status applied to the device.
+        registryStatus:
+          $ref: '#/components/schemas/DeviceRegistryStatus'
         ownerUserIds:
-          type: array
+          type: [array, 'null']
           description: All Firebase UIDs that can access the device.
           items:
             type: string
           minItems: 1
         publicDeviceId:
-          type: string
+          type: [string, 'null']
           description: Raw device identifier provided by the owner (before namespacing).
         ownerScope:
-          type: string
+          type: [string, 'null']
           description: Slugged segment derived from the owner UID that is prepended to device IDs for uniqueness.
-        status:
-          $ref: '#/components/schemas/DeviceStatus'
         createdAt:
-          type: string
+          type: [string, 'null']
           format: date-time
           description: Timestamp when the device record was created.
+        fingerprint:
+          type: [string, 'null']
+          description: Human-verifiable device key fingerprint when registered through pairing.
+        lastSeenAt:
+          type: [string, 'null']
+          format: date-time
+          description: Timestamp when the device last used an access token or ingested data.
         location:
           $ref: '#/components/schemas/Location'
+      additionalProperties: true
       required:
         - id
-        - name
-        - ownerUserIds
-        - status
         - createdAt
+        - lastSeenAt
     ActivationSession:
       type: object
       description: Metadata about a pending pairing session.
@@ -1108,22 +1389,17 @@ components:
           type: string
           format: date-time
         requester_ip:
-          type: string
-          nullable: true
+          type: [string, 'null']
         requester_asn:
-          type: string
-          nullable: true
+          type: [string, 'null']
         poll_interval:
           type: integer
         device_id:
-          type: string
-          nullable: true
+          type: [string, 'null']
         authorized_account:
-          type: string
-          nullable: true
+          type: [string, 'null']
         viewer_account:
-          type: string
-          nullable: true
+          type: [string, 'null']
       required:
         - device_code
         - user_code
@@ -1151,8 +1427,6 @@ components:
         - longitude
     RegisterDeviceRequest:
       type: object
-      required:
-        - name
       properties:
         name:
           type: string
@@ -1192,18 +1466,15 @@ components:
           type: number
           format: double
         altitude:
-          type: number
+          type: [number, 'null']
           format: double
-          nullable: true
         precision:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         timestamp:
           type: string
           format: date-time
         flags:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
     IngestBody:
       type: object
       properties:
@@ -1236,16 +1507,14 @@ components:
           type: string
           description: Device associated with the batch.
         deviceName:
-          type: string
-          nullable: true
+          type: [string, 'null']
           description: Friendly device name, if one is set.
         count:
           type: integer
           description: Number of points recorded in the batch.
         processedAt:
-          type: string
+          type: [string, 'null']
           format: date-time
-          nullable: true
           description: Timestamp when the batch was processed.
         visibility:
           $ref: '#/components/schemas/BatchVisibility'
@@ -1286,21 +1555,74 @@ components:
             $ref: '#/components/schemas/PublicBatchDetail'
       required:
         - batches
+    PublicDemoBatchSetting:
+      oneOf:
+        - $ref: '#/components/schemas/PublicBatchSummary'
+        - type: 'null'
+    DemoBatch:
+      type: object
+      required:
+        - deviceId
+        - batchId
+        - summary
+      properties:
+        deviceId:
+          type: string
+        batchId:
+          type: string
+        summary:
+          $ref: '#/components/schemas/AdminSubmissionSummary'
+    DemoBatchSetting:
+      oneOf:
+        - $ref: '#/components/schemas/DemoBatch'
+        - type: 'null'
+    DemoBatchUpdateRequest:
+      type: object
+      required:
+        - deviceId
+        - batchId
+      properties:
+        deviceId:
+          type: string
+          minLength: 1
+        batchId:
+          type: string
+          minLength: 1
+      additionalProperties: false
+    BatchVisibilityUpdateRequest:
+      type: object
+      required:
+        - visibility
+      properties:
+        visibility:
+          $ref: '#/components/schemas/BatchVisibility'
+      additionalProperties: false
+    DeleteBatchResponse:
+      type: object
+      required:
+        - status
+        - deviceId
+        - batchId
+      properties:
+        status:
+          type: string
+          enum: [deleted]
+        deviceId:
+          type: string
+        batchId:
+          type: string
     AdminSubmissionSummary:
       allOf:
         - $ref: '#/components/schemas/BatchSummary'
         - type: object
           properties:
             moderationReason:
-              type: string
-              nullable: true
+              type: [string, 'null']
             moderatedBy:
-              type: string
-              nullable: true
+              type: [string, 'null']
             moderatedAt:
-              type: string
+              type: [string, 'null']
               format: date-time
-              nullable: true
     AdminSubmissionListResponse:
       type: object
       properties:
@@ -1318,15 +1640,13 @@ components:
         moderationState:
           $ref: '#/components/schemas/ModerationState'
         reason:
-          type: string
-          nullable: true
+          type: [string, 'null']
           maxLength: 500
     AdminDeviceSuspendRequest:
       type: object
       properties:
         reason:
-          type: string
-          nullable: true
+          type: [string, 'null']
           maxLength: 500
     AdminRole:
       type: string
@@ -1339,8 +1659,7 @@ components:
         uid:
           type: string
         email:
-          type: string
-          nullable: true
+          type: [string, 'null']
         disabled:
           type: boolean
         roles:
@@ -1348,13 +1667,11 @@ components:
           items:
             $ref: '#/components/schemas/AdminRole'
         createdAt:
-          type: string
+          type: [string, 'null']
           format: date-time
-          nullable: true
         lastSignInAt:
-          type: string
+          type: [string, 'null']
           format: date-time
-          nullable: true
       required:
         - uid
         - disabled
@@ -1367,8 +1684,7 @@ components:
           items:
             $ref: '#/components/schemas/AdminUserSummary'
         nextPageToken:
-          type: string
-          nullable: true
+          type: [string, 'null']
       required:
         - users
         - nextPageToken
@@ -1425,17 +1741,15 @@ components:
           type: string
           enum: [active, inactive, trialing, past_due, canceled]
         billingInterval:
-          type: string
-          nullable: true
-          enum: [month, year]
+          type: [string, 'null']
+          enum: [month, year, null]
         canManageBilling:
           type: boolean
         cancelAtPeriodEnd:
           type: boolean
         currentPeriodEnd:
-          type: string
+          type: [string, 'null']
           format: date-time
-          nullable: true
         videoDownloadAccess:
           type: string
           enum: [preview_watermarked, full]
@@ -1514,21 +1828,17 @@ components:
         description:
           type: string
         currency:
-          type: string
-          nullable: true
+          type: [string, 'null']
         unitAmount:
-          type: integer
-          nullable: true
+          type: [integer, 'null']
         billingInterval:
-          type: string
-          nullable: true
-          enum: [month, year]
+          type: [string, 'null']
+          enum: [month, year, null]
         action:
           type: string
           enum: [checkout, contact]
         contactEmail:
-          type: string
-          nullable: true
+          type: [string, 'null']
       required:
         - offerId
         - planId

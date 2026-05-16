@@ -7,9 +7,10 @@ export const APP_ROUTES = {
   pairingGuide: "/pairing-guide",
   about: "/about",
   node: "/node",
+  apiDocs: "/api-docs",
 } as const;
 
-export type DeepLinkedAppTab = "pairing-info" | "about" | "node";
+export type DeepLinkedAppTab = "pairing-info" | "about" | "node" | "api-docs";
 export type RoutedAppTab = "home" | "map" | "dashboard" | "admin" | DeepLinkedAppTab;
 
 const ROUTED_TAB_ROUTES: Record<RoutedAppTab, string> = {
@@ -20,6 +21,7 @@ const ROUTED_TAB_ROUTES: Record<RoutedAppTab, string> = {
   "pairing-info": APP_ROUTES.pairingGuide,
   about: APP_ROUTES.about,
   node: APP_ROUTES.node,
+  "api-docs": APP_ROUTES.apiDocs,
 };
 
 const ROUTED_TAB_ROUTE_ENTRIES = [
@@ -29,6 +31,7 @@ const ROUTED_TAB_ROUTE_ENTRIES = [
   ["pairing-info", APP_ROUTES.pairingGuide],
   ["about", APP_ROUTES.about],
   ["node", APP_ROUTES.node],
+  ["api-docs", APP_ROUTES.apiDocs],
   ["home", APP_ROUTES.home],
 ] as const satisfies readonly [RoutedAppTab, string][];
 
@@ -53,7 +56,7 @@ export function getAppTabFromPath(pathname: string): RoutedAppTab | null {
 
 export function getDeepLinkedAppTab(pathname: string): DeepLinkedAppTab | null {
   const tab = getAppTabFromPath(pathname);
-  return tab === "pairing-info" || tab === "about" || tab === "node" ? tab : null;
+  return tab === "pairing-info" || tab === "about" || tab === "node" || tab === "api-docs" ? tab : null;
 }
 
 export function getRouteForAppTab(tab: RoutedAppTab): string {

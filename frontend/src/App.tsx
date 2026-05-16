@@ -92,6 +92,7 @@ const ActivationPage = lazy(async () => {
 const PairingInfoPage = lazy(() => import("./pages/PairingInfoPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
 const NodePage = lazy(() => import("./pages/NodePage"));
+const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const ThemeSettingsControls = lazy(async () => {
   const module = await import("./components/ThemeSettingsControls");
   return { default: module.ThemeSettingsControls };
@@ -151,7 +152,13 @@ export default function App() {
   const isSignedIn = Boolean(user);
   const tab = routeTab ?? requestedTab;
   const preferredTab = user && subscriptionCheckoutNotice ? "dashboard" : tab;
-  const activeTab = !isSignedIn && preferredTab !== "home" && preferredTab !== "map" && preferredTab !== "pairing-info" && preferredTab !== "about" && preferredTab !== "node"
+  const activeTab = !isSignedIn
+    && preferredTab !== "home"
+    && preferredTab !== "map"
+    && preferredTab !== "pairing-info"
+    && preferredTab !== "about"
+    && preferredTab !== "node"
+    && preferredTab !== "api-docs"
     ? "home"
     : (preferredTab === "admin" && !canAccessAdmin ? "home" : preferredTab);
   const isThemeModalOpen = isThemeModalRequested || Boolean(themeCheckoutNotice);
@@ -604,6 +611,8 @@ export default function App() {
                     <AboutPage onOpenTeamModal={openTeamModal} />
                   ) : activeTab === "node" ? (
                     <NodePage />
+                  ) : activeTab === "api-docs" ? (
+                    <ApiDocsPage />
                   ) : (
                     <Flex
                       direction="column"
