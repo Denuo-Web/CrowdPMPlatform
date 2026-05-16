@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  validate:
+  lint:
     runs-on: ubuntu-latest
 
     steps:
