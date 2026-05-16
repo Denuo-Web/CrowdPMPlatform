@@ -1,4 +1,4 @@
-name: Lint
+name: Pull Request Checks
 
 permissions:
   contents: read
@@ -32,3 +32,9 @@ jobs:
 
       - name: Run lint
         run: pnpm lint
+
+      - name: Run functions tests
+        run: pnpm --filter crowdpm-functions test
+
+      - name: Build workspace
+        run: pnpm build

@@ -14,6 +14,7 @@ import {
   type LegalDocumentId,
 } from "../components/LegalDocumentDialog";
 import { ExternalLink } from "../components/ExternalLink";
+import { APP_ROUTES } from "../lib/appRoutes";
 import { PROJECT_LINKS } from "../lib/projectLinks";
 
 type AboutPageProps = {
@@ -207,6 +208,12 @@ export default function AboutPage({ onOpenTeamModal }: AboutPageProps) {
             <ExternalLink href={PROJECT_LINKS.repository} color="iris" highContrast>
               GitHub
             </ExternalLink>.
+          </Text>
+          <Text size="2" color="gray" as="p" mt="3">
+            The live REST contract is available in the{" "}
+            <Link href={APP_ROUTES.apiDocs} color="iris" highContrast>
+              Swagger API reference
+            </Link>.
           </Text>
         </Box>
       </Flex>

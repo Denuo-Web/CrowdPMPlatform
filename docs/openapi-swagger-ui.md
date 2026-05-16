@@ -1,12 +1,18 @@
 # OpenAPI In Swagger UI
 
-Use Swagger UI locally to inspect `functions/src/openapi.yaml`.
+Use Swagger UI to inspect `functions/src/openapi.yaml`.
+
+## Hosted
+
+Deployed frontend builds publish a live Swagger UI page at `/api-docs` on the
+main app origin. The page bundles the OpenAPI file from `functions/src/openapi.yaml`
+at build time, so it stays aligned with the shipped frontend artifact.
 
 ## Prerequisite
 
 - Docker installed and running.
 
-## Run
+## Local Run
 
 From the repository root:
 

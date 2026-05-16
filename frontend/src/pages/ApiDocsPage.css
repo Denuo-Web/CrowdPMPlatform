@@ -1,0 +1,38 @@
+.api-docs-page .swagger-ui {
+  font-family: inherit;
+  color: var(--gray-12);
+}
+
+.api-docs-page .swagger-ui .topbar {
+  display: none;
+}
+
+.api-docs-page .swagger-ui .scheme-container {
+  background: color-mix(in srgb, var(--color-panel-solid) 92%, white);
+  box-shadow: none;
+  border-block: 1px solid var(--gray-5);
+}
+
+.api-docs-page .swagger-ui .information-container,
+.api-docs-page .swagger-ui .wrapper {
+  padding-inline: 0;
+}
+
+.api-docs-page .swagger-ui .info {
+  margin: 0 0 var(--space-4);
+}
+
+.api-docs-page .swagger-ui .info .title,
+.api-docs-page .swagger-ui .opblock-tag,
+.api-docs-page .swagger-ui .opblock-summary-path {
+  color: var(--gray-12);
+}
+
+.api-docs-page .swagger-ui .btn.authorize,
+.api-docs-page .swagger-ui .btn.execute {
+  border-radius: 8px;
+}
+
+.api-docs-page .swagger-ui .opblock {
+  border-radius: 8px;
+}
