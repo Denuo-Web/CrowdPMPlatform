@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Box, Button, Callout, Card, Flex, Heading, Link, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
@@ -119,11 +119,11 @@ export default function UserDashboard({
   const batchesError = batchesQuery.error instanceof Error ? batchesQuery.error.message : null;
   const receiptsError = receiptsQuery.error instanceof Error ? receiptsQuery.error.message : null;
   const [revokeError, setRevokeError] = useState<string | null>(null);
-  const [devicePageIndex, setDevicePageIndex] = useState(0);
+  const [devicePageIndexInput, setDevicePageIndexInput] = useState(0);
   const [selectedBatchDeviceId, setSelectedBatchDeviceId] = useState<string>("all");
   const [batchActionError, setBatchActionError] = useState<string | null>(null);
   const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
-  const [batchPageIndex, setBatchPageIndex] = useState(0);
+  const [batchPageIndexInput, setBatchPageIndexInput] = useState(0);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
@@ -132,6 +132,7 @@ export default function UserDashboard({
   const [isOpeningBillingPortal, setOpeningBillingPortal] = useState(false);
   const activationUrl = useMemo(() => buildActivationLink(), []);
   const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
+  const handledSubscriptionCheckoutRef = useRef<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
     if (!user) return;
@@ -195,17 +196,21 @@ export default function UserDashboard({
     if (!user || !subscriptionCheckoutNotice) {
       return;
     }
+    const handledKey = `${user.uid}:${subscriptionCheckoutNotice}:${subscriptionCheckoutSessionId ?? "none"}`;
+    if (handledSubscriptionCheckoutRef.current === handledKey) {
+      return;
+    }
+    handledSubscriptionCheckoutRef.current = handledKey;
     let cancelled = false;
-
-    setSubscriptionError(null);
-    setSubscriptionMessage(
-      subscriptionCheckoutNotice === "cancelled"
-        ? "Subscription checkout was cancelled before it completed."
-        : "Subscription checkout completed. Refreshing account access…"
-    );
 
     void (async () => {
       try {
+        setSubscriptionError(null);
+        setSubscriptionMessage(
+          subscriptionCheckoutNotice === "cancelled"
+            ? "Subscription checkout was cancelled before it completed."
+            : "Subscription checkout completed. Refreshing account access…"
+        );
         if (subscriptionCheckoutNotice === "success" && subscriptionCheckoutSessionId) {
           await confirmSubscriptionCheckoutSession(subscriptionCheckoutSessionId);
         }
@@ -241,8 +246,8 @@ export default function UserDashboard({
     user,
   ]);
 
-  const ownedCount = useMemo(() => devices.length, [devices]);
-  const completedReceiptCount = useMemo(() => receipts.length, [receipts.length]);
+  const ownedCount = devices.length;
+  const completedReceiptCount = receipts.length;
   const activeCount = useMemo(
     () => devices.filter((device) => describeStatus(device.registryStatus ?? device.status).tone === "green").length,
     [devices],
@@ -271,16 +276,22 @@ export default function UserDashboard({
         label: deviceNameLookup.get(id) ?? batches.find((batch) => batch.deviceId === id)?.deviceName ?? id,
       }));
   }, [batches, deviceNameLookup, devices]);
+  const effectiveSelectedBatchDeviceId = selectedBatchDeviceId === "all"
+    || batchDeviceOptions.some((option) => option.id === selectedBatchDeviceId)
+    ? selectedBatchDeviceId
+    : "all";
   const filteredBatches = useMemo(() => {
-    const byDevice = selectedBatchDeviceId === "all"
+    const byDevice = effectiveSelectedBatchDeviceId === "all"
       ? batches
-      : batches.filter((batch) => batch.deviceId === selectedBatchDeviceId);
+      : batches.filter((batch) => batch.deviceId === effectiveSelectedBatchDeviceId);
     return [...byDevice].sort((a, b) => {
       const timeA = timestampToMillis(a.processedAt) ?? 0;
       const timeB = timestampToMillis(b.processedAt) ?? 0;
       return timeB - timeA;
     });
-  }, [batches, selectedBatchDeviceId]);
+  }, [batches, effectiveSelectedBatchDeviceId]);
+  const devicePageIndex = clampPageIndex(devices.length, devicePageIndexInput);
+  const batchPageIndex = clampPageIndex(filteredBatches.length, batchPageIndexInput);
   const devicePagination = useMemo(
     () => getPaginationWindow(devices.length, devicePageIndex),
     [devicePageIndex, devices.length],
@@ -297,28 +308,6 @@ export default function UserDashboard({
     () => filteredBatches.slice(batchPagination.pageStart, batchPagination.pageEnd),
     [batchPagination.pageEnd, batchPagination.pageStart, filteredBatches],
   );
-
-  useEffect(() => {
-    if (selectedBatchDeviceId === "all") return;
-    const stillExists = batchDeviceOptions.some((option) => option.id === selectedBatchDeviceId);
-    if (!stillExists) {
-      setSelectedBatchDeviceId("all");
-    }
-  }, [batchDeviceOptions, selectedBatchDeviceId]);
-
-  useEffect(() => {
-    const nextPageIndex = clampPageIndex(devices.length, devicePageIndex);
-    if (nextPageIndex !== devicePageIndex) {
-      setDevicePageIndex(nextPageIndex);
-    }
-  }, [devicePageIndex, devices.length]);
-
-  useEffect(() => {
-    const nextPageIndex = clampPageIndex(filteredBatches.length, batchPageIndex);
-    if (nextPageIndex !== batchPageIndex) {
-      setBatchPageIndex(nextPageIndex);
-    }
-  }, [batchPageIndex, filteredBatches.length]);
 
   const handleDefaultVisibilityChange = useCallback(async (nextValue: string) => {
     const next = nextValue as BatchVisibility;
@@ -434,6 +423,11 @@ export default function UserDashboard({
   const handleOpenActivation = useCallback(() => {
     onRequestActivation();
   }, [onRequestActivation]);
+
+  const handleBatchDeviceFilterChange = useCallback((nextValue: string) => {
+    setSelectedBatchDeviceId(nextValue);
+    setBatchPageIndexInput(0);
+  }, []);
 
   const handleCopyActivationLink = useCallback(async () => {
     try {
@@ -772,8 +766,8 @@ export default function UserDashboard({
               pageStart={devicePagination.pageStart}
               pageEnd={devicePagination.pageEnd}
               totalCount={devices.length}
-              onShowLess={() => setDevicePageIndex((current) => clampPageIndex(devices.length, current - 1))}
-              onShowMore={() => setDevicePageIndex((current) => clampPageIndex(devices.length, current + 1))}
+              onShowLess={() => setDevicePageIndexInput((current) => current - 1)}
+              onShowMore={() => setDevicePageIndexInput((current) => current + 1)}
             />
           </Flex>
           <Separator my="2" size="4" />
@@ -853,14 +847,14 @@ export default function UserDashboard({
             </Box>
             <Flex align="center" gap="2" wrap="wrap">
               <ResultCountControl
-                itemLabelSingular="batch"
-                itemLabelPlural="batches"
-                pageStart={batchPagination.pageStart}
-                pageEnd={batchPagination.pageEnd}
-                totalCount={filteredBatches.length}
-                onShowLess={() => setBatchPageIndex((current) => clampPageIndex(filteredBatches.length, current - 1))}
-                onShowMore={() => setBatchPageIndex((current) => clampPageIndex(filteredBatches.length, current + 1))}
-              />
+              itemLabelSingular="batch"
+              itemLabelPlural="batches"
+              pageStart={batchPagination.pageStart}
+              pageEnd={batchPagination.pageEnd}
+              totalCount={filteredBatches.length}
+              onShowLess={() => setBatchPageIndexInput((current) => current - 1)}
+              onShowMore={() => setBatchPageIndexInput((current) => current + 1)}
+            />
               <Button variant="soft" onClick={refreshBatches} disabled={isLoadingBatches}>
                 <ReloadIcon /> {isLoadingBatches ? "Refreshing" : "Refresh"}
               </Button>
@@ -872,7 +866,7 @@ export default function UserDashboard({
           <Flex direction={{ initial: "column", sm: "row" }} align={{ initial: "start", sm: "center" }} gap="2">
             <Text size="2" color="gray">Device filter</Text>
             <Box style={{ width: "min(360px, 100%)" }}>
-              <Select.Root value={selectedBatchDeviceId} onValueChange={setSelectedBatchDeviceId}>
+              <Select.Root value={effectiveSelectedBatchDeviceId} onValueChange={handleBatchDeviceFilterChange}>
                 <Select.Trigger />
                 <Select.Content>
                   <Select.Item value="all">All devices</Select.Item>

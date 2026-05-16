@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToMillis } from "@crowdpm/types";
 import {
@@ -146,8 +146,8 @@ export default function AdminModerationPage() {
 
   const [moderationFilter, setModerationFilter] = useState<SubmissionFilterState>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
-  const [submissionPageIndex, setSubmissionPageIndex] = useState(0);
-  const [userPageIndex, setUserPageIndex] = useState(0);
+  const [submissionPageIndexInput, setSubmissionPageIndexInput] = useState(0);
+  const [userPageIndexInput, setUserPageIndexInput] = useState(0);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmationReason, setConfirmationReason] = useState("");
 
@@ -201,6 +201,8 @@ export default function AdminModerationPage() {
     ?? (demoBatchOptionsQuery.error instanceof Error ? demoBatchOptionsQuery.error.message : null);
   const userError = userActionError
     ?? (usersQuery.error instanceof Error ? usersQuery.error.message : null);
+  const submissionPageIndex = clampPageIndex(submissions.length, submissionPageIndexInput);
+  const userPageIndex = clampPageIndex(users.length, userPageIndexInput);
   const submissionPagination = useMemo(
     () => getPaginationWindow(submissions.length, submissionPageIndex),
     [submissionPageIndex, submissions.length],
@@ -236,25 +238,11 @@ export default function AdminModerationPage() {
     const nextToken = nextPageToken ?? null;
     if (nextToken !== usersPageTokenInput) {
       setUsersPageTokenInput(nextToken);
-      setUserPageIndex(0);
+      setUserPageIndexInput(0);
       return;
     }
     await usersQuery.refetch();
   }, [canManageUsers, usersPageTokenInput, usersQuery]);
-
-  useEffect(() => {
-    const nextPageIndex = clampPageIndex(submissions.length, submissionPageIndex);
-    if (nextPageIndex !== submissionPageIndex) {
-      setSubmissionPageIndex(nextPageIndex);
-    }
-  }, [submissionPageIndex, submissions.length]);
-
-  useEffect(() => {
-    const nextPageIndex = clampPageIndex(users.length, userPageIndex);
-    if (nextPageIndex !== userPageIndex) {
-      setUserPageIndex(nextPageIndex);
-    }
-  }, [userPageIndex, users.length]);
 
   const handleModerationChange = useCallback((entry: AdminSubmissionSummary, moderationState: ModerationState) => {
     if (!canAccessAdmin) return;
@@ -466,8 +454,8 @@ export default function AdminModerationPage() {
               pageStart={submissionPagination.pageStart}
               pageEnd={submissionPagination.pageEnd}
               totalCount={submissions.length}
-              onShowLess={() => setSubmissionPageIndex((current) => clampPageIndex(submissions.length, current - 1))}
-              onShowMore={() => setSubmissionPageIndex((current) => clampPageIndex(submissions.length, current + 1))}
+              onShowLess={() => setSubmissionPageIndexInput((current) => current - 1)}
+              onShowMore={() => setSubmissionPageIndexInput((current) => current + 1)}
             />
           </Flex>
           <Flex gap="3" wrap="wrap" align="end">
@@ -567,8 +555,8 @@ export default function AdminModerationPage() {
                 pageStart={userPagination.pageStart}
                 pageEnd={userPagination.pageEnd}
                 totalCount={users.length}
-                onShowLess={() => setUserPageIndex((current) => clampPageIndex(users.length, current - 1))}
-                onShowMore={() => setUserPageIndex((current) => clampPageIndex(users.length, current + 1))}
+                onShowLess={() => setUserPageIndexInput((current) => current - 1)}
+                onShowMore={() => setUserPageIndexInput((current) => current + 1)}
               />
             </Flex>
             <Flex gap="3" wrap="wrap" align="center">

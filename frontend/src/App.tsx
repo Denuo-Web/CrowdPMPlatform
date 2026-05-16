@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { UserThemeSettings } from "@crowdpm/types";
 import type { AuthMode } from "./components/AuthDialog";
 import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
@@ -144,24 +144,28 @@ export default function App() {
   const { settings } = useUserSettings();
   const location = useBrowserLocation();
   const userScopedKey = user?.uid ?? "anon";
-  const [tab, setTab] = useState<AppTab>(() => getDeepLinkedAppTab(location.pathname) ?? "map");
+  const [requestedTab, setRequestedTab] = useState<AppTab>(() => getDeepLinkedAppTab(location.pathname) ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
-  const [isActivationModalOpen, setActivationModalOpen] = useState(() => isActivationRoute(location.pathname));
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
-  const [isThemeModalOpen, setThemeModalOpen] = useState(() => Boolean(readThemeCheckoutNotice(location.search)));
-  const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(() => readThemeCheckoutNotice(location.search));
-  const [themeCheckoutSessionId, setThemeCheckoutSessionId] = useState<string | null>(() => readThemeCheckoutSessionId(location.search));
-  const [subscriptionCheckoutNotice, setSubscriptionCheckoutNotice] = useState<SubscriptionCheckoutNotice>(() => readSubscriptionCheckoutNotice(location.search));
-  const [subscriptionCheckoutSessionId, setSubscriptionCheckoutSessionId] = useState<string | null>(() => readSubscriptionCheckoutSessionId(location.search));
+  const [isThemeModalRequested, setThemeModalRequested] = useState(false);
   const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
 
+  const themeCheckoutNotice = readThemeCheckoutNotice(location.search);
+  const themeCheckoutSessionId = readThemeCheckoutSessionId(location.search);
+  const subscriptionCheckoutNotice = readSubscriptionCheckoutNotice(location.search);
+  const subscriptionCheckoutSessionId = readSubscriptionCheckoutSessionId(location.search);
+  const routeTab = getDeepLinkedAppTab(location.pathname);
+  const isActivationModalOpen = isActivationRoute(location.pathname);
   const isSignedIn = Boolean(user);
-  const activeTab = !isSignedIn && tab !== "map" && tab !== "pairing-info" && tab !== "about" && tab !== "node"
+  const tab = routeTab ?? (isDeepLinkedTab(requestedTab) ? "map" : requestedTab);
+  const preferredTab = user && subscriptionCheckoutNotice ? "dashboard" : tab;
+  const activeTab = !isSignedIn && preferredTab !== "map" && preferredTab !== "pairing-info" && preferredTab !== "about" && preferredTab !== "node"
     ? "map"
-    : (tab === "admin" && !canAccessAdmin ? "map" : tab);
-  const activeTheme = themeDraft ?? settings.theme;
+    : (preferredTab === "admin" && !canAccessAdmin ? "map" : preferredTab);
+  const isThemeModalOpen = isThemeModalRequested || Boolean(themeCheckoutNotice);
+  const activeTheme = user ? themeDraft ?? settings.theme : settings.theme;
   const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
     ? isDarkTheme
@@ -176,19 +180,34 @@ export default function App() {
     setAuthDialogOpen(true);
   };
 
+  const navigateToTab = useCallback((nextTab: AppTab) => {
+    const pathname = location.pathname.toLowerCase();
+    setRequestedTab(nextTab);
+
+    if (isDeepLinkedTab(nextTab)) {
+      const targetRoute = getRouteForDeepLinkedAppTab(nextTab);
+      if (!pathname.startsWith(targetRoute)) {
+        pushAppLocation(targetRoute);
+      }
+      return;
+    }
+
+    if (isActivationRoute(pathname) || isDeepLinkedAppRoute(pathname)) {
+      replaceAppLocation(APP_ROUTES.home);
+    }
+  }, [location.pathname]);
+
   const closeThemeModal = useCallback(() => {
-    setThemeModalOpen(false);
+    setThemeModalRequested(false);
     setThemeDraft(null);
     if (themeCheckoutNotice || themeCheckoutSessionId) {
-      setThemeCheckoutNotice(null);
-      setThemeCheckoutSessionId(null);
       clearThemeCheckoutNoticeFromUrl();
     }
   }, [themeCheckoutNotice, themeCheckoutSessionId]);
 
   const handleThemeModalOpenChange = useCallback((next: boolean) => {
     if (next) {
-      setThemeModalOpen(true);
+      setThemeModalRequested(true);
       return;
     }
     closeThemeModal();
@@ -199,48 +218,21 @@ export default function App() {
       closeThemeModal();
       return;
     }
-    setThemeModalOpen(true);
+    setThemeModalRequested(true);
   }, [closeThemeModal, isThemeModalOpen]);
 
   const openThemeModal = useCallback(() => {
-    setThemeModalOpen(true);
+    setThemeModalRequested(true);
   }, []);
 
   const openTeamModal = useCallback(() => {
     setTeamModalOpen(true);
   }, []);
 
-  useEffect(() => {
-    const nextThemeNotice = readThemeCheckoutNotice(location.search);
-    const nextThemeSessionId = readThemeCheckoutSessionId(location.search);
-    const nextSubscriptionNotice = readSubscriptionCheckoutNotice(location.search);
-    const nextSubscriptionSessionId = readSubscriptionCheckoutSessionId(location.search);
-
-    setThemeCheckoutNotice(nextThemeNotice);
-    setThemeCheckoutSessionId(nextThemeSessionId);
-    setSubscriptionCheckoutNotice(nextSubscriptionNotice);
-    setSubscriptionCheckoutSessionId(nextSubscriptionSessionId);
-
-    if (nextThemeNotice) {
-      setThemeModalOpen(true);
-    }
-  }, [location.search]);
-
-  useEffect(() => {
-    if (user) return;
-    setThemeDraft(null);
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || !subscriptionCheckoutNotice) return;
-    setTab("dashboard");
-    setDashboardRefreshToken((prev) => prev + 1);
-  }, [subscriptionCheckoutNotice, user]);
-
   const handleProtectedTabClick = (target: "dashboard" | "admin") => {
     if (user) {
       if (target === "admin" && !canAccessAdmin) return;
-      setTab(target);
+      navigateToTab(target);
       return;
     }
     openAuthDialog("login");
@@ -249,93 +241,78 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      setTab("map");
+      setRequestedTab("map");
+      setThemeDraft(null);
+      setThemeModalRequested(false);
     }
     catch (err) {
       logWarning("Sign out failed", undefined, err);
     }
   };
 
+  const handleThemeShortcut = useEffectEvent((event: KeyboardEvent) => {
+    const isModifierActive = event.altKey || event.ctrlKey || event.shiftKey || event.metaKey;
+    if (event.key?.toUpperCase() !== "T" || isModifierActive) return;
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof Element && activeElement.closest(THEME_SHORTCUT_IGNORED_SELECTOR)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    toggleThemeModal();
+  });
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handleThemeShortcut = (event: KeyboardEvent) => {
-      const isModifierActive = event.altKey || event.ctrlKey || event.shiftKey || event.metaKey;
-      if (event.key?.toUpperCase() !== "T" || isModifierActive) return;
-
-      const activeElement = document.activeElement;
-      if (activeElement instanceof Element && activeElement.closest(THEME_SHORTCUT_IGNORED_SELECTOR)) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      toggleThemeModal();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleThemeShortcut(event);
     };
 
-    window.addEventListener("keydown", handleThemeShortcut, true);
-    return () => window.removeEventListener("keydown", handleThemeShortcut, true);
-  }, [toggleThemeModal]);
-
-  useEffect(() => {
-    const pathname = location.pathname.toLowerCase();
-    if (isActivationRoute(pathname)) {
-      setActivationModalOpen(true);
-      return;
-    }
-    setActivationModalOpen(false);
-
-    const deepLinkedTab = getDeepLinkedAppTab(pathname);
-    if (deepLinkedTab) {
-      setTab(deepLinkedTab);
-    }
-    else {
-      setTab((currentTab) => isDeepLinkedTab(currentTab) ? "map" : currentTab);
-    }
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (isActivationModalOpen) {
-      if (!isActivationRoute(location.pathname)) {
-        pushAppLocation(APP_ROUTES.activation);
-      }
-    }
-    else if (isActivationRoute(location.pathname)) {
-      replaceAppLocation(APP_ROUTES.home);
-    }
-  }, [isActivationModalOpen, location.pathname]);
-
-  useEffect(() => {
-    const pathname = location.pathname.toLowerCase();
-    if (isDeepLinkedTab(tab)) {
-      const targetRoute = getRouteForDeepLinkedAppTab(tab);
-      if (!pathname.startsWith(targetRoute)) {
-        pushAppLocation(targetRoute);
-      }
-    }
-    else if (isDeepLinkedAppRoute(pathname)) {
-      replaceAppLocation(APP_ROUTES.home);
-    }
-  }, [location.pathname, tab]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
 
   const openActivationModal = () => {
     if (!user) {
       openAuthDialog("login");
       return;
     }
-    setActivationModalOpen(true);
+    if (!isActivationModalOpen) {
+      pushAppLocation(APP_ROUTES.activation);
+    }
   };
 
+  const handleActivationModalOpenChange = useCallback((next: boolean) => {
+    if (next) {
+      if (!user) {
+        openAuthDialog("login");
+        return;
+      }
+      if (!isActivationModalOpen) {
+        pushAppLocation(APP_ROUTES.activation);
+      }
+      return;
+    }
+
+    if (isActivationModalOpen) {
+      replaceAppLocation(APP_ROUTES.home);
+    }
+  }, [isActivationModalOpen, user]);
+
   const handleActivationComplete = () => {
-    setActivationModalOpen(false);
-    setTab("dashboard");
+    setRequestedTab("dashboard");
     setDashboardRefreshToken((prev) => prev + 1);
+    if (isActivationModalOpen) {
+      replaceAppLocation(APP_ROUTES.home);
+    }
   };
 
   const handleSubscriptionCheckoutHandled = useCallback(() => {
     if (!subscriptionCheckoutNotice && !subscriptionCheckoutSessionId) {
       return;
     }
-    setSubscriptionCheckoutNotice(null);
-    setSubscriptionCheckoutSessionId(null);
+    setRequestedTab("dashboard");
     clearSubscriptionCheckoutNoticeFromUrl();
   }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
 
@@ -362,7 +339,7 @@ export default function App() {
     >
       <ActivationModal
         open={isActivationModalOpen}
-        onOpenChange={setActivationModalOpen}
+        onOpenChange={handleActivationModalOpenChange}
         onActivationComplete={handleActivationComplete}
       />
       <TeamModal open={isTeamModalOpen} onOpenChange={setTeamModalOpen} isSignedIn={isSignedIn} />
@@ -413,12 +390,12 @@ export default function App() {
           }}
         >
           {/* Clickable logo + title — navigates back to map */}
-          <button
-            type="button"
-            onClick={() => setTab("map")}
-            style={{
-              display: "flex",
-              alignItems: "center",
+            <button
+              type="button"
+              onClick={() => navigateToTab("map")}
+              style={{
+                display: "flex",
+                alignItems: "center",
               gap: 10,
               background: "none",
               border: "none",
@@ -488,14 +465,14 @@ export default function App() {
           </DropdownMenu.Trigger>
           <DropdownMenu.Content sideOffset={8} align="start">
             <DropdownMenu.Item
-              onSelect={() => setTab("map")}
+              onSelect={() => navigateToTab("map")}
               style={activeTab === "map" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
               Map
             </DropdownMenu.Item>
             <DropdownMenu.Item
-              onSelect={() => setTab("node")}
+              onSelect={() => navigateToTab("node")}
               style={activeTab === "node" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
@@ -520,7 +497,7 @@ export default function App() {
                   </DropdownMenu.Item>
                 ) : null}
                 <DropdownMenu.Item
-                  onSelect={() => setTab("about")}
+                  onSelect={() => navigateToTab("about")}
                   style={activeTab === "about" ? { fontWeight: 600 } : undefined}
                   disabled={isLoading}
                 >
@@ -529,7 +506,7 @@ export default function App() {
               </>
             ) : (
               <DropdownMenu.Item
-                onSelect={() => setTab("about")}
+                onSelect={() => navigateToTab("about")}
                 style={activeTab === "about" ? { fontWeight: 600 } : undefined}
                 disabled={isLoading}
               >
@@ -655,7 +632,7 @@ export default function App() {
             mode={authMode}
             onModeChange={setAuthMode}
             onOpenChange={setAuthDialogOpen}
-            onAuthenticated={() => setTab("dashboard")}
+            onAuthenticated={() => navigateToTab("dashboard")}
           />
         ) : null}
       </Suspense>
@@ -710,41 +687,54 @@ function ThemePreferencesModal({
 }: ThemePreferencesModalProps) {
   const { user } = useAuth();
   const { settings, refresh, isLoading, isSaving, updateSettings } = useUserSettings();
-  const [message, setMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [isConfirmingCheckout, setIsConfirmingCheckout] = useState(false);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
+  const confirmationAttemptKeyRef = useRef<string | null>(null);
   const controlsDisabled = isLoading || isSaving || isStartingCheckout || isConfirmingCheckout;
   const hasUnsavedChanges = JSON.stringify(theme) !== JSON.stringify(settings.theme);
   const saveDisabled = controlsDisabled || !user || !settings.themeSaveUnlocked || !hasUnsavedChanges;
   const unlockDisabled = controlsDisabled || !user || settings.themeSaveUnlocked;
-
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    if (checkoutNotice === "success") {
-      setMessage(settings.themeSaveUnlocked
+  const checkoutNoticeMessage = !open
+    ? null
+    : checkoutNotice === "success"
+      ? (settings.themeSaveUnlocked
         ? "Theme saving is now unlocked for this account."
-        : "Theme purchase completed. If saving is still locked, give the account a moment to refresh.");
-      return;
+        : "Theme purchase completed. If saving is still locked, give the account a moment to refresh.")
+      : checkoutNotice === "cancelled"
+        ? "Theme save unlock checkout was cancelled before payment completed."
+        : null;
+  const message = actionMessage ?? checkoutNoticeMessage;
+
+  const handleDialogOpenChange = useCallback((next: boolean) => {
+    if (!next) {
+      setActionMessage(null);
+      setError(null);
+      setIsStartingCheckout(false);
+      setIsConfirmingCheckout(false);
+      setOpenLegalDocument(null);
     }
-    if (checkoutNotice === "cancelled") {
-      setMessage("Theme save unlock checkout was cancelled before payment completed.");
-      return;
-    }
-    setMessage(null);
-  }, [checkoutNotice, open, settings.themeSaveUnlocked]);
+    onOpenChange(next);
+  }, [onOpenChange]);
 
   useEffect(() => {
     if (!open || checkoutNotice !== "success" || !user) {
-      setIsConfirmingCheckout(false);
       return;
     }
+    const confirmationKey = `${user.uid}:${checkoutSessionId ?? "none"}`;
+    if (confirmationAttemptKeyRef.current === confirmationKey) {
+      return;
+    }
+    confirmationAttemptKeyRef.current = confirmationKey;
     let isCancelled = false;
-    setIsConfirmingCheckout(true);
+
     void (async () => {
       try {
+        setActionMessage(null);
+        setError(null);
+        setIsConfirmingCheckout(true);
         if (checkoutSessionId) {
           await confirmThemeSaveCheckoutSession(checkoutSessionId);
         }
@@ -771,27 +761,27 @@ function ThemePreferencesModal({
 
   const handleSave = async () => {
     if (!user) {
-      setMessage(null);
+      setActionMessage(null);
       setError("Sign in to save theme preferences.");
       return;
     }
     if (!settings.themeSaveUnlocked) {
-      setMessage(null);
+      setActionMessage(null);
       setError("Purchase the theme save unlock to persist theme preferences.");
       return;
     }
     if (!hasUnsavedChanges) {
-      setMessage("No theme changes to save.");
+      setActionMessage("No theme changes to save.");
       setError(null);
       return;
     }
 
-    setMessage(null);
+    setActionMessage(null);
     setError(null);
     try {
       await updateSettings({ theme });
       onThemeSaved();
-      setMessage("Theme preferences saved.");
+      setActionMessage("Theme preferences saved.");
     }
     catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update theme preferences.");
@@ -800,12 +790,12 @@ function ThemePreferencesModal({
 
   const handlePurchaseThemeSave = async () => {
     if (!user) {
-      setMessage(null);
+      setActionMessage(null);
       setError("Sign in to purchase and save theme preferences.");
       return;
     }
 
-    setMessage(null);
+    setActionMessage(null);
     setError(null);
     setIsStartingCheckout(true);
     try {
@@ -820,7 +810,7 @@ function ThemePreferencesModal({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleDialogOpenChange}>
       <Dialog.Content
         size="3"
         style={{

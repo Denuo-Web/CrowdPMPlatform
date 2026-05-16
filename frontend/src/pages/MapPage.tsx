@@ -1,4 +1,4 @@
-import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToMillis, type IngestPoint, type UserThemeAppearance } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
@@ -22,10 +22,10 @@ import {
   MAX_PERSISTED_MAP_ZOOM,
   MIN_PERSISTED_MAP_ZOOM,
   normalizeStoredBatchSelection,
+  parseStoredTimelineIndexes,
   parseStoredMapZoom,
-  readStoredTimelineIndex,
   SHOW_ALL_PUBLIC_24H_KEY,
-  writeStoredTimelineIndex,
+  type StoredTimelineIndexes,
 } from "../lib/mapSelection";
 import {
   detectCanvasVideoExportSupport,
@@ -443,24 +443,43 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     () => scopedStorageKey(MAP_SELECTION_STORAGE_KEYS.lastTimelineIndex, user?.uid ?? undefined),
     [user?.uid]
   );
+  const [initialStoredSelection] = useState(() => normalizeStoredBatchSelection(safeLocalStorageGet(
+    userScopedSelectionKey,
+    null,
+    { context: "map:selected-batch:init", userId: user?.uid }
+  )));
+  const [initialStoredZoom] = useState(() => {
+    const rawValue = safeLocalStorageGet(
+      userScopedZoomKey,
+      null,
+      { context: "map:zoom:init", userId: user?.uid }
+    );
+    const parsedValue = parseStoredMapZoom(rawValue);
+    return {
+      value: parsedValue,
+      shouldClearInvalid: rawValue !== null && parsedValue === null,
+    };
+  });
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
-  const [selectedBatchKey, setSelectedBatchKey] = useState<string>("");
+  const [selectedBatchKeyState, setSelectedBatchKeyState] = useState<string>(initialStoredSelection.value);
   const [isDemoBatchLoading, setDemoBatchLoading] = useState(false);
-  const [persistedMapZoom, setPersistedMapZoom] = useState<number | null>(null);
-  const [zoomHydrationKey, setZoomHydrationKey] = useState<string | null>(null);
+  const [persistedMapZoom, setPersistedMapZoom] = useState<number | null>(initialStoredZoom.value);
+  const [storedTimelineIndexes, setStoredTimelineIndexes] = useState<StoredTimelineIndexes>(() => parseStoredTimelineIndexes(
+    safeLocalStorageGet(
+      userScopedTimelineKey,
+      null,
+      { context: "map:timeline:init", userId: user?.uid }
+    )
+  ));
   const [isBatchBrowserOpen, setBatchBrowserOpen] = useState(false);
-  const [batchBrowserPageIndex, setBatchBrowserPageIndex] = useState(0);
+  const [batchBrowserPageIndexInput, setBatchBrowserPageIndexInput] = useState(0);
   const [batchBrowserTimeRange, setBatchBrowserTimeRange] = useState<BatchBrowserTimeRange>("all");
   const [showPublicBatchBrowser, setShowPublicBatchBrowser] = useState(true);
   const [showPrivateBatchBrowser, setShowPrivateBatchBrowser] = useState(true);
-  const selectionHydratedRef = useRef<string | null>(null);
-  const zoomHydratedRef = useRef<string | null>(null);
-  const timelineHydratedRef = useRef<string | null>(null);
-  const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
-  const [captureAvailable, setCaptureAvailable] = useState(false);
+  const [captureAvailableState, setCaptureAvailableState] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -471,7 +490,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const [isVideoExportSettingsOpen, setVideoExportSettingsOpen] = useState(false);
   const [videoExportSettings, setVideoExportSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
-  const [isMapViewportActivated, setMapViewportActivated] = useState(false);
+  const [transientSelectedIndex, setTransientSelectedIndex] = useState<number | null>(null);
 
   const loadBatchSummaries = useCallback(async (ownedLimit?: number, publicLimit?: number) => {
     if (!user) {
@@ -483,6 +502,22 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     ]);
     return mergeBatchLists(owned, publicBatches);
   }, [user]);
+
+  useEffect(() => {
+    if (!initialStoredSelection.shouldClearInvalid) return;
+    safeLocalStorageRemove(
+      userScopedSelectionKey,
+      { context: "map:selected-batch:clear-invalid", userId: user?.uid }
+    );
+  }, [initialStoredSelection.shouldClearInvalid, user?.uid, userScopedSelectionKey]);
+
+  useEffect(() => {
+    if (!initialStoredZoom.shouldClearInvalid) return;
+    safeLocalStorageRemove(
+      userScopedZoomKey,
+      { context: "map:zoom:clear-invalid", userId: user?.uid }
+    );
+  }, [initialStoredZoom.shouldClearInvalid, user?.uid, userScopedZoomKey]);
 
   // Query #1: list of batches visible to the user.
   const batchesQuery = useQuery<VisibleBatchSummary[]>({
@@ -525,6 +560,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       return processedAtMs !== null && processedAtMs >= cutoff;
     });
   }, [batchBrowserBatches, batchBrowserTimeRange, showPrivateBatchBrowser, showPublicBatchBrowser]);
+  const batchBrowserPageIndex = clampPageIndex(filteredBatchBrowserBatches.length, batchBrowserPageIndexInput);
   const batchBrowserPagination = useMemo(
     () => getPaginationWindow(filteredBatchBrowserBatches.length, batchBrowserPageIndex),
     [filteredBatchBrowserBatches.length, batchBrowserPageIndex]
@@ -534,37 +570,38 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     [batchBrowserPagination.pageEnd, batchBrowserPagination.pageStart, filteredBatchBrowserBatches]
   );
 
-  const selectedSummary = useMemo(() => {
-    if (!selectedBatchKey) return null;
-    const parsed = decodeBatchKey(selectedBatchKey);
+  const selectedBatchParsedForBrowser = useMemo(
+    () => decodeBatchKey(selectedBatchKeyState),
+    [selectedBatchKeyState]
+  );
+  const hasMissingSelectedBatch = Boolean(
+    isBatchBrowserOpen
+    && batchBrowserQuery.isSuccess
+    && !batchBrowserQuery.isFetching
+    && selectedBatchKeyState
+    && selectedBatchKeyState !== SHOW_ALL_PUBLIC_24H_KEY
+    && selectedBatchParsedForBrowser
+    && !(batchBrowserQuery.data ?? []).some((batch) => (
+      batch.deviceId === selectedBatchParsedForBrowser.deviceId
+      && batch.batchId === selectedBatchParsedForBrowser.batchId
+    ))
+  );
+  const selectedBatchKeyAfterBrowserValidation = hasMissingSelectedBatch ? "" : selectedBatchKeyState;
+  const querySelectedSummary = useMemo(() => {
+    if (!selectedBatchKeyAfterBrowserValidation) return null;
+    const parsed = decodeBatchKey(selectedBatchKeyAfterBrowserValidation);
     if (!parsed) return null;
     return batchBrowserBatches.find((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId) ?? null;
-  }, [batchBrowserBatches, selectedBatchKey]);
-  const dropdownBatches = useMemo(() => {
-    if (!selectedSummary) return visibleBatches;
-    const exists = visibleBatches.some((batch) => (
-      batch.deviceId === selectedSummary.deviceId && batch.batchId === selectedSummary.batchId
-    ));
-    if (exists) return visibleBatches;
-    return sortBatchesByProcessedAtDesc([selectedSummary, ...visibleBatches]);
-  }, [selectedSummary, visibleBatches]);
-  const visibleDropdownBatches = useMemo(() => {
-    if (!selectedSummary) return dropdownBatches.slice(0, DROPDOWN_BATCH_LIMIT);
-    const prioritized = [
-      selectedSummary,
-      ...dropdownBatches.filter((batch) => (
-        batch.deviceId !== selectedSummary.deviceId || batch.batchId !== selectedSummary.batchId
-      )),
-    ];
-    return prioritized.slice(0, DROPDOWN_BATCH_LIMIT);
-  }, [dropdownBatches, selectedSummary]);
+  }, [batchBrowserBatches, selectedBatchKeyAfterBrowserValidation]);
 
   const batchDetailQueryKey = useMemo(
-    () => (selectedBatchKey ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKey) : null),
-    [selectedBatchKey, user]
+    () => (selectedBatchKeyAfterBrowserValidation
+      ? BATCH_DETAIL_QUERY_KEY(user?.uid ?? "public", selectedBatchKeyAfterBrowserValidation)
+      : null),
+    [selectedBatchKeyAfterBrowserValidation, user]
   );
-  const isShowingAllPublic24h = selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY;
-  const selectedBatchAccess = selectedSummary?.access ?? "unknown";
+  const isShowingAllPublic24h = selectedBatchKeyAfterBrowserValidation === SHOW_ALL_PUBLIC_24H_KEY;
+  const selectedBatchAccess = querySelectedSummary?.access ?? "unknown";
 
   // Query #2: measurement detail for the currently selected batch.
   const measurementQuery = useQuery<MapMeasurementRecord[]>({
@@ -576,8 +613,8 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     },
     retryDelay: 1_500,
     queryFn: async () => {
-      if (!batchDetailQueryKey || !selectedBatchKey) return [];
-      if (selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
+      if (!batchDetailQueryKey || !selectedBatchKeyAfterBrowserValidation) return [];
+      if (selectedBatchKeyAfterBrowserValidation === SHOW_ALL_PUBLIC_24H_KEY) {
         const cutoff = Date.now() - SHOW_ALL_PUBLIC_LOOKBACK_MS;
         const cutoffIso = new Date(Math.floor(cutoff / 60_000) * 60_000).toISOString();
         const mapResponse = await fetchPublicBatchMap({
@@ -597,7 +634,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
           .sort((a, b) => (timestampToMillis(a.timestamp) ?? 0) - (timestampToMillis(b.timestamp) ?? 0));
       }
 
-      const parsed = decodeBatchKey(selectedBatchKey);
+      const parsed = decodeBatchKey(selectedBatchKeyAfterBrowserValidation);
       if (!parsed) return [];
 
       const loadPublicDetail = () => fetchPublicBatchDetail(parsed.deviceId, parsed.batchId);
@@ -624,187 +661,105 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
 
         return loadOwnedDetail();
       })();
-      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKey });
+      return pointsToMeasurementRecords(detail.points, detail.deviceId, detail.batchId, { batchKey: selectedBatchKeyAfterBrowserValidation });
     },
     retryOnMount: false,
     throwOnError: false,
-    placeholderData: (prev) => prev ?? [],
+    placeholderData: (prev) => selectedBatchKeyAfterBrowserValidation ? prev ?? [] : [],
   });
+  const hasTerminalSelectedBatchError = Boolean(
+    !isAuthLoading
+    && selectedBatchKeyAfterBrowserValidation
+    && selectedBatchKeyAfterBrowserValidation !== SHOW_ALL_PUBLIC_24H_KEY
+    && measurementQuery.isError
+    && !measurementQuery.isFetching
+    && !measurementQuery.isLoading
+    && isTerminalBatchError(measurementQuery.error)
+  );
+  const selectedBatchKey = hasTerminalSelectedBatchError ? "" : selectedBatchKeyAfterBrowserValidation;
+  const selectedSummary = hasTerminalSelectedBatchError ? null : querySelectedSummary;
+  const dropdownBatches = useMemo(() => {
+    if (!selectedSummary) return visibleBatches;
+    const exists = visibleBatches.some((batch) => (
+      batch.deviceId === selectedSummary.deviceId && batch.batchId === selectedSummary.batchId
+    ));
+    if (exists) return visibleBatches;
+    return sortBatchesByProcessedAtDesc([selectedSummary, ...visibleBatches]);
+  }, [selectedSummary, visibleBatches]);
+  const visibleDropdownBatches = useMemo(() => {
+    if (!selectedSummary) return dropdownBatches.slice(0, DROPDOWN_BATCH_LIMIT);
+    const prioritized = [
+      selectedSummary,
+      ...dropdownBatches.filter((batch) => (
+        batch.deviceId !== selectedSummary.deviceId || batch.batchId !== selectedSummary.batchId
+      )),
+    ];
+    return prioritized.slice(0, DROPDOWN_BATCH_LIMIT);
+  }, [dropdownBatches, selectedSummary]);
 
   const rows = useMemo(
-    () => measurementQuery.data ?? [],
-    [measurementQuery.data]
+    () => selectedBatchKey ? measurementQuery.data ?? [] : [],
+    [measurementQuery.data, selectedBatchKey]
   );
 
   const isLoadingBatch = measurementQuery.isFetching || measurementQuery.isLoading;
-  const queryError = batchesQuery.error || measurementQuery.error;
-
-  // Whenever a new batch or fresh data arrives, snap the slider to the latest point.
-  // useEffect(() => {
-  //   const newIndex = rows.length ? rows.length - 1 : 0;
-  //   setSelectedIndex(newIndex);
-  //   // This effect synchronizes state with data changes - intentional pattern
-  //   // eslint-disable-next-line react-hooks/set-state-in-effect
-  // }, [rows.length, selectedBatchKey]);
-  const [indexOverride, setIndexOverride] = useState<number | null>(null);
-
-  // Always derive the index
-  const selectedIndex = indexOverride ?? (rows.length ? rows.length - 1 : 0);
+  const queryError = batchesQuery.error || (selectedBatchKey ? measurementQuery.error : null);
+  const persistedSelectedIndex = useMemo(() => {
+    if (!rows.length) return 0;
+    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
+      return rows.length - 1;
+    }
+    const storedIndex = storedTimelineIndexes[selectedBatchKey];
+    if (typeof storedIndex === "number" && Number.isFinite(storedIndex)) {
+      return clampTimelineIndex(storedIndex, rows.length - 1);
+    }
+    return rows.length - 1;
+  }, [rows.length, selectedBatchKey, storedTimelineIndexes]);
+  const selectedIndex = transientSelectedIndex === null
+    ? persistedSelectedIndex
+    : clampTimelineIndex(transientSelectedIndex, Math.max(rows.length - 1, 0));
   const [trackBall, setTrackBall] = useState(true);
 
   useEffect(() => {
-    if (skipIndexResetRef.current) {
-      skipIndexResetRef.current = false;
-      timelineHydratedRef.current = null;
-      return;
-    }
-    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) {
-      timelineHydratedRef.current = null;
-      setIndexOverride(null);
-      return;
-    }
-    if (!rows.length) return;
-
-    const hydrationKey = `${userScopedTimelineKey}:${selectedBatchKey}:${rows.length}`;
-    if (timelineHydratedRef.current === hydrationKey) return;
-    timelineHydratedRef.current = hydrationKey;
-
-    const storedIndex = readStoredTimelineIndex(
-      safeLocalStorageGet(
-        userScopedTimelineKey,
-        null,
-        { context: "map:timeline:read", userId: user?.uid }
-      ),
-      selectedBatchKey,
-      rows.length - 1
-    );
-    if (storedIndex !== null) {
-      setIndexOverride(storedIndex);
-      return;
-    }
-
-    setIndexOverride(null);
-  }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
-
-  useEffect(() => {
-    const nextPageIndex = clampPageIndex(filteredBatchBrowserBatches.length, batchBrowserPageIndex);
-    if (nextPageIndex !== batchBrowserPageIndex) {
-      setBatchBrowserPageIndex(nextPageIndex);
-    }
-  }, [filteredBatchBrowserBatches.length, batchBrowserPageIndex]);
-
-  useEffect(() => {
-    setBatchBrowserPageIndex(0);
-  }, [batchBrowserTimeRange, showPrivateBatchBrowser, showPublicBatchBrowser]);
-
-  useEffect(() => {
-    if (isAuthLoading) return;
-    if (selectionHydratedRef.current === userScopedSelectionKey) return;
-    selectionHydratedRef.current = userScopedSelectionKey;
-
-    const storedSelection = normalizeStoredBatchSelection(safeLocalStorageGet(
-      userScopedSelectionKey,
-      null,
-      { context: "map:selected-batch:hydrate", userId: user?.uid }
-    ));
-    setSelectedBatchKey(storedSelection.value);
-    if (storedSelection.shouldClearInvalid) {
+    if (!hasMissingSelectedBatch) return;
+    queueMicrotask(() => {
+      setSelectedBatchKeyState("");
+      setTransientSelectedIndex(null);
       safeLocalStorageRemove(
         userScopedSelectionKey,
-        { context: "map:selected-batch:clear-invalid", userId: user?.uid }
+        { context: "map:selected-batch:clear-missing", userId: user?.uid }
       );
-    }
-  }, [isAuthLoading, user?.uid, userScopedSelectionKey]);
+    });
+  }, [hasMissingSelectedBatch, user?.uid, userScopedSelectionKey]);
 
   useEffect(() => {
-    if (isAuthLoading) return;
-    if (zoomHydratedRef.current === userScopedZoomKey) return;
-    zoomHydratedRef.current = userScopedZoomKey;
-
-    const storedZoom = parseStoredMapZoom(safeLocalStorageGet(
-      userScopedZoomKey,
-      null,
-      { context: "map:zoom:hydrate", userId: user?.uid }
-    ));
-    setPersistedMapZoom(storedZoom);
-    setZoomHydrationKey(userScopedZoomKey);
-    if (storedZoom === null) {
+    if (!hasTerminalSelectedBatchError) return;
+    queueMicrotask(() => {
+      setSelectedBatchKeyState("");
+      setTransientSelectedIndex(null);
       safeLocalStorageRemove(
-        userScopedZoomKey,
-        { context: "map:zoom:clear-invalid", userId: user?.uid }
+        userScopedSelectionKey,
+        { context: "map:selected-batch:clear-terminal-error", userId: user?.uid }
       );
-    }
-  }, [isAuthLoading, user?.uid, userScopedZoomKey]);
+    });
+  }, [hasTerminalSelectedBatchError, user?.uid, userScopedSelectionKey]);
 
-  useEffect(() => {
-    if (
-      isAuthLoading
-      || !isBatchBrowserOpen
-      || !batchBrowserQuery.isSuccess
-      || batchBrowserQuery.isFetching
-    ) {
-      return;
-    }
-    if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return;
-
-    const parsed = decodeBatchKey(selectedBatchKey);
-    const selectionExists = parsed
-      ? (batchBrowserQuery.data ?? []).some((batch) => batch.deviceId === parsed.deviceId && batch.batchId === parsed.batchId)
-      : false;
-
-    if (selectionExists) return;
-
-    setSelectedBatchKey("");
-    setIndexOverride(0);
-    safeLocalStorageRemove(
-      userScopedSelectionKey,
-      { context: "map:selected-batch:clear-missing", userId: user?.uid }
+  const persistTimelineIndex = useCallback((batchKey: string, index: number, context: string) => {
+    const nextIndexes = {
+      ...storedTimelineIndexes,
+      [batchKey]: index,
+    };
+    setStoredTimelineIndexes(nextIndexes);
+    safeLocalStorageSet(
+      userScopedTimelineKey,
+      JSON.stringify(nextIndexes),
+      { context, userId: user?.uid }
     );
-  }, [
-    batchBrowserQuery.data,
-    batchBrowserQuery.isFetching,
-    batchBrowserQuery.isSuccess,
-    isBatchBrowserOpen,
-    isAuthLoading,
-    selectedBatchKey,
-    user?.uid,
-    userScopedSelectionKey,
-  ]);
-
-  useEffect(() => {
-    if (isAuthLoading || !selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY) return;
-    if (measurementQuery.isFetching || measurementQuery.isLoading || !measurementQuery.isError) return;
-    if (!isTerminalBatchError(measurementQuery.error)) return;
-
-    setSelectedBatchKey("");
-    setIndexOverride(0);
-    safeLocalStorageRemove(
-      userScopedSelectionKey,
-      { context: "map:selected-batch:clear-terminal-error", userId: user?.uid }
-    );
-  }, [
-    isAuthLoading,
-    measurementQuery.error,
-    measurementQuery.isError,
-    measurementQuery.isFetching,
-    measurementQuery.isLoading,
-    selectedBatchKey,
-    user?.uid,
-    userScopedSelectionKey,
-  ]);
-
-  // // Reset override when data changes
-  // useEffect(() => {
-  //   setIndexOverride(null);
-  // }, [selectedBatchKey, rows.length]);
+  }, [storedTimelineIndexes, user?.uid, userScopedTimelineKey]);
 
   const handleBatchSelect = useCallback((value: string) => {
-    if (value && !isMapViewportActivated) {
-      startTransition(() => {
-        setMapViewportActivated(true);
-      });
-    }
-    setSelectedBatchKey(value);
+    setSelectedBatchKeyState(value);
+    setTransientSelectedIndex(null);
     if (value) {
       safeLocalStorageSet(
         userScopedSelectionKey,
@@ -818,7 +773,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
         { context: "map:selected-batch:clear", userId: user?.uid }
       );
     }
-  }, [isMapViewportActivated, user?.uid, userScopedSelectionKey]);
+  }, [user?.uid, userScopedSelectionKey]);
 
   const upsertBatchSummary = useCallback((summary: VisibleBatchSummary) => {
     const mergeSummaries = (prev: VisibleBatchSummary[] = []) => {
@@ -867,27 +822,29 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const handleTimelineIndexChange = useCallback((nextIndex: number) => {
     const maxIndex = Math.max(rows.length - 1, 0);
     const clampedIndex = clampTimelineIndex(nextIndex, maxIndex);
-    setIndexOverride(clampedIndex);
-
+    setTransientSelectedIndex(null);
     if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY || !rows.length) return;
-    safeLocalStorageSet(
-      userScopedTimelineKey,
-      writeStoredTimelineIndex(
-        safeLocalStorageGet(
-          userScopedTimelineKey,
-          null,
-          { context: "map:timeline:read", userId: user?.uid }
-        ),
-        selectedBatchKey,
-        clampedIndex
-      ),
-      { context: "map:timeline:update", userId: user?.uid }
-    );
-  }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
+    persistTimelineIndex(selectedBatchKey, clampedIndex, "map:timeline:update");
+  }, [persistTimelineIndex, rows.length, selectedBatchKey]);
 
   const openBatchBrowser = useCallback(() => {
-    setBatchBrowserPageIndex(0);
+    setBatchBrowserPageIndexInput(0);
     setBatchBrowserOpen(true);
+  }, []);
+
+  const handleBatchBrowserTimeRangeChange = useCallback((value: string) => {
+    setBatchBrowserTimeRange(value as BatchBrowserTimeRange);
+    setBatchBrowserPageIndexInput(0);
+  }, []);
+
+  const handleShowPublicBatchBrowserChange = useCallback((checked: boolean) => {
+    setShowPublicBatchBrowser(checked);
+    setBatchBrowserPageIndexInput(0);
+  }, []);
+
+  const handleShowPrivateBatchBrowserChange = useCallback((checked: boolean) => {
+    setShowPrivateBatchBrowser(checked);
+    setBatchBrowserPageIndexInput(0);
   }, []);
 
   const handleBatchSelectValueChange = useCallback((value: string) => {
@@ -905,33 +862,18 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const handleMapPointSelect = useCallback((point: { batchKey?: string; batchPointIndex?: number }) => {
     if (!isShowingAllPublic24h) return;
     if (!point.batchKey) return;
-    skipIndexResetRef.current = true;
-    setSelectedBatchKey(point.batchKey);
+    setSelectedBatchKeyState(point.batchKey);
+    setTransientSelectedIndex(null);
     const pointIndex = typeof point.batchPointIndex === "number" ? point.batchPointIndex : null;
-    setIndexOverride(pointIndex);
     if (pointIndex !== null) {
-      safeLocalStorageSet(
-        userScopedTimelineKey,
-        writeStoredTimelineIndex(
-          safeLocalStorageGet(
-            userScopedTimelineKey,
-            null,
-            { context: "map:timeline:read-from-all", userId: user?.uid }
-          ),
-          point.batchKey,
-          pointIndex
-        ),
-        { context: "map:timeline:update-from-all", userId: user?.uid }
-      );
+      persistTimelineIndex(point.batchKey, pointIndex, "map:timeline:update-from-all");
     }
-    if (user) {
-      safeLocalStorageSet(
-        userScopedSelectionKey,
-        point.batchKey,
-        { context: "map:selected-batch:from-all", userId: user.uid }
-      );
-    }
-  }, [isShowingAllPublic24h, user, userScopedSelectionKey, userScopedTimelineKey]);
+    safeLocalStorageSet(
+      userScopedSelectionKey,
+      point.batchKey,
+      { context: "map:selected-batch:from-all", userId: user?.uid }
+    );
+  }, [isShowingAllPublic24h, persistTimelineIndex, user?.uid, userScopedSelectionKey]);
 
   const data = useMemo(
     () => {
@@ -979,9 +921,9 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   // Use all-public mode by default when nothing is selected, but defer the heavy 3D viewport on the anonymous hero.
   const effectiveShowAllMode = isShowingAllPublic24h || !selectedBatchKey;
   const isAnonymousHeroState = !user && !selectedBatchKey && !rows.length;
-  const shouldRenderMapViewport = isMapViewportActivated || !isAnonymousHeroState;
-  const isMapZoomHydrated = !isAuthLoading && zoomHydrationKey === userScopedZoomKey;
+  const shouldRenderMapViewport = !isAnonymousHeroState;
   const isExportSectionVisible = Boolean(selectedBatchKey) && !isShowingAllPublic24h;
+  const captureAvailable = isExportSectionVisible && captureAvailableState;
   const isWatermarkedExport = settings.subscription.videoDownloadAccess === "preview_watermarked";
   const canExportSelection = useMemo(() => {
     if (!selectedBatchKey || isShowingAllPublic24h) return false;
@@ -1012,21 +954,11 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const shouldShowMeasurementSection = rows.length > 0 || Boolean(selectedBatchKey && isLoadingBatch);
 
   useEffect(() => {
-    if (isAnonymousHeroState || isMapViewportActivated) return;
-    startTransition(() => {
-      setMapViewportActivated(true);
-    });
-  }, [isAnonymousHeroState, isMapViewportActivated]);
-
-  useEffect(() => {
-    if (!isExportSectionVisible) {
-      setCaptureAvailable(false);
-      return;
-    }
+    if (!isExportSectionVisible) return;
 
     const updateCaptureAvailability = () => {
       const canvas = map3DRef.current?.getCaptureCanvas() ?? null;
-      setCaptureAvailable(Boolean(canvas));
+      setCaptureAvailableState(Boolean(canvas));
     };
 
     updateCaptureAvailability();
@@ -1064,7 +996,6 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       return;
     }
 
-    const previousIndex = selectedIndex;
     const pointCount = rows.length;
     const lastIndex = Math.max(pointCount - 1, 0);
     const exportSettings = videoExportSettings;
@@ -1091,7 +1022,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     setExportStatus("Preparing active map capture...");
     setVideoExportSettingsOpen(false);
     setIsExporting(true);
-    setIndexOverride(0);
+    setTransientSelectedIndex(0);
     exportAbortRef.current = abortController;
 
     try {
@@ -1206,7 +1137,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
         }
 
         completedMotionMs += targetSegmentDurationMs;
-        setIndexOverride(nextIndex);
+        setTransientSelectedIndex(nextIndex);
         applyExportCameraFrame(nextIndex, nextIndex, 1, Math.min((exportSettings.holdMs + completedMotionMs) / plannedDurationMs, 1));
         requestExportFrame();
       }
@@ -1251,7 +1182,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
         exportAbortRef.current = null;
       }
       setIsExporting(false);
-      setIndexOverride(Math.min(previousIndex, lastIndex));
+      setTransientSelectedIndex(null);
     }
   }, [
     canStartExport,
@@ -1261,7 +1192,6 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     isWatermarkedExport,
     videoExportSettings,
     selectedBatchParsed,
-    selectedIndex,
     selectedSummary?.deviceName,
   ]);
 
@@ -1277,7 +1207,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       />
       {/* ---- Always-visible map ---- */}
       <Suspense fallback={<div style={{ width: "100%", height: "100%", background: MAP_VIEWPORT_BACKGROUND }} />}>
-        {shouldRenderMapViewport && isMapZoomHydrated ? (
+        {shouldRenderMapViewport ? (
           <Map3D
             ref={map3DRef}
             data={data}
@@ -1909,7 +1839,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                 <Text size="1" color="gray">Time range</Text>
                 <Select.Root
                   value={batchBrowserTimeRange}
-                  onValueChange={(value) => setBatchBrowserTimeRange(value as BatchBrowserTimeRange)}
+                  onValueChange={handleBatchBrowserTimeRangeChange}
                 >
                   <Select.Trigger aria-label="Batch browser time range" />
                   <Select.Content>
@@ -1926,7 +1856,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                   <Switch
                     id="batch-browser-public-filter"
                     checked={showPublicBatchBrowser}
-                    onCheckedChange={setShowPublicBatchBrowser}
+                    onCheckedChange={handleShowPublicBatchBrowserChange}
                   />
                   <label
                     htmlFor="batch-browser-public-filter"
@@ -1939,7 +1869,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                   <Switch
                     id="batch-browser-private-filter"
                     checked={showPrivateBatchBrowser}
-                    onCheckedChange={setShowPrivateBatchBrowser}
+                    onCheckedChange={handleShowPrivateBatchBrowserChange}
                   />
                   <label
                     htmlFor="batch-browser-private-filter"
@@ -1957,8 +1887,8 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                 pageStart={batchBrowserPagination.pageStart}
                 pageEnd={batchBrowserPagination.pageEnd}
                 totalCount={filteredBatchBrowserBatches.length}
-                onShowLess={() => setBatchBrowserPageIndex((prev) => prev - 1)}
-                onShowMore={() => setBatchBrowserPageIndex((prev) => prev + 1)}
+                onShowLess={() => setBatchBrowserPageIndexInput((prev) => prev - 1)}
+                onShowMore={() => setBatchBrowserPageIndexInput((prev) => prev + 1)}
               />
               {batchBrowserQuery.isFetching ? (
                 <Text size="1" color="gray">Refreshing...</Text>

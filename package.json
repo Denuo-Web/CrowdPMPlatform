@@ -21,10 +21,12 @@
     "deploy": "sh -c 'if [ \"${1:-}\" = \"--\" ]; then shift; fi; test -n \"${FIREBASE_PROJECT_ID:-}\" || { echo \"Set FIREBASE_PROJECT_ID to the deployed Firebase project ID.\" >&2; exit 1; }; firebase deploy --project \"$FIREBASE_PROJECT_ID\" \"$@\"; deploy_status=$?; if [ $deploy_status -ne 0 ]; then exit $deploy_status; fi; if [ -n \"${FIRST_SUPER_ADMIN_EMAIL:-}\" ]; then pnpm --filter crowdpm-functions admin:bootstrap-super-admin; else echo \"FIRST_SUPER_ADMIN_EMAIL not set; skipping super admin bootstrap.\"; fi' --"
   },
   "devDependencies": {
+    "@rolldown/plugin-babel": "0.2.3",
     "@eslint/eslintrc": "3.3.5",
     "@eslint/js": "9.39.4",
     "@typescript-eslint/eslint-plugin": "8.59.0",
     "@typescript-eslint/parser": "8.59.0",
+    "babel-plugin-react-compiler": "1.0.0",
     "concurrently": "9.2.1",
     "eslint": "9.39.4",
     "eslint-plugin-react": "7.37.5",
