@@ -7,9 +7,19 @@ type LoaderLike = {
 
 let loader: LoaderLike | null = null;
 
+export function normalizeGoogleMapId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (["null", "undefined", "false"].includes(trimmed.toLowerCase())) return null;
+  if (trimmed === "replace-with-google-vector-map-id") return null;
+  return trimmed;
+}
+
 export function getMapsLoader(): LoaderLike {
   if (!loader) {
-    const { VITE_GOOGLE_MAPS_API_KEY: apiKey, VITE_GOOGLE_MAP_ID: mapId } = import.meta.env;
+    const { VITE_GOOGLE_MAPS_API_KEY: apiKey, VITE_GOOGLE_MAP_ID: rawMapId } = import.meta.env;
+    const mapId = normalizeGoogleMapId(rawMapId);
     const options: APIOptions = {
       key: apiKey,
       v: "weekly"
