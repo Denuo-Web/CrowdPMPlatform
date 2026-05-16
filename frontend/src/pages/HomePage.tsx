@@ -15,7 +15,7 @@ type HomePageProps = {
 const HIGHLIGHTS = [
   {
     title: "Public 3D map",
-    description: "Browse shared PM2.5 measurements on demand instead of paying the Google Maps WebGL cost on every first paint.",
+    description: "Browse shared PM2.5 measurements from the dedicated live map experience.",
   },
   {
     title: "Node pairing",
@@ -81,11 +81,11 @@ export default function HomePage({
               Community air quality intelligence
             </Text>
             <Heading as="h1" size="8" style={{ lineHeight: 1.02, maxWidth: 720 }}>
-              Hyper-local PM2.5 mapping without forcing the live map onto every first visit.
+              Hyper-local PM2.5 mapping for public and account-scoped air quality data.
             </Heading>
             <Text size="3" color="gray" as="p" style={{ maxWidth: 680 }}>
               CrowdPM combines open hardware, account-scoped device activation, public measurement publishing,
-              and on-demand 3D mapping so the expensive map stack only loads when someone explicitly wants it.
+              and a 3D map for exploring community air quality data.
             </Text>
           </Flex>
 
@@ -176,13 +176,13 @@ export default function HomePage({
 
       <Card>
         <Flex direction="column" gap="3">
-          <Heading as="h2" size="4">Why the landing page is lighter now</Heading>
+          <Heading as="h2" size="4">Explore the platform</Heading>
           <Text size="2" color="gray" as="p">
-            The live Google Maps WebGL stack is intentionally deferred behind the map route, so home-page users see
-            project context, account entry points, and hardware guidance before any heavy map runtime is initialized.
+            Start with project context, hardware guidance, and account entry points here, then open the live map when
+            you want to explore measurements directly.
           </Text>
           <Text size="2" color="gray" as="p">
-            That keeps the first view fast while preserving the existing 3D map experience for people who actually want it.
+            The full 3D map, dashboard, activation flow, and hardware documentation remain available from the routes above.
           </Text>
         </Flex>
       </Card>
