@@ -3,7 +3,7 @@ import type { UserThemeSettings } from "@crowdpm/types";
 import type { AuthMode } from "./components/AuthDialog";
 import { ExternalAnchor, ExternalLink } from "./components/ExternalLink";
 import { LegalDocumentDialog, LegalDocumentLink, type LegalDocumentId } from "./components/LegalDocumentDialog";
-import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
+import { APP_ROUTES, getAppTabFromPath, getRouteForAppTab, isActivationRoute, type RoutedAppTab } from "./lib/appRoutes";
 import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { logWarning } from "./lib/logger";
 import { pushAppLocation, replaceAppLocation, replaceCurrentUrl, useBrowserLocation } from "./lib/locationStore";
@@ -29,6 +29,7 @@ import {
   Dialog,
 } from "@radix-ui/themes";
 import { GitHubLogoIcon, HamburgerMenuIcon, LinkedInLogoIcon } from "@radix-ui/react-icons";
+import HomePage from "./pages/HomePage";
 
 const TEAM_MEMBERS: Array<{
   name: string;
@@ -97,13 +98,9 @@ const ThemeSettingsControls = lazy(async () => {
 });
 const MAP_VIEWPORT_BOTTOM_INSET = "max(12px, env(safe-area-inset-bottom, 0px))";
 
-type AppTab = "map" | "dashboard" | "admin" | DeepLinkedAppTab;
+type AppTab = RoutedAppTab;
 type ThemeCheckoutNotice = "success" | "cancelled" | null;
 type SubscriptionCheckoutNotice = "success" | "cancelled" | null;
-
-function isDeepLinkedTab(tab: AppTab): tab is DeepLinkedAppTab {
-  return tab === "pairing-info" || tab === "about" || tab === "node";
-}
 
 function readThemeCheckoutNotice(search: string): ThemeCheckoutNotice {
   const status = new URLSearchParams(search).get("themeCheckout");
@@ -132,19 +129,12 @@ function readSubscriptionCheckoutSessionId(search: string): string | null {
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
 }
 
-function clearSubscriptionCheckoutNoticeFromUrl() {
-  replaceCurrentUrl((nextUrl) => {
-    nextUrl.searchParams.delete("subscriptionCheckout");
-    nextUrl.searchParams.delete("subscriptionCheckoutSessionId");
-  });
-}
-
 export default function App() {
   const { user, isLoading, signOut, canAccessAdmin } = useAuth();
   const { settings } = useUserSettings();
   const location = useBrowserLocation();
   const userScopedKey = user?.uid ?? "anon";
-  const [requestedTab, setRequestedTab] = useState<AppTab>(() => getDeepLinkedAppTab(location.pathname) ?? "map");
+  const [requestedTab, setRequestedTab] = useState<AppTab>(() => getAppTabFromPath(location.pathname) ?? "home");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
@@ -156,14 +146,14 @@ export default function App() {
   const themeCheckoutSessionId = readThemeCheckoutSessionId(location.search);
   const subscriptionCheckoutNotice = readSubscriptionCheckoutNotice(location.search);
   const subscriptionCheckoutSessionId = readSubscriptionCheckoutSessionId(location.search);
-  const routeTab = getDeepLinkedAppTab(location.pathname);
+  const routeTab = getAppTabFromPath(location.pathname);
   const isActivationModalOpen = isActivationRoute(location.pathname);
   const isSignedIn = Boolean(user);
-  const tab = routeTab ?? (isDeepLinkedTab(requestedTab) ? "map" : requestedTab);
+  const tab = routeTab ?? requestedTab;
   const preferredTab = user && subscriptionCheckoutNotice ? "dashboard" : tab;
-  const activeTab = !isSignedIn && preferredTab !== "map" && preferredTab !== "pairing-info" && preferredTab !== "about" && preferredTab !== "node"
-    ? "map"
-    : (preferredTab === "admin" && !canAccessAdmin ? "map" : preferredTab);
+  const activeTab = !isSignedIn && preferredTab !== "home" && preferredTab !== "map" && preferredTab !== "pairing-info" && preferredTab !== "about" && preferredTab !== "node"
+    ? "home"
+    : (preferredTab === "admin" && !canAccessAdmin ? "home" : preferredTab);
   const isThemeModalOpen = isThemeModalRequested || Boolean(themeCheckoutNotice);
   const activeTheme = user ? themeDraft ?? settings.theme : settings.theme;
   const isDarkTheme = activeTheme.appearance === "dark";
@@ -181,19 +171,10 @@ export default function App() {
   };
 
   const navigateToTab = useCallback((nextTab: AppTab) => {
-    const pathname = location.pathname.toLowerCase();
     setRequestedTab(nextTab);
-
-    if (isDeepLinkedTab(nextTab)) {
-      const targetRoute = getRouteForDeepLinkedAppTab(nextTab);
-      if (!pathname.startsWith(targetRoute)) {
-        pushAppLocation(targetRoute);
-      }
-      return;
-    }
-
-    if (isActivationRoute(pathname) || isDeepLinkedAppRoute(pathname)) {
-      replaceAppLocation(APP_ROUTES.home);
+    const targetRoute = getRouteForAppTab(nextTab);
+    if (location.pathname.toLowerCase() !== targetRoute.toLowerCase()) {
+      pushAppLocation(targetRoute);
     }
   }, [location.pathname]);
 
@@ -241,9 +222,10 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      setRequestedTab("map");
+      setRequestedTab("home");
       setThemeDraft(null);
       setThemeModalRequested(false);
+      replaceAppLocation(APP_ROUTES.home);
     }
     catch (err) {
       logWarning("Sign out failed", undefined, err);
@@ -296,15 +278,15 @@ export default function App() {
     }
 
     if (isActivationModalOpen) {
-      replaceAppLocation(APP_ROUTES.home);
+      replaceAppLocation(getRouteForAppTab(requestedTab));
     }
-  }, [isActivationModalOpen, user]);
+  }, [isActivationModalOpen, requestedTab, user]);
 
   const handleActivationComplete = () => {
     setRequestedTab("dashboard");
     setDashboardRefreshToken((prev) => prev + 1);
     if (isActivationModalOpen) {
-      replaceAppLocation(APP_ROUTES.home);
+      replaceAppLocation(APP_ROUTES.dashboard);
     }
   };
 
@@ -313,7 +295,7 @@ export default function App() {
       return;
     }
     setRequestedTab("dashboard");
-    clearSubscriptionCheckoutNoticeFromUrl();
+    replaceAppLocation(APP_ROUTES.dashboard);
   }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
 
   const tabPanelFallback = (
@@ -389,10 +371,10 @@ export default function App() {
             pointerEvents: "auto",
           }}
         >
-          {/* Clickable logo + title — navigates back to map */}
+          {/* Clickable logo + title — navigates back to the lightweight landing page */}
             <button
               type="button"
-              onClick={() => navigateToTab("map")}
+              onClick={() => navigateToTab("home")}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -403,7 +385,7 @@ export default function App() {
               cursor: "pointer",
               color: "inherit",
             }}
-            aria-label="Return to map"
+            aria-label="Return to home"
           >
             <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-hidden>
               <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
@@ -465,11 +447,18 @@ export default function App() {
           </DropdownMenu.Trigger>
           <DropdownMenu.Content sideOffset={8} align="start">
             <DropdownMenu.Item
+              onSelect={() => navigateToTab("home")}
+              style={activeTab === "home" ? { fontWeight: 600 } : undefined}
+              disabled={isLoading}
+            >
+              Home
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
               onSelect={() => navigateToTab("map")}
               style={activeTab === "map" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
-              Map
+              Explore Map
             </DropdownMenu.Item>
             <DropdownMenu.Item
               onSelect={() => navigateToTab("node")}
@@ -587,7 +576,17 @@ export default function App() {
                 }}
               >
                 <Suspense fallback={tabPanelFallback}>
-                  {activeTab === "dashboard" && user ? (
+                  {activeTab === "home" ? (
+                    <HomePage
+                      isSignedIn={isSignedIn}
+                      onExploreMap={() => navigateToTab("map")}
+                      onOpenDashboard={() => handleProtectedTabClick("dashboard")}
+                      onOpenActivation={openActivationModal}
+                      onOpenAbout={() => navigateToTab("about")}
+                      onOpenProducts={() => navigateToTab("node")}
+                      onOpenAuth={openAuthDialog}
+                    />
+                  ) : activeTab === "dashboard" && user ? (
                     <UserDashboard
                       key={`dashboard:${userScopedKey}`}
                       onRequestActivation={openActivationModal}
@@ -632,7 +631,7 @@ export default function App() {
             mode={authMode}
             onModeChange={setAuthMode}
             onOpenChange={setAuthDialogOpen}
-            onAuthenticated={() => navigateToTab("dashboard")}
+            onAuthenticated={() => navigateToTab(routeTab === "admin" ? "admin" : "dashboard")}
           />
         ) : null}
       </Suspense>
