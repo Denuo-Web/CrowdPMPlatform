@@ -43,7 +43,7 @@ function formatDuration(ms: number): string {
 export function ActivationPage({ layout = "standalone", onActivationComplete }: ActivationPageProps = {}) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const location = useBrowserLocation();
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authDialogRequested, setAuthDialogRequested] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
   const [userCode, setUserCode] = useState(() => readCodeFromSearch(location.search));
@@ -53,16 +53,10 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const initialCodeRef = useRef(userCode.trim());
+  const [initialCode] = useState(() => readCodeFromSearch(location.search).trim());
   const hasAutoLookupRef = useRef(false);
   const hasCompletedRef = useRef(false);
-
-  useEffect(() => {
-    if (!user && !authDialogOpen) {
-      setAuthMode("login");
-      setAuthDialogOpen(true);
-    }
-  }, [user, authDialogOpen]);
+  const isAuthDialogOpen = !user || authDialogRequested;
 
   useEffect(() => {
     if (!session) return;
@@ -100,9 +94,7 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
     }
   }, [userCode]);
 
-  const matchesInitialCode = useMemo(() => {
-    return initialCodeRef.current.length > 0 && initialCodeRef.current === userCode.trim();
-  }, [userCode]);
+  const matchesInitialCode = initialCode.length > 0 && initialCode === userCode.trim();
 
   useEffect(() => {
     if (!user || !matchesInitialCode || session || isLoading || hasAutoLookupRef.current) return;
@@ -237,7 +229,7 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
               {isLoading ? "Looking up…" : "Load device"}
             </Button>
             {!user ? (
-              <Button variant="soft" onClick={() => setAuthDialogOpen(true)} disabled={isAuthLoading}>
+              <Button variant="soft" onClick={() => setAuthDialogRequested(true)} disabled={isAuthLoading}>
                 {isAuthLoading ? "Checking account…" : "Sign in"}
               </Button>
             ) : (
@@ -339,12 +331,12 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
       ) : null}
 
       <AuthDialog
-        open={authDialogOpen}
+        open={isAuthDialogOpen}
         mode={authMode}
         onModeChange={setAuthMode}
-        onOpenChange={setAuthDialogOpen}
+        onOpenChange={setAuthDialogRequested}
         onAuthenticated={() => {
-          setAuthDialogOpen(false);
+          setAuthDialogRequested(false);
           setStatusMessage("Signed in. You can now authorize the device.");
         }}
       />
