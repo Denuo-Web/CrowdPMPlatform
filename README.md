@@ -27,10 +27,10 @@ The repository includes contributions from multiple project contributors. See AU
 
 ## Quick Start
 
-Use Node 24 before running project commands:
+Use Node.js 24.15.0 before running project commands:
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use 24
+source ~/.nvm/nvm.sh && nvm use 24.15.0
 corepack enable
 corepack prepare pnpm@10.18.1 --activate
 pnpm install

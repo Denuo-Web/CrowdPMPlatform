@@ -3,7 +3,7 @@
 Use Vitest for functions tests.
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use 24
+source ~/.nvm/nvm.sh && nvm use 24.15.0
 pnpm --filter crowdpm-functions test
 ```
 

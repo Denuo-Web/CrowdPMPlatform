@@ -1114,14 +1114,15 @@ timeout 10 cat /dev/serial0`}</CodeBlock>
 
       {/* ---- Software Installation ---- */}
       <Section title="Software Installation">
-        <Subsection title="Install Node 24 and Download the Registration Helper">
+        <Subsection title="Install Node.js 24.15.0 and Download the Registration Helper">
           <CodeBlock>{`cd ~
 
 curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-source ~/.bashrc
+export NVM_DIR="$HOME/.nvm"
+source "$NVM_DIR/nvm.sh"
 
-nvm install 24
-nvm use 24
+nvm install 24.15.0
+nvm use 24.15.0
 
 mkdir -p ~/crowdpm-node
 cd ~/crowdpm-node

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
   "module": "src/index.ts",
   "main": "dist/index.js",
   "types": "src/index.ts",

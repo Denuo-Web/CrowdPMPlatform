@@ -48,10 +48,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Use Node.js 24
+      - name: Use Node.js 24.15.0
         uses: actions/setup-node@v6
         with:
-          node-version: 24.x
+          node-version: 24.15.0
 
       - name: Enable corepack and pin pnpm
         run: |
