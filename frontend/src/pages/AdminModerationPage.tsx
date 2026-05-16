@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToMillis } from "@crowdpm/types";
 import {
   Badge,
@@ -32,6 +33,15 @@ import { useAuth } from "../providers/AuthProvider";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
 const NO_DEMO_BATCH_KEY = "__no_demo_batch__";
+const ADMIN_QUERY_KEYS = {
+  submissions: (params: { moderationState?: ModerationState; visibility?: BatchVisibility; limit: number }) => ["admin", "submissions", params] as const,
+  demoBatchOptions: ["admin", "demoBatchOptions"] as const,
+  users: (pageToken: string | null) => ["admin", "users", pageToken ?? "first"] as const,
+};
+const EMPTY_SUBMISSIONS: AdminSubmissionSummary[] = [];
+const EMPTY_USERS: AdminUserSummary[] = [];
+const EMPTY_DEMO_BATCH_OPTIONS = { batches: EMPTY_SUBMISSIONS, selectedKey: NO_DEMO_BATCH_KEY };
+const EMPTY_USER_PAGE = { users: EMPTY_USERS, nextPageToken: null as string | null };
 
 function formatTimestamp(value: string | null): string {
   const ms = timestampToMillis(value);
@@ -123,23 +133,16 @@ function confirmationCopy(action: PendingConfirmation | null): {
 
 export default function AdminModerationPage() {
   const { isSuperAdmin, canAccessAdmin } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [submissions, setSubmissions] = useState<AdminSubmissionSummary[]>([]);
-  const [demoBatches, setDemoBatches] = useState<AdminSubmissionSummary[]>([]);
-  const [users, setUsers] = useState<AdminUserSummary[]>([]);
-  const [usersPageToken, setUsersPageToken] = useState<string | null>(null);
-
-  const [submissionsLoading, setSubmissionsLoading] = useState(false);
-  const [demoBatchLoading, setDemoBatchLoading] = useState(false);
   const [demoBatchSaving, setDemoBatchSaving] = useState(false);
-  const [usersLoading, setUsersLoading] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
-  const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [demoBatchError, setDemoBatchError] = useState<string | null>(null);
+  const [submissionActionError, setSubmissionActionError] = useState<string | null>(null);
+  const [demoBatchActionError, setDemoBatchActionError] = useState<string | null>(null);
   const [demoBatchMessage, setDemoBatchMessage] = useState<string | null>(null);
-  const [userError, setUserError] = useState<string | null>(null);
-  const [demoBatchKey, setDemoBatchKey] = useState<string>(NO_DEMO_BATCH_KEY);
+  const [userActionError, setUserActionError] = useState<string | null>(null);
+  const [usersPageTokenInput, setUsersPageTokenInput] = useState<string | null>(null);
 
   const [moderationFilter, setModerationFilter] = useState<SubmissionFilterState>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilterState>("all");
@@ -155,6 +158,49 @@ export default function AdminModerationPage() {
     visibility: visibilityFilter === "all" ? undefined : visibilityFilter,
     limit: 100,
   }), [moderationFilter, visibilityFilter]);
+  const submissionsQueryKey = useMemo(() => ADMIN_QUERY_KEYS.submissions(submissionParams), [submissionParams]);
+  const usersQueryKey = useMemo(() => ADMIN_QUERY_KEYS.users(usersPageTokenInput), [usersPageTokenInput]);
+  const submissionsQuery = useQuery<AdminSubmissionSummary[]>({
+    queryKey: submissionsQueryKey,
+    enabled: canAccessAdmin,
+    queryFn: () => listAdminSubmissions(submissionParams),
+    placeholderData: EMPTY_SUBMISSIONS,
+  });
+  const demoBatchOptionsQuery = useQuery({
+    queryKey: ADMIN_QUERY_KEYS.demoBatchOptions,
+    enabled: canAccessAdmin,
+    queryFn: async () => {
+      const [setting, batches] = await Promise.all([
+        getAdminDemoBatch(),
+        listAdminSubmissions({ moderationState: "approved", visibility: "public", limit: 200 }),
+      ]);
+      return {
+        batches: mergeDemoBatchOptions(batches, setting?.summary ?? null),
+        selectedKey: setting ? encodeBatchKey(setting.deviceId, setting.batchId) : NO_DEMO_BATCH_KEY,
+      };
+    },
+    placeholderData: EMPTY_DEMO_BATCH_OPTIONS,
+  });
+  const usersQuery = useQuery({
+    queryKey: usersQueryKey,
+    enabled: canManageUsers,
+    queryFn: () => listAdminUsers({ limit: 100, pageToken: usersPageTokenInput ?? undefined }),
+    placeholderData: EMPTY_USER_PAGE,
+  });
+  const submissions = submissionsQuery.data ?? EMPTY_SUBMISSIONS;
+  const demoBatches = demoBatchOptionsQuery.data?.batches ?? EMPTY_SUBMISSIONS;
+  const demoBatchKey = demoBatchOptionsQuery.data?.selectedKey ?? NO_DEMO_BATCH_KEY;
+  const users = usersQuery.data?.users ?? EMPTY_USERS;
+  const usersPageToken = usersQuery.data?.nextPageToken ?? null;
+  const submissionsLoading = submissionsQuery.isFetching;
+  const demoBatchLoading = demoBatchOptionsQuery.isFetching;
+  const usersLoading = usersQuery.isFetching;
+  const submissionError = submissionActionError
+    ?? (submissionsQuery.error instanceof Error ? submissionsQuery.error.message : null);
+  const demoBatchError = demoBatchActionError
+    ?? (demoBatchOptionsQuery.error instanceof Error ? demoBatchOptionsQuery.error.message : null);
+  const userError = userActionError
+    ?? (usersQuery.error instanceof Error ? usersQuery.error.message : null);
   const submissionPagination = useMemo(
     () => getPaginationWindow(submissions.length, submissionPageIndex),
     [submissionPageIndex, submissions.length],
@@ -172,78 +218,29 @@ export default function AdminModerationPage() {
     [userPagination.pageEnd, userPagination.pageStart, users],
   );
 
-  const refreshDemoBatchOptions = useCallback(async () => {
-    if (!canAccessAdmin) return;
-    setDemoBatchLoading(true);
-    setDemoBatchError(null);
-    try {
-      const [setting, batches] = await Promise.all([
-        getAdminDemoBatch(),
-        listAdminSubmissions({ moderationState: "approved", visibility: "public", limit: 200 }),
-      ]);
-      setDemoBatches(mergeDemoBatchOptions(batches, setting?.summary ?? null));
-      setDemoBatchKey(setting ? encodeBatchKey(setting.deviceId, setting.batchId) : NO_DEMO_BATCH_KEY);
-    }
-    catch (err) {
-      setDemoBatchError(err instanceof Error ? err.message : "Unable to load demo batch options.");
-      setDemoBatches([]);
-      setDemoBatchKey(NO_DEMO_BATCH_KEY);
-    }
-    finally {
-      setDemoBatchLoading(false);
-    }
-  }, [canAccessAdmin]);
-
   const refreshSubmissions = useCallback(async () => {
     if (!canAccessAdmin) return;
-    setSubmissionsLoading(true);
-    setSubmissionError(null);
-    try {
-      const list = await listAdminSubmissions(submissionParams);
-      setSubmissions(list);
-    }
-    catch (err) {
-      setSubmissionError(err instanceof Error ? err.message : "Unable to load submissions.");
-      setSubmissions([]);
-    }
-    finally {
-      setSubmissionsLoading(false);
-    }
-  }, [canAccessAdmin, submissionParams]);
+    setSubmissionActionError(null);
+    await submissionsQuery.refetch();
+  }, [canAccessAdmin, submissionsQuery]);
+
+  const refreshDemoBatchOptions = useCallback(async () => {
+    if (!canAccessAdmin) return;
+    setDemoBatchActionError(null);
+    await demoBatchOptionsQuery.refetch();
+  }, [canAccessAdmin, demoBatchOptionsQuery]);
 
   const refreshUsers = useCallback(async (nextPageToken?: string | null) => {
     if (!canManageUsers) return;
-    setUsersLoading(true);
-    setUserError(null);
-    try {
-      const response = await listAdminUsers({ limit: 100, pageToken: nextPageToken ?? undefined });
-      setUsers(response.users);
-      setUsersPageToken(response.nextPageToken);
+    setUserActionError(null);
+    const nextToken = nextPageToken ?? null;
+    if (nextToken !== usersPageTokenInput) {
+      setUsersPageTokenInput(nextToken);
+      setUserPageIndex(0);
+      return;
     }
-    catch (err) {
-      setUserError(err instanceof Error ? err.message : "Unable to load users.");
-      setUsers([]);
-      setUsersPageToken(null);
-    }
-    finally {
-      setUsersLoading(false);
-    }
-  }, [canManageUsers]);
-
-  useEffect(() => {
-    if (!canAccessAdmin) return;
-    void refreshSubmissions();
-  }, [canAccessAdmin, refreshSubmissions]);
-
-  useEffect(() => {
-    if (!canAccessAdmin) return;
-    void refreshDemoBatchOptions();
-  }, [canAccessAdmin, refreshDemoBatchOptions]);
-
-  useEffect(() => {
-    if (!canManageUsers) return;
-    void refreshUsers();
-  }, [canManageUsers, refreshUsers]);
+    await usersQuery.refetch();
+  }, [canManageUsers, usersPageTokenInput, usersQuery]);
 
   useEffect(() => {
     const nextPageIndex = clampPageIndex(submissions.length, submissionPageIndex);
@@ -292,7 +289,7 @@ export default function AdminModerationPage() {
 
     if (action.kind === "submission") {
       setActionBusyId(`submission:${action.entry.deviceId}:${action.entry.batchId}`);
-      setSubmissionError(null);
+      setSubmissionActionError(null);
       try {
         await moderateAdminSubmission(action.entry.deviceId, action.entry.batchId, {
           moderationState: action.moderationState,
@@ -301,7 +298,7 @@ export default function AdminModerationPage() {
         await refreshSubmissions();
       }
       catch (err) {
-        setSubmissionError(err instanceof Error ? err.message : "Unable to update submission moderation.");
+        setSubmissionActionError(err instanceof Error ? err.message : "Unable to update submission moderation.");
       }
       finally {
         setActionBusyId(null);
@@ -311,13 +308,13 @@ export default function AdminModerationPage() {
 
     if (action.kind === "toggleDisabled") {
       setActionBusyId(`user:${action.entry.uid}:disabled`);
-      setUserError(null);
+      setUserActionError(null);
       try {
         await updateAdminUser(action.entry.uid, { disabled: action.nextDisabled, reason: normalizedReason });
         await refreshUsers();
       }
       catch (err) {
-        setUserError(err instanceof Error ? err.message : "Unable to update user status.");
+        setUserActionError(err instanceof Error ? err.message : "Unable to update user status.");
       }
       finally {
         setActionBusyId(null);
@@ -326,13 +323,13 @@ export default function AdminModerationPage() {
     }
 
     setActionBusyId(`user:${action.entry.uid}:roles`);
-    setUserError(null);
+    setUserActionError(null);
     try {
       await updateAdminUser(action.entry.uid, { roles: action.roles, reason: normalizedReason });
       await refreshUsers();
     }
     catch (err) {
-      setUserError(err instanceof Error ? err.message : "Unable to update user roles.");
+      setUserActionError(err instanceof Error ? err.message : "Unable to update user roles.");
     }
     finally {
       setActionBusyId(null);
@@ -345,20 +342,23 @@ export default function AdminModerationPage() {
     if (!parsed) return;
 
     setDemoBatchSaving(true);
-    setDemoBatchError(null);
+    setDemoBatchActionError(null);
     setDemoBatchMessage(null);
     try {
       const setting = await setAdminDemoBatch(parsed.deviceId, parsed.batchId);
-      setDemoBatchKey(encodeBatchKey(setting.deviceId, setting.batchId));
+      queryClient.setQueryData(ADMIN_QUERY_KEYS.demoBatchOptions, {
+        batches: demoBatches,
+        selectedKey: encodeBatchKey(setting.deviceId, setting.batchId),
+      });
       setDemoBatchMessage("Front page demo data updated.");
     }
     catch (err) {
-      setDemoBatchError(err instanceof Error ? err.message : "Unable to update demo batch.");
+      setDemoBatchActionError(err instanceof Error ? err.message : "Unable to update demo batch.");
     }
     finally {
       setDemoBatchSaving(false);
     }
-  }, []);
+  }, [demoBatches, queryClient]);
 
   if (!canAccessAdmin) {
     return (

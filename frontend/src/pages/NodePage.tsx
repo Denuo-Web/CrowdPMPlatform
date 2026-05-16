@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Box,
   Button,
@@ -21,6 +21,7 @@ import {
 } from "../components/LegalDocumentDialog";
 import { APP_ROUTES } from "../lib/appRoutes";
 import { createNodePurchaseCheckoutSession } from "../lib/api";
+import { useBrowserLocation } from "../lib/locationStore";
 
 type SectionProps = {
   title: string;
@@ -357,18 +358,16 @@ function ProductGallery() {
 
 type CheckoutNotice = "success" | "cancelled" | null;
 
-function readCheckoutNotice(): CheckoutNotice {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const status = new URLSearchParams(window.location.search).get("checkout");
+function readCheckoutNotice(search: string): CheckoutNotice {
+  const status = new URLSearchParams(search).get("checkout");
   return status === "success" || status === "cancelled" ? status : null;
 }
 
 export default function NodePage() {
+  const location = useBrowserLocation();
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
-  const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(readCheckoutNotice);
+  const checkoutNotice = readCheckoutNotice(location.search);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
   const [includeCo2, setIncludeCo2] = useState(false);
   const [includeNo2, setIncludeNo2] = useState(false);
@@ -378,10 +377,6 @@ export default function NodePage() {
   const unitAddOnAmountCents = selectedVariant.addOnAmountCents;
   const unitTotalAmountCents = selectedVariant.totalAmountCents;
   const orderSubtotalCents = unitTotalAmountCents * quantity;
-
-  useEffect(() => {
-    setCheckoutNotice(readCheckoutNotice());
-  }, []);
 
   const handlePurchaseNode = async () => {
     setCheckoutError("");

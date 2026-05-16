@@ -8,6 +8,12 @@ import type { Layer } from "@deck.gl/core";
 import { getMapsLoader, normalizeGoogleMapId } from "../lib/mapsLoader";
 import { logError, logWarning } from "../lib/logger";
 import { canCaptureCanvas } from "../lib/videoExport";
+import {
+  planExportCameraBase,
+  planExportCameraFrame,
+  planSelectionCamera,
+  type CameraState,
+} from "../lib/mapCamera";
 
 type MeasurementPoint = {
   lat: number;
@@ -55,12 +61,7 @@ export type Map3DHandle = {
   setExportCameraFrame: (frame: Map3DExportCameraFrame | null) => void;
 };
 
-type MapCameraState = {
-  center: { lat: number; lng: number };
-  zoom?: number;
-  tilt?: number;
-  heading?: number;
-};
+type MapCameraState = CameraState;
 
 type Map3DProps = {
   data: MeasurementPoint[];
@@ -114,22 +115,6 @@ async function waitForAnimationFrames(count: number) {
   for (let index = 0; index < count; index += 1) {
     await waitForNextAnimationFrame();
   }
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(Math.max(value, 0), 1);
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function easeInOutCubic(t: number): number {
-  const clamped = clamp01(t);
-  return clamped < 0.5
-    ? 4 * clamped * clamped * clamped
-    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
 }
 
 function waitForMapIdle(map: google.maps.Map | null, timeoutMs: number): Promise<void> {
@@ -912,19 +897,18 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     const series = latestDataRef.current;
     const current = series[selectedIndexRef.current] ?? series[0];
     if (current) {
-      const center = { lat: current.lat, lng: current.lon };
       const map = mapRef.current;
       if (map && (!hasUserControlRef.current || options?.forceCenter || forceFollowSelection)) {
         if (exportCameraActiveRef.current) {
           requestOverlayRedraw(overlay);
           return;
         }
-        const targetZoom = forceFollowSelection
-          ? Math.max(map.getZoom() ?? 18, 18)
-          : Math.max(map.getZoom() ?? 17, 16);
-        const currentTilt = map.getTilt() ?? 0;
-        const targetTilt = currentTilt < 10 ? 67.5 : undefined;
-        moveMapCamera(map, { center, zoom: targetZoom, tilt: targetTilt });
+        moveMapCamera(map, planSelectionCamera({
+          point: current,
+          currentZoom: map.getZoom() ?? undefined,
+          currentTilt: map.getTilt() ?? undefined,
+          forceFollowSelection,
+        }));
       }
     }
 
@@ -962,33 +946,22 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     const series = latestDataRef.current;
     if (!map || !series.length) return;
 
-    const maxIndex = series.length - 1;
-    const fromIndex = Math.min(Math.max(Math.round(frame.fromIndex), 0), maxIndex);
-    const toIndex = Math.min(Math.max(Math.round(frame.toIndex), 0), maxIndex);
-    const from = series[fromIndex];
-    const to = series[toIndex] ?? from;
-    if (!from || !to) return;
-
     if (!exportCameraBaseRef.current) {
-      const currentCamera = readMapCameraState(map);
-      exportCameraBaseRef.current = {
-        zoom: Math.max(currentCamera?.zoom ?? map.getZoom() ?? 18, forceFollowSelection ? 18 : 16),
-        tilt: currentCamera?.tilt ?? map.getTilt() ?? 67.5,
-        heading: currentCamera?.heading ?? map.getHeading() ?? 0,
-      };
+      exportCameraBaseRef.current = planExportCameraBase({
+        currentCamera: readMapCameraState(map),
+        currentZoom: map.getZoom() ?? undefined,
+        currentTilt: map.getTilt() ?? undefined,
+        currentHeading: map.getHeading() ?? undefined,
+        forceFollowSelection,
+      });
     }
 
-    const easedProgress = easeInOutCubic(frame.progress);
-    const baseCamera = exportCameraBaseRef.current;
-    moveMapCamera(map, {
-      center: {
-        lat: lerp(from.lat, to.lat, easedProgress),
-        lng: lerp(from.lon, to.lon, easedProgress),
-      },
-      zoom: frame.zoom ?? baseCamera.zoom,
-      tilt: frame.tilt ?? (baseCamera.tilt < 10 ? 67.5 : baseCamera.tilt),
-      heading: baseCamera.heading + (frame.headingOffsetDeg ?? 0),
+    const nextCamera = planExportCameraFrame({
+      frame,
+      series,
+      baseCamera: exportCameraBaseRef.current,
     });
+    if (nextCamera) moveMapCamera(map, nextCamera);
   }, [forceFollowSelection]);
 
   useImperativeHandle(ref, () => ({
