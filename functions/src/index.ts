@@ -18,6 +18,7 @@ import { ensureLocalSuperAdmin } from "./lib/localSuperAdmin.js";
 import { toHttpError } from "./lib/httpError.js";
 import { RateLimitError } from "./lib/rateLimiter.js";
 import { fastifyCorsOptionsForRequest } from "./lib/corsPolicy.js";
+import { crowdpmApiRuntimeOptions } from "./lib/functionOptions.js";
 import { stripApiEntryPrefix } from "./lib/http.js";
 
 type RequestWithRawBody = https.Request & { rawBody?: Buffer | string };
@@ -107,6 +108,8 @@ export async function buildApi(deps: ApiDependencies = {}): Promise<FastifyInsta
   });
 
   if (deps.rateLimitsEnabled ?? defaultRateLimitsEnabled()) {
+    // fastify-rate-limit and routeGuards both run per process. Keep edge/shared
+    // controls in front of abuse-critical paths when deployed across instances.
     await api.register(rateLimit, {
       max: 100,
       timeWindow: "1 minute",
@@ -150,6 +153,7 @@ function sendStartupError(res: ResponseLike, err: unknown): void {
 }
 
 export const crowdpmApi = https.onRequest({
+  ...crowdpmApiRuntimeOptions,
   secrets: ["DEVICE_TOKEN_PRIVATE_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
 }, async (req, res) => {
   try {
@@ -166,3 +170,4 @@ export const crowdpmApi = https.onRequest({
 });
 
 export { ingestGateway } from "./services/ingestGateway.js";
+export { refreshPublicBatchMap } from "./services/publicBatchMapRefresh.js";

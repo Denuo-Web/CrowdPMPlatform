@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Box, Card, Flex, Heading, Link, Text } from "@radix-ui/themes";
-import SwaggerUIBundle from "swagger-ui-dist/swagger-ui-bundle.js";
-import SwaggerUIStandalonePreset from "swagger-ui-dist/swagger-ui-standalone-preset.js";
-import "swagger-ui-dist/swagger-ui.css";
+import type { SwaggerUiInstance } from "swagger-ui-dist/swagger-ui-bundle.js";
 import openapiSpecUrl from "../../../functions/src/openapi.yaml?url";
 import "./ApiDocsPage.css";
 
@@ -15,22 +13,39 @@ export default function ApiDocsPage() {
     const container = swaggerContainerRef.current;
     if (!container) return;
 
-    const swaggerUi = SwaggerUIBundle({
-      url: openapiSpecUrl,
-      domNode: container,
-      deepLinking: true,
-      displayRequestDuration: true,
-      docExpansion: "list",
-      filter: true,
-      persistAuthorization: true,
-      defaultModelsExpandDepth: 1,
-      defaultModelExpandDepth: 1,
-      presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-      layout: SWAGGER_LAYOUT,
+    let isDisposed = false;
+    let swaggerUi: SwaggerUiInstance | null = null;
+
+    void Promise.all([
+      import("swagger-ui-dist/swagger-ui-bundle.js"),
+      import("swagger-ui-dist/swagger-ui-standalone-preset.js"),
+      import("swagger-ui-dist/swagger-ui.css"),
+    ]).then(([bundleModule, presetModule]) => {
+      if (isDisposed) return;
+      const SwaggerUIBundle = bundleModule.default;
+      const SwaggerUIStandalonePreset = presetModule.default;
+      swaggerUi = SwaggerUIBundle({
+        url: openapiSpecUrl,
+        domNode: container,
+        deepLinking: true,
+        displayRequestDuration: true,
+        docExpansion: "list",
+        filter: true,
+        persistAuthorization: false,
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: SWAGGER_LAYOUT,
+      });
+    }).catch(() => {
+      if (!isDisposed) {
+        container.textContent = "Unable to load API reference.";
+      }
     });
 
     return () => {
-      swaggerUi.destroy?.();
+      isDisposed = true;
+      swaggerUi?.destroy?.();
       container.replaceChildren();
     };
   }, []);

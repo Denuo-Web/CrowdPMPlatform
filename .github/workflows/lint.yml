@@ -33,6 +33,9 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+      - name: Run frontend typecheck
+        run: pnpm typecheck
+
       - name: Run functions tests
         run: pnpm --filter crowdpm-functions test
 

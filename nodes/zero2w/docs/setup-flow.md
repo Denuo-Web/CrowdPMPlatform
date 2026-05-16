@@ -68,3 +68,12 @@ So the correct shipped flow is:
 The deployed ingest contract currently accepts PM2.5 points with location and
 timestamp. DHT22 temperature and humidity are available locally for diagnostics,
 but they are not part of the current CrowdPM ingest payload schema.
+
+## Provisioning
+
+Use `nodes/zero2w/deploy_pi.sh crowdpm@<pi-host>` from this directory tree to run
+the Ansible playbook in `nodes/zero2w/ansible/deploy.yml`. Install the required
+Ansible collection once with `ansible-galaxy collection install -r nodes/zero2w/ansible/requirements.yml`.
+The playbook prompts once for sudo/become credentials by default; set
+`CROWDPM_ANSIBLE_NO_BECOME_PROMPT=1` when the target account has passwordless
+sudo.

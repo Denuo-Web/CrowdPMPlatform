@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { timestampToMillis, type IngestPoint, type UserThemeAppearance } from "@crowdpm/types";
+import { timestampToMillis, type UserThemeAppearance } from "@crowdpm/types";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
@@ -9,8 +9,6 @@ import {
   fetchPublicBatchDetail,
   listBatches,
   listPublicBatches,
-  type BatchSummary,
-  type MeasurementRecord,
 } from "../lib/api";
 import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
 import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
@@ -35,38 +33,52 @@ import { useAuth } from "../providers/AuthProvider";
 import { useUserSettings } from "../providers/UserSettingsProvider";
 import type { Map3DCaptureSession, Map3DHandle } from "../components/Map3D";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
+import {
+  BATCH_LIST_STALE_MS,
+  DROPDOWN_BATCH_LIMIT,
+  EXPANDED_BATCH_FETCH_LIMIT,
+  formatBatchLabel,
+  getBatchBrowserTimeRangeCutoff,
+  isTerminalBatchError,
+  mergeBatchLists,
+  pointsToMeasurementRecords,
+  SHOW_ALL_PUBLIC_BATCH_LIMIT,
+  SHOW_ALL_PUBLIC_LOOKBACK_MS,
+  sortBatchesByProcessedAtDesc,
+  toPublicVisibleBatches,
+  type BatchBrowserTimeRange,
+  type MapMeasurementRecord,
+  type VisibleBatchSummary,
+} from "./mapPageData";
+import {
+  abortable,
+  DEFAULT_VIDEO_EXPORT_SETTINGS,
+  getVideoExportBitrate,
+  getVideoExportMeasurementOverlayLines,
+  getVideoExportTilt,
+  getVideoExportWaypointIndexes,
+  sanitizeFileSegment,
+  sleep,
+  throwIfVideoExportAborted,
+  VIDEO_EXPORT_DURATION_OPTIONS,
+  VIDEO_EXPORT_FPS_OPTIONS,
+  VIDEO_EXPORT_HOLD_OPTIONS,
+  VIDEO_EXPORT_NON_BLACK_RETRIES,
+  VIDEO_EXPORT_ORBIT_DEGREES,
+  VIDEO_EXPORT_QUALITY_OPTIONS,
+  VIDEO_EXPORT_VISUAL_SETTLE_FRAMES,
+  VideoExportCancelledError,
+  waitForAnimationFrames,
+  waitForNonBlackCaptureFrame,
+  type VideoExportDurationMs,
+  type VideoExportFps,
+  type VideoExportHoldMs,
+  type VideoExportQuality,
+  type VideoExportSettings,
+} from "./mapVideoExport";
 
-const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
-const DROPDOWN_BATCH_LIMIT = 20;
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
 const SEE_ALL_BATCHES_KEY = "__see_all_batches__";
-const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const SHOW_ALL_PUBLIC_BATCH_LIMIT = 200;
-const EXPANDED_BATCH_FETCH_LIMIT = 500;
-const VIDEO_EXPORT_DURATION_OPTIONS = [
-  { label: "6s", value: 6_000 },
-  { label: "12s", value: 12_000 },
-  { label: "24s", value: 24_000 },
-  { label: "30s", value: 30_000 },
-] as const;
-const VIDEO_EXPORT_FPS_OPTIONS = [24, 30, 60] as const;
-const VIDEO_EXPORT_QUALITY_OPTIONS = [
-  { label: "Low (2.5 Mbps)", value: "low", videoBitsPerSecond: 2_500_000 },
-  { label: "Medium (5 Mbps)", value: "medium", videoBitsPerSecond: 5_000_000 },
-  { label: "High (10 Mbps)", value: "high", videoBitsPerSecond: 10_000_000 },
-] as const;
-const VIDEO_EXPORT_HOLD_OPTIONS = [
-  { label: "Off", value: 0 },
-  { label: "1s", value: 1_000 },
-  { label: "2s", value: 2_000 },
-] as const;
-const VIDEO_EXPORT_MIN_POINT_MS = 300;
-const VIDEO_EXPORT_VISUAL_SETTLE_FRAMES = 4;
-const VIDEO_EXPORT_NON_BLACK_RETRIES = 10;
-const VIDEO_EXPORT_ORBIT_DEGREES = 24;
-const VIDEO_EXPORT_START_TILT = 45;
-const VIDEO_EXPORT_TARGET_TILT = 67.5;
-const VIDEO_EXPORT_TILT_RAMP_PORTION = 0.2;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
 const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
 const MAP_PANEL_BLUR = "blur(12px)";
@@ -84,347 +96,9 @@ const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ??
 const EXPANDED_BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batchesExpanded", uid ?? "guest", EXPANDED_BATCH_FETCH_LIMIT] as const;
 const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail", uid, batchKey] as const;
 const Map3D = lazy(() => import("../components/Map3D"));
-const TERMINAL_BATCH_ERROR_MESSAGES = ["unauthorized", "authentication required", "not_found", "batch not found"] as const;
-
-type VisibleBatchAccess = "owned" | "public" | "both";
-type VisibleBatchSummary = BatchSummary & {
-  access: VisibleBatchAccess;
-};
-
-type BatchBrowserTimeRange = "all" | "8h" | "24h" | "7d" | "30d";
-type VideoExportDurationMs = (typeof VIDEO_EXPORT_DURATION_OPTIONS)[number]["value"];
-type VideoExportFps = (typeof VIDEO_EXPORT_FPS_OPTIONS)[number];
-type VideoExportQuality = (typeof VIDEO_EXPORT_QUALITY_OPTIONS)[number]["value"];
-type VideoExportHoldMs = (typeof VIDEO_EXPORT_HOLD_OPTIONS)[number]["value"];
-type VideoExportSettings = {
-  durationMs: VideoExportDurationMs;
-  fps: VideoExportFps;
-  quality: VideoExportQuality;
-  holdMs: VideoExportHoldMs;
-  enableHeadingOrbit: boolean;
-  enableTiltRamp: boolean;
-};
-
-const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
-  durationMs: 12_000,
-  fps: 30,
-  quality: "medium",
-  holdMs: 1_000,
-  enableHeadingOrbit: true,
-  enableTiltRamp: true,
-};
-
-type MapMeasurementRecord = MeasurementRecord & {
-  batchKey?: string;
-  batchPointIndex?: number;
-};
-
 type MapPageProps = {
   mapAppearance: UserThemeAppearance;
 };
-
-class VideoExportCancelledError extends Error {
-  constructor() {
-    super("Video export cancelled.");
-    this.name = "VideoExportCancelledError";
-  }
-}
-
-function throwIfVideoExportAborted(signal?: AbortSignal) {
-  if (signal?.aborted) {
-    throw new VideoExportCancelledError();
-  }
-}
-
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  throwIfVideoExportAborted(signal);
-  if (!signal) return promise;
-
-  return new Promise((resolve, reject) => {
-    const handleAbort = () => {
-      reject(new VideoExportCancelledError());
-    };
-    signal.addEventListener("abort", handleAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", handleAbort);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", handleAbort);
-        reject(error);
-      }
-    );
-  });
-}
-
-function formatBatchLabel(batch: BatchSummary) {
-  const timeMs = timestampToMillis(batch.processedAt);
-  const timeLabel = timeMs === null ? "Pending timestamp" : new Date(timeMs).toLocaleString();
-  const name = batch.deviceName?.trim().length ? batch.deviceName : batch.deviceId;
-  const countLabel = batch.count ? ` (${batch.count})` : "";
-  return `${timeLabel} — ${name}${countLabel}`;
-}
-
-function sortBatchesByProcessedAtDesc<T extends BatchSummary>(list: T[]): T[] {
-  return [...list].sort((a, b) => {
-    const timeA = timestampToMillis(a.processedAt) ?? 0;
-    const timeB = timestampToMillis(b.processedAt) ?? 0;
-    return timeB - timeA;
-  });
-}
-
-function getBatchBrowserTimeRangeCutoff(range: BatchBrowserTimeRange): number | null {
-  switch (range) {
-    case "8h":
-      return Date.now() - 8 * 60 * 60 * 1000;
-    case "24h":
-      return Date.now() - 24 * 60 * 60 * 1000;
-    case "7d":
-      return Date.now() - 7 * 24 * 60 * 60 * 1000;
-    case "30d":
-      return Date.now() - 30 * 24 * 60 * 60 * 1000;
-    case "all":
-      return null;
-  }
-}
-
-function toPublicVisibleBatches(publicBatches: BatchSummary[]): VisibleBatchSummary[] {
-  return publicBatches.map((batch) => ({ ...batch, access: "public" }));
-}
-
-function mergeBatchLists(primaryBatches: BatchSummary[], publicBatches: BatchSummary[]): VisibleBatchSummary[] {
-  const byKey = new Map<string, VisibleBatchSummary>();
-  toPublicVisibleBatches(publicBatches).forEach((batch) => {
-    byKey.set(encodeBatchKey(batch.deviceId, batch.batchId), batch);
-  });
-  primaryBatches.forEach((batch) => {
-    const key = encodeBatchKey(batch.deviceId, batch.batchId);
-    const existing = byKey.get(key);
-    byKey.set(key, {
-      ...batch,
-      access: existing ? "both" : "owned",
-    });
-  });
-  return sortBatchesByProcessedAtDesc(Array.from(byKey.values()));
-}
-
-function isTerminalBatchError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message.toLowerCase();
-  return TERMINAL_BATCH_ERROR_MESSAGES.some((fragment) => message.includes(fragment));
-}
-
-function pointsToMeasurementRecords(
-  points: IngestPoint[],
-  fallbackDeviceId: string,
-  batchId: string,
-  options?: { batchKey?: string }
-): MapMeasurementRecord[] {
-  return [...points]
-    .sort((a, b) => {
-      const aTs = timestampToMillis(a.timestamp as unknown as MeasurementRecord["timestamp"]) ?? 0;
-      const bTs = timestampToMillis(b.timestamp as unknown as MeasurementRecord["timestamp"]) ?? 0;
-      return aTs - bTs;
-    })
-    .map((point, idx) => {
-      const deviceId = typeof point.device_id === "string" && point.device_id.length
-        ? point.device_id
-        : fallbackDeviceId;
-      return {
-        id: `${batchId}-${deviceId}-${idx}`,
-        deviceId,
-        pollutant: "pm25",
-        value: point.value,
-        unit: point.unit ?? "µg/m³",
-        lat: point.lat ?? 0,
-        lon: point.lon ?? 0,
-        altitude: point.altitude ?? null,
-        precision: point.precision ?? null,
-        timestamp: point.timestamp,
-        flags: point.flags ?? 0,
-        batchKey: options?.batchKey,
-        batchPointIndex: idx,
-      } satisfies MapMeasurementRecord;
-    });
-}
-
-function waitForAnimationFrame(signal?: AbortSignal): Promise<number> {
-  throwIfVideoExportAborted(signal);
-  return new Promise((resolve, reject) => {
-    let rafId = 0;
-    const cleanup = () => {
-      if (signal) signal.removeEventListener("abort", handleAbort);
-    };
-    const handleAbort = () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      cleanup();
-      reject(new VideoExportCancelledError());
-    };
-    if (signal) signal.addEventListener("abort", handleAbort, { once: true });
-    rafId = window.requestAnimationFrame((timestamp) => {
-      cleanup();
-      resolve(timestamp);
-    });
-  });
-}
-
-async function waitForAnimationFrames(count: number, signal?: AbortSignal) {
-  for (let index = 0; index < count; index += 1) {
-    await waitForAnimationFrame(signal);
-  }
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  throwIfVideoExportAborted(signal);
-  return new Promise((resolve, reject) => {
-    let timeoutId = 0;
-    const cleanup = () => {
-      if (signal) signal.removeEventListener("abort", handleAbort);
-    };
-    const handleAbort = () => {
-      window.clearTimeout(timeoutId);
-      cleanup();
-      reject(new VideoExportCancelledError());
-    };
-    if (signal) signal.addEventListener("abort", handleAbort, { once: true });
-    timeoutId = window.setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-  });
-}
-
-function easeInOutCubic(t: number): number {
-  const clamped = Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1);
-  return clamped < 0.5
-    ? 4 * clamped * clamped * clamped
-    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
-}
-
-function getVideoExportBitrate(quality: VideoExportQuality): number {
-  return VIDEO_EXPORT_QUALITY_OPTIONS.find((option) => option.value === quality)?.videoBitsPerSecond
-    ?? 5_000_000;
-}
-
-function getVideoExportTilt(settings: VideoExportSettings, progress: number): number {
-  if (!settings.enableTiltRamp) return VIDEO_EXPORT_TARGET_TILT;
-  const rampProgress = Math.min(Math.max(progress / VIDEO_EXPORT_TILT_RAMP_PORTION, 0), 1);
-  const easedProgress = easeInOutCubic(rampProgress);
-  return VIDEO_EXPORT_START_TILT + (VIDEO_EXPORT_TARGET_TILT - VIDEO_EXPORT_START_TILT) * easedProgress;
-}
-
-function formatVideoExportTimestamp(point: MapMeasurementRecord): string {
-  const timestampMs = timestampToMillis(point.timestamp);
-  return timestampMs === null ? "Timestamp unavailable" : new Date(timestampMs).toLocaleString();
-}
-
-function getVideoExportMeasurementOverlayLines(
-  point: MapMeasurementRecord | undefined,
-  index: number,
-  totalCount: number,
-  label: string
-): string[] {
-  if (!point) return [label, `Point ${Math.min(index + 1, totalCount)} of ${totalCount}`];
-
-  const pollutant = String(point.pollutant);
-  const pollutantLabel = pollutant === "pm25" ? "PM2.5" : pollutant.toUpperCase();
-  const valueLabel = `${pollutantLabel}: ${point.value} ${point.unit || "µg/m³"}`;
-  const precisionLabel = point.precision != null ? ` · ±${Math.round(point.precision)}m` : "";
-  const altitudeLabel = point.altitude != null ? ` · alt ${Math.round(point.altitude)}m` : "";
-
-  return [
-    label,
-    `Point ${index + 1} of ${totalCount} · ${formatVideoExportTimestamp(point)}`,
-    valueLabel,
-    `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}${precisionLabel}${altitudeLabel}`,
-  ];
-}
-
-function getVideoExportWaypointIndexes(pointCount: number, motionDurationMs: number): number[] {
-  const lastIndex = pointCount - 1;
-  if (lastIndex <= 0) return [0];
-
-  const maxSegments = Math.max(1, Math.floor(motionDurationMs / VIDEO_EXPORT_MIN_POINT_MS));
-  const segmentCount = Math.min(lastIndex, maxSegments);
-  if (segmentCount >= lastIndex) {
-    return Array.from({ length: pointCount }, (_, index) => index);
-  }
-
-  const indexes: number[] = [];
-  for (let step = 0; step <= segmentCount; step += 1) {
-    const index = Math.round((lastIndex * step) / segmentCount);
-    const previous = indexes[indexes.length - 1];
-    indexes.push(previous === undefined ? index : Math.max(index, previous + 1));
-  }
-  indexes[indexes.length - 1] = lastIndex;
-  return indexes;
-}
-
-function hasNonBlackCaptureSamples(canvas: HTMLCanvasElement): boolean | null {
-  if (canvas.width <= 0 || canvas.height <= 0) return false;
-
-  const sampleCanvas = document.createElement("canvas");
-  sampleCanvas.width = Math.min(canvas.width, 64);
-  sampleCanvas.height = Math.min(canvas.height, 36);
-  let context: CanvasRenderingContext2D | null = null;
-  try {
-    context = sampleCanvas.getContext("2d", { willReadFrequently: true });
-    context?.drawImage(canvas, 0, 0, sampleCanvas.width, sampleCanvas.height);
-  }
-  catch {
-    return null;
-  }
-  if (!context) return null;
-
-  const samplePoints = [
-    [0.08, 0.08],
-    [0.5, 0.08],
-    [0.92, 0.08],
-    [0.2, 0.35],
-    [0.5, 0.5],
-    [0.8, 0.35],
-    [0.08, 0.92],
-    [0.5, 0.92],
-    [0.92, 0.92],
-  ] as const;
-
-  try {
-    return samplePoints.some(([ratioX, ratioY]) => {
-      const x = Math.min(Math.max(Math.round(sampleCanvas.width * ratioX), 0), sampleCanvas.width - 1);
-      const y = Math.min(Math.max(Math.round(sampleCanvas.height * ratioY), 0), sampleCanvas.height - 1);
-      const [red, green, blue, alpha] = context.getImageData(x, y, 1, 1).data;
-      return alpha > 8 && red + green + blue > 30;
-    });
-  }
-  catch {
-    return null;
-  }
-}
-
-async function waitForNonBlackCaptureFrame(
-  canvas: HTMLCanvasElement,
-  onRetry?: () => Promise<void>,
-  maxRetries = VIDEO_EXPORT_NON_BLACK_RETRIES,
-  signal?: AbortSignal
-) {
-  for (let retry = 0; retry <= maxRetries; retry += 1) {
-    throwIfVideoExportAborted(signal);
-    const result = hasNonBlackCaptureSamples(canvas);
-    if (result !== false) return;
-    await waitForAnimationFrames(1, signal);
-    await onRetry?.();
-  }
-}
-
-function sanitizeFileSegment(value: string | null | undefined): string {
-  const normalized = (value ?? "")
-    .trim()
-    .replace(/[^a-z0-9_-]+/gi, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return normalized || "batch";
-}
 
 export default function MapPage({ mapAppearance }: MapPageProps) {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -1132,7 +806,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
           applyExportCameraFrame(fromIndex, nextIndex, pointProgress, totalProgress);
           setExportProgress(totalProgress);
           if (pointProgress >= 1) break;
-          await waitForAnimationFrame(signal);
+          await waitForAnimationFrames(1, signal);
           requestExportFrame();
         }
 

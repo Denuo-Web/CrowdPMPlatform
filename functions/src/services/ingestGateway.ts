@@ -5,6 +5,7 @@ import { verifyDeviceAccessToken } from "./deviceTokens.js";
 import { calculateDpopAth, checkDpopReplay, verifyDpopProof } from "../lib/dpop.js";
 import { canonicalRequestUrl } from "../lib/http.js";
 import { applyCorsHeaders } from "../lib/corsPolicy.js";
+import { ingestGatewayRuntimeOptions } from "../lib/functionOptions.js";
 import { ingestService, type IngestBody } from "./ingestService.js";
 import { httpError, toHttpError } from "../lib/httpError.js";
 
@@ -131,6 +132,9 @@ export async function ingestGatewayHandler(
   }
 }
 
-export const ingestGateway = onRequest({ secrets: ["DEVICE_TOKEN_PRIVATE_KEY"] }, async (req, res) => {
+export const ingestGateway = onRequest({
+  ...ingestGatewayRuntimeOptions,
+  secrets: ["DEVICE_TOKEN_PRIVATE_KEY"],
+}, async (req, res) => {
   await ingestGatewayHandler(req as RequestWithRawBody, res as unknown as GatewayResponse);
 });

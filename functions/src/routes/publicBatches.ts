@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { BatchVisibility, PublicBatchDetail, PublicBatchMapResponse, PublicBatchSummary } from "@crowdpm/types";
 import type { firestore } from "firebase-admin";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyBaseLogger, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { bucket, db } from "../lib/fire.js";
 import { extractClientIp } from "../lib/http.js";
@@ -9,14 +9,20 @@ import { httpError } from "../lib/httpError.js";
 import { normalizeTimestamp, normalizeVisibility, parseDeviceId } from "../lib/httpValidation.js";
 import { normalizeModerationState } from "../lib/moderation.js";
 import { rateLimitGuard, requestParam } from "../lib/routeGuards.js";
-import { timestampToMillis } from "../lib/time.js";
 import { decodeBatchPayload } from "../services/batchPayloads.js";
+import {
+  buildPublicBatchMapResponse,
+  filterPublicBatchMapResponse,
+  publicBatchMapEtag,
+  PUBLIC_BATCH_MAP_CACHE_CONTROL,
+  PUBLIC_BATCH_MAP_DEFAULT_LIMIT,
+  PUBLIC_BATCH_MAP_MAX_LIMIT,
+  readPublicBatchMapSnapshot,
+  writePublicBatchMapSnapshot,
+  type PublicBatchMapSnapshot,
+} from "../services/publicBatchMapSnapshot.js";
 
 const PUBLIC_BATCH_LIST_MAX_LIMIT = 500;
-const PUBLIC_BATCH_MAP_MAX_LIMIT = 200;
-const PUBLIC_BATCH_MAP_DEFAULT_LIMIT = 200;
-const PUBLIC_BATCH_MAP_CONCURRENCY = 8;
-const PUBLIC_BATCH_MAP_CACHE_MS = 30_000;
 const APP_SETTINGS_COLLECTION = "appSettings";
 const DEMO_BATCH_SETTINGS_DOC = "demoBatch";
 const listQuerySchema = z.object({
@@ -26,13 +32,6 @@ const mapQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(PUBLIC_BATCH_MAP_MAX_LIMIT).optional(),
   since: z.string().trim().optional(),
 });
-
-type PublicBatchMapCacheEntry = {
-  expiresAt: number;
-  response: PublicBatchMapResponse;
-};
-
-const publicBatchMapCache = new Map<string, PublicBatchMapCacheEntry>();
 
 function requestIp(req: { headers: IncomingHttpHeaders; ip: string }): string {
   return extractClientIp(req.headers) ?? req.ip ?? "unknown";
@@ -89,28 +88,6 @@ async function readBatchPoints(storagePath: string): Promise<PublicBatchDetail["
   return decodeBatchPayload(buf, storagePath).points;
 }
 
-async function mapWithConcurrency<T, R>(
-  values: readonly T[],
-  concurrency: number,
-  mapper: (value: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
-    while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= values.length) {
-        return;
-      }
-      results[index] = await mapper(values[index], index);
-    }
-  }));
-
-  return results;
-}
-
 async function listPublicApprovedBatchDocs(limit: number) {
   const snap = await db().collection("batches")
     .where("visibility", "==", "public")
@@ -142,6 +119,31 @@ async function loadPublicApprovedSummary(deviceId: string, batchId: string): Pro
     return null;
   }
   return serializeSummary(batchSnap);
+}
+
+function requestMatchesEtag(headers: IncomingHttpHeaders, etag: string): boolean {
+  const rawValue = headers["if-none-match"];
+  const value = Array.isArray(rawValue) ? rawValue.join(",") : rawValue;
+  if (!value) return false;
+  return value.split(",").map((part) => part.trim()).some((part) => part === "*" || part === etag);
+}
+
+async function buildAndStorePublicMapSnapshot(logger: FastifyBaseLogger): Promise<PublicBatchMapSnapshot> {
+  const response = await buildPublicBatchMapResponse({
+    limit: PUBLIC_BATCH_MAP_MAX_LIMIT,
+    sinceMs: null,
+    logger,
+  });
+  try {
+    return await writePublicBatchMapSnapshot(response);
+  }
+  catch (err) {
+    logger.warn?.({ err }, "failed to write public batch map snapshot; serving rebuilt response directly");
+    return {
+      response,
+      etag: publicBatchMapEtag(response),
+    };
+  }
 }
 
 export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
@@ -179,7 +181,7 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
       rateLimitGuard((req) => `public:batches:map:ip:${requestIp(req)}`, 60, 60_000),
       rateLimitGuard("public:batches:map:global", 500, 60_000),
     ],
-  }, async (req, rep): Promise<PublicBatchMapResponse> => {
+  }, async (req, rep): Promise<PublicBatchMapResponse | undefined> => {
     const parsed = mapQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       throw httpError(400, "invalid_request", "invalid query", { details: parsed.error.flatten() });
@@ -187,52 +189,22 @@ export const publicBatchesRoutes: FastifyPluginAsync = async (app) => {
 
     const limit = parsed.data.limit ?? PUBLIC_BATCH_MAP_DEFAULT_LIMIT;
     const sinceMs = parseSinceQuery(parsed.data.since);
-    const normalizedSinceKey = sinceMs === null ? "all" : String(Math.floor(sinceMs / PUBLIC_BATCH_MAP_CACHE_MS));
-    const cacheKey = `${limit}:${normalizedSinceKey}`;
-    const now = Date.now();
-    const cached = publicBatchMapCache.get(cacheKey);
-    if (cached && cached.expiresAt > now) {
-      rep.header("Cache-Control", "public, max-age=30");
-      return cached.response;
+    let snapshot = await readPublicBatchMapSnapshot().catch((err) => {
+      app.log.warn({ err }, "failed to read public batch map snapshot; rebuilding from batch payloads");
+      return null;
+    });
+    if (!snapshot) {
+      snapshot = await buildAndStorePublicMapSnapshot(app.log);
     }
 
-    const docs = await listPublicApprovedBatchDocs(limit);
-    const filteredDocs = sinceMs === null
-      ? docs
-      : docs.filter((doc) => {
-        const processedAtMs = timestampToMillis(doc.get("processedAt"));
-        return processedAtMs !== null && processedAtMs >= sinceMs;
-      });
-
-    const detailResults = await mapWithConcurrency(filteredDocs, PUBLIC_BATCH_MAP_CONCURRENCY, async (doc) => {
-      const summary = serializeSummary(doc);
-      const storagePath = asString(doc.get("storagePath"));
-      if (!storagePath) {
-        app.log.error({ batchId: summary.batchId, deviceId: summary.deviceId }, "public map batch missing storage path");
-        return null;
-      }
-
-      try {
-        const points = await readBatchPoints(storagePath);
-        return detailFromSummary({
-          ...summary,
-          count: asNumber(doc.get("count"), points.length),
-        }, points);
-      }
-      catch (err) {
-        app.log.error({ err, batchId: summary.batchId, deviceId: summary.deviceId }, "failed to read public batch payload for map");
-        return null;
-      }
-    });
-
-    const response = {
-      batches: detailResults.filter((detail): detail is PublicBatchDetail => Boolean(detail)),
-    } satisfies PublicBatchMapResponse;
-    publicBatchMapCache.set(cacheKey, {
-      expiresAt: now + PUBLIC_BATCH_MAP_CACHE_MS,
-      response,
-    });
-    rep.header("Cache-Control", "public, max-age=30");
+    const response = filterPublicBatchMapResponse(snapshot.response, { limit, sinceMs });
+    const etag = publicBatchMapEtag(response);
+    rep.header("Cache-Control", PUBLIC_BATCH_MAP_CACHE_CONTROL);
+    rep.header("ETag", etag);
+    if (requestMatchesEtag(req.headers, etag)) {
+      rep.code(304);
+      return undefined;
+    }
     return response;
   });
 

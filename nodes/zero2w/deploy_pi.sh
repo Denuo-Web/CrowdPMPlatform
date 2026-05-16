@@ -1,28 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PI_HOST="${1:-crowdpm@192.168.8.114}"
-ROOT_DIR="/opt/crowdpm-node"
-APP_DIR="${ROOT_DIR}/app"
-STATE_DIR="${ROOT_DIR}/state"
-STAGING_DIR=".crowdpm-node-staging"
+TARGET="${1:-crowdpm@192.168.8.114}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 
-ssh "${PI_HOST}" "mkdir -p '${STAGING_DIR}'"
-rsync -az --delete \
-  --exclude '.git' \
-  --exclude '__pycache__' \
-  --exclude '.venv' \
-  --exclude '.codex-tmp' \
-  ./ "${PI_HOST}:${STAGING_DIR}/"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLAYBOOK="${SCRIPT_DIR}/ansible/deploy.yml"
 
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S mkdir -p '${APP_DIR}' '${STATE_DIR}' '${ROOT_DIR}/venv'"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S rsync -a --delete '${STAGING_DIR}/' '${APP_DIR}/'"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S apt-get install -y python3-venv python3-pip python3-dev build-essential iw"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S python3 -m venv '${ROOT_DIR}/venv'"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S '${ROOT_DIR}/venv/bin/pip' install --upgrade pip"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S '${ROOT_DIR}/venv/bin/pip' install -r '${APP_DIR}/requirements.txt'"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S cp '${APP_DIR}/systemd/crowdpm-node.service' /etc/systemd/system/crowdpm-node.service"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S systemctl daemon-reload"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S systemctl enable crowdpm-node.service"
-ssh "${PI_HOST}" "printf '%s\n' 'WDCogv8uimqDKaRjKRpWs7xi' | sudo -S systemctl restart crowdpm-node.service"
-echo "Deployed to ${PI_HOST}"
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+  echo "ansible-playbook is required. Install Ansible on the deploy machine and rerun this script." >&2
+  exit 1
+fi
+
+if [[ "${TARGET}" == *@* ]]; then
+  ANSIBLE_USER="${TARGET%@*}"
+  ANSIBLE_HOST="${TARGET#*@}"
+else
+  ANSIBLE_USER=""
+  ANSIBLE_HOST="${TARGET}"
+fi
+
+INVENTORY="$(mktemp)"
+trap 'rm -f "${INVENTORY}"' EXIT
+
+{
+  echo "[crowdpm_zero2w]"
+  if [ -n "${ANSIBLE_USER}" ]; then
+    printf 'target ansible_host=%s ansible_user=%s\n' "${ANSIBLE_HOST}" "${ANSIBLE_USER}"
+  else
+    printf 'target ansible_host=%s\n' "${ANSIBLE_HOST}"
+  fi
+} > "${INVENTORY}"
+
+ANSIBLE_ARGS=()
+if [ "${CROWDPM_ANSIBLE_NO_BECOME_PROMPT:-0}" != "1" ]; then
+  ANSIBLE_ARGS+=(--ask-become-pass)
+fi
+
+ansible-playbook -i "${INVENTORY}" "${PLAYBOOK}" "${ANSIBLE_ARGS[@]}" "$@"
+echo "Deployed to ${TARGET}"

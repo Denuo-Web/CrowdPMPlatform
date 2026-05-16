@@ -111,9 +111,14 @@ Run these before opening a pull request:
 
 ```bash
 pnpm lint
+pnpm typecheck
 pnpm --filter crowdpm-functions test
 pnpm build
 ```
+
+ESLint is currently pinned to v9 while `eslint.config.mjs` still uses
+`FlatCompat`. Migrate that config to native flat-config plugin entries before
+planning an ESLint 10 upgrade.
 
 ## 7. Daily Workflow
 

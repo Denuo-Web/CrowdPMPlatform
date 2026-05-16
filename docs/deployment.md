@@ -7,7 +7,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Firebase project access with permission to deploy Hosting, Functions, Firestore rules/indexes, and Storage rules.
 - Firebase CLI authenticated with `firebase login`.
 - Clean `main` checkout at the commit being released.
-- CI green or equivalent local checks passing: `pnpm lint`, `pnpm --filter crowdpm-functions test`, and `pnpm build`.
+- CI green or equivalent local checks passing: `pnpm lint`, `pnpm typecheck`, `pnpm --filter crowdpm-functions test`, and `pnpm build`.
 - Frontend environment values ready for the deployed Firebase project.
 - Functions runtime configuration ready, especially the Firebase secrets used by deployed functions.
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
@@ -94,6 +94,7 @@ Before inviting unknown public traffic, confirm each item outside the repo:
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
+pnpm typecheck
 pnpm --filter crowdpm-functions test
 pnpm build
 printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
