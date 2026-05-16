@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Box, Button, Callout, Card, Flex, Heading, Link, SegmentedControl, Select, Separator, Switch, Table, Text, TextField } from "@radix-ui/themes";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { timestampToMillis } from "@crowdpm/types";
@@ -33,6 +34,15 @@ type UserDashboardProps = {
   onSubscriptionCheckoutHandled?: () => void;
   refreshToken?: number;
 };
+
+const DASHBOARD_QUERY_KEYS = {
+  devices: (userId: string | null) => ["dashboard", "devices", userId ?? "anon"] as const,
+  batches: (userId: string | null) => ["dashboard", "batches", userId ?? "anon"] as const,
+  receipts: (userId: string | null) => ["dashboard", "receipts", userId ?? "anon"] as const,
+};
+const EMPTY_DEVICES: DeviceSummary[] = [];
+const EMPTY_BATCHES: BatchSummary[] = [];
+const EMPTY_RECEIPTS: NodePurchaseReceipt[] = [];
 
 function describeStatus(status?: string | null): { label: string; tone: "green" | "yellow" | "red" | "gray" } {
   const normalized = (status ?? "").toLowerCase();
@@ -76,24 +86,44 @@ export default function UserDashboard({
 }: UserDashboardProps) {
   const { user } = useAuth();
   const { settings, isLoading: isSettingsLoading, isSaving: isSettingsSaving, error: settingsError, refresh, updateSettings } = useUserSettings();
-  const [devices, setDevices] = useState<DeviceSummary[]>([]);
-  const [isLoadingDevices, setIsLoadingDevices] = useState(false);
-  const [devicesError, setDevicesError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const userId = user?.uid ?? null;
+  const devicesQueryKey = useMemo(() => DASHBOARD_QUERY_KEYS.devices(userId), [userId]);
+  const batchesQueryKey = useMemo(() => DASHBOARD_QUERY_KEYS.batches(userId), [userId]);
+  const receiptsQueryKey = useMemo(() => DASHBOARD_QUERY_KEYS.receipts(userId), [userId]);
+  const devicesQuery = useQuery<DeviceSummary[]>({
+    queryKey: devicesQueryKey,
+    enabled: Boolean(user),
+    queryFn: listDevices,
+    placeholderData: EMPTY_DEVICES,
+  });
+  const batchesQuery = useQuery<BatchSummary[]>({
+    queryKey: batchesQueryKey,
+    enabled: Boolean(user),
+    queryFn: () => listBatches(),
+    placeholderData: EMPTY_BATCHES,
+  });
+  const receiptsQuery = useQuery<NodePurchaseReceipt[]>({
+    queryKey: receiptsQueryKey,
+    enabled: Boolean(user),
+    queryFn: listNodePurchaseReceipts,
+    placeholderData: EMPTY_RECEIPTS,
+  });
+  const devices = user ? devicesQuery.data ?? EMPTY_DEVICES : EMPTY_DEVICES;
+  const batches = user ? batchesQuery.data ?? EMPTY_BATCHES : EMPTY_BATCHES;
+  const receipts = user ? receiptsQuery.data ?? EMPTY_RECEIPTS : EMPTY_RECEIPTS;
+  const isLoadingDevices = Boolean(user) && devicesQuery.isFetching;
+  const isLoadingBatches = Boolean(user) && batchesQuery.isFetching;
+  const isLoadingReceipts = Boolean(user) && receiptsQuery.isFetching;
+  const devicesError = devicesQuery.error instanceof Error ? devicesQuery.error.message : null;
+  const batchesError = batchesQuery.error instanceof Error ? batchesQuery.error.message : null;
+  const receiptsError = receiptsQuery.error instanceof Error ? receiptsQuery.error.message : null;
   const [revokeError, setRevokeError] = useState<string | null>(null);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [devicePageIndex, setDevicePageIndex] = useState(0);
-  const [batches, setBatches] = useState<BatchSummary[]>([]);
-  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
-  const [batchesError, setBatchesError] = useState<string | null>(null);
   const [selectedBatchDeviceId, setSelectedBatchDeviceId] = useState<string>("all");
   const [batchActionError, setBatchActionError] = useState<string | null>(null);
   const [batchActionMessage, setBatchActionMessage] = useState<string | null>(null);
-  const [updatingBatchKey, setUpdatingBatchKey] = useState<string | null>(null);
-  const [deletingBatchKey, setDeletingBatchKey] = useState<string | null>(null);
   const [batchPageIndex, setBatchPageIndex] = useState(0);
-  const [receipts, setReceipts] = useState<NodePurchaseReceipt[]>([]);
-  const [isLoadingReceipts, setIsLoadingReceipts] = useState(false);
-  const [receiptsError, setReceiptsError] = useState<string | null>(null);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsLocalError, setSettingsLocalError] = useState<string | null>(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
@@ -104,73 +134,62 @@ export default function UserDashboard({
   const [activationLinkMessage, setActivationLinkMessage] = useState<string | null>(null);
 
   const refreshDevices = useCallback(async () => {
-    if (!user) {
-      setDevices([]);
-      setDevicesError(null);
-      return;
-    }
-    setIsLoadingDevices(true);
-    setDevicesError(null);
-    try {
-      const next = await listDevices();
-      setDevices(next);
-    }
-    catch (err) {
-      setDevices([]);
-      setDevicesError(err instanceof Error ? err.message : "Unable to load devices");
-    }
-    finally {
-      setIsLoadingDevices(false);
-    }
-  }, [user]);
+    if (!user) return;
+    await devicesQuery.refetch();
+  }, [devicesQuery, user]);
 
   const refreshBatches = useCallback(async () => {
-    if (!user) {
-      setBatches([]);
-      setBatchesError(null);
-      return;
-    }
-    setIsLoadingBatches(true);
-    setBatchesError(null);
-    try {
-      const next = await listBatches();
-      setBatches(next);
-    }
-    catch (err) {
-      setBatches([]);
-      setBatchesError(err instanceof Error ? err.message : "Unable to load batches");
-    }
-    finally {
-      setIsLoadingBatches(false);
-    }
-  }, [user]);
+    if (!user) return;
+    await batchesQuery.refetch();
+  }, [batchesQuery, user]);
 
   const refreshReceipts = useCallback(async () => {
-    if (!user) {
-      setReceipts([]);
-      setReceiptsError(null);
-      return;
-    }
-    setIsLoadingReceipts(true);
-    setReceiptsError(null);
-    try {
-      const next = await listNodePurchaseReceipts();
-      setReceipts(next);
-    }
-    catch (err) {
-      setReceipts([]);
-      setReceiptsError(err instanceof Error ? err.message : "Unable to load hardware receipts");
-    }
-    finally {
-      setIsLoadingReceipts(false);
-    }
-  }, [user]);
+    if (!user) return;
+    await receiptsQuery.refetch();
+  }, [receiptsQuery, user]);
 
   useEffect(() => {
+    if (!user || refreshToken === 0) return;
     void refreshDevices();
     void refreshBatches();
     void refreshReceipts();
-  }, [refreshBatches, refreshDevices, refreshReceipts, refreshToken]);
+  }, [refreshBatches, refreshDevices, refreshReceipts, refreshToken, user]);
+
+  const revokeDeviceMutation = useMutation({
+    mutationFn: revokeDevice,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: devicesQueryKey }),
+        queryClient.invalidateQueries({ queryKey: batchesQueryKey }),
+      ]);
+    },
+  });
+  const updateBatchVisibilityMutation = useMutation({
+    mutationFn: async (args: { batch: BatchSummary; nextVisibility: BatchVisibility; actionKey: string }) => {
+      return updateBatchVisibility(args.batch.deviceId, args.batch.batchId, args.nextVisibility);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<BatchSummary[]>(batchesQueryKey, (prev = []) => prev.map((row) => (
+        row.deviceId === updated.deviceId && row.batchId === updated.batchId ? updated : row
+      )));
+    },
+  });
+  const deleteBatchMutation = useMutation({
+    mutationFn: async (batch: BatchSummary) => {
+      await deleteBatch(batch.deviceId, batch.batchId);
+      return batch;
+    },
+    onSuccess: (deletedBatch) => {
+      queryClient.setQueryData<BatchSummary[]>(batchesQueryKey, (prev = []) => prev.filter((row) => (
+        row.deviceId !== deletedBatch.deviceId || row.batchId !== deletedBatch.batchId
+      )));
+    },
+  });
+  const revokingId = revokeDeviceMutation.isPending ? revokeDeviceMutation.variables ?? null : null;
+  const updatingBatchKey = updateBatchVisibilityMutation.isPending ? updateBatchVisibilityMutation.variables?.actionKey ?? null : null;
+  const deletingBatchKey = deleteBatchMutation.isPending
+    ? `${deleteBatchMutation.variables?.deviceId ?? ""}:${deleteBatchMutation.variables?.batchId ?? ""}`
+    : null;
 
   useEffect(() => {
     if (!user || !subscriptionCheckoutNotice) {
@@ -371,30 +390,21 @@ export default function UserDashboard({
       return;
     }
     setRevokeError(null);
-    setRevokingId(deviceId);
     try {
-      await revokeDevice(deviceId);
-      await Promise.all([refreshDevices(), refreshBatches()]);
+      await revokeDeviceMutation.mutateAsync(deviceId);
     }
     catch (err) {
       setRevokeError(err instanceof Error ? err.message : "Unable to revoke device.");
     }
-    finally {
-      setRevokingId(null);
-    }
-  }, [refreshBatches, refreshDevices]);
+  }, [revokeDeviceMutation]);
 
   const handleToggleBatchVisibility = useCallback(async (batch: BatchSummary) => {
     const actionKey = `${batch.deviceId}:${batch.batchId}`;
     const nextVisibility: BatchVisibility = batch.visibility === "public" ? "private" : "public";
     setBatchActionError(null);
     setBatchActionMessage(null);
-    setUpdatingBatchKey(actionKey);
     try {
-      const updated = await updateBatchVisibility(batch.deviceId, batch.batchId, nextVisibility);
-      setBatches((prev) => prev.map((row) => (
-        row.deviceId === updated.deviceId && row.batchId === updated.batchId ? updated : row
-      )));
+      await updateBatchVisibilityMutation.mutateAsync({ batch, nextVisibility, actionKey });
       setBatchActionMessage(
         nextVisibility === "public"
           ? `Batch ${batch.batchId} is now public.`
@@ -404,31 +414,22 @@ export default function UserDashboard({
     catch (err) {
       setBatchActionError(err instanceof Error ? err.message : "Unable to update batch visibility.");
     }
-    finally {
-      setUpdatingBatchKey(null);
-    }
-  }, []);
+  }, [updateBatchVisibilityMutation]);
 
   const handleDeleteBatch = useCallback(async (batch: BatchSummary) => {
     if (!window.confirm(`Delete batch ${batch.batchId}? This removes the saved payload and batch metadata.`)) {
       return;
     }
-    const actionKey = `${batch.deviceId}:${batch.batchId}`;
     setBatchActionError(null);
     setBatchActionMessage(null);
-    setDeletingBatchKey(actionKey);
     try {
-      await deleteBatch(batch.deviceId, batch.batchId);
-      setBatches((prev) => prev.filter((row) => !(row.deviceId === batch.deviceId && row.batchId === batch.batchId)));
+      await deleteBatchMutation.mutateAsync(batch);
       setBatchActionMessage(`Deleted batch ${batch.batchId}.`);
     }
     catch (err) {
       setBatchActionError(err instanceof Error ? err.message : "Unable to delete batch.");
     }
-    finally {
-      setDeletingBatchKey(null);
-    }
-  }, []);
+  }, [deleteBatchMutation]);
 
   const handleOpenActivation = useCallback(() => {
     onRequestActivation();

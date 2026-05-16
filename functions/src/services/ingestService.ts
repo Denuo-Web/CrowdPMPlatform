@@ -1,5 +1,5 @@
 import type { Firestore } from "firebase-admin/firestore";
-import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult } from "@crowdpm/types";
+import type { BatchVisibility, IngestBody as SharedIngestBody, IngestResult, SubscriptionSummary } from "@crowdpm/types";
 import crypto from "node:crypto";
 import {
   getDeviceDefaultBatchVisibility,
@@ -77,6 +77,97 @@ function isForbiddenDevice(status: string | null, registryStatus: string | null)
     || normalizedStatus === "REVOKED";
 }
 
+export function parseIngestPayload(rawBody: string): IngestPayload {
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawBody);
+  }
+  catch {
+    throw new IngestServiceError("invalid_payload", "invalid JSON payload", 400);
+  }
+
+  const parsed = IngestPayload.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new IngestServiceError("invalid_payload", "invalid ingest payload", 400);
+  }
+
+  return parsed.data;
+}
+
+export function resolveIngestDeviceId(payload: IngestPayload, requestDeviceId: string): string {
+  const payloadDeviceId = payload.device_id || payload.points?.[0]?.device_id;
+  const deviceId = requestDeviceId || payloadDeviceId;
+  if (!deviceId) {
+    throw new IngestServiceError("missing_device_id", "missing device_id", 400);
+  }
+  if (payloadDeviceId && payloadDeviceId !== deviceId) {
+    throw new IngestServiceError("invalid_payload", "device_id mismatch between payload and request", 400);
+  }
+  return deviceId;
+}
+
+export type IngestPlan = {
+  deviceId: string;
+  ownerUserId: string;
+  ownerUserIds: string[];
+  visibility: BatchVisibility;
+  storagePath: string;
+  batchPayload: IngestPayload;
+};
+
+export type IngestDeviceOwner = Pick<IngestPlan, "ownerUserId" | "ownerUserIds">;
+
+export function resolveIngestDeviceOwner(args: {
+  deviceData: Record<string, unknown>;
+  status: string | null;
+  registryStatus: string | null;
+}): IngestDeviceOwner {
+  if (isForbiddenDevice(args.status, args.registryStatus)) {
+    throw new IngestServiceError("device_forbidden", "device not allowed", 403);
+  }
+
+  const ownerUserIds = normalizeOwnerIds(args.deviceData);
+  const ownerUserId = primaryOwnerUserId(args.deviceData);
+  if (!ownerUserId || !ownerUserIds.length) {
+    throw new IngestServiceError("device_forbidden", "device owner unavailable", 403);
+  }
+  return { ownerUserId, ownerUserIds };
+}
+
+export function planIngest(args: {
+  payload: IngestPayload;
+  deviceId: string;
+  ownerUserId: string;
+  ownerUserIds: string[];
+  ownerSubscription: SubscriptionSummary;
+  ownerDefaultVisibility: BatchVisibility | null;
+  requestedVisibility?: BatchVisibility | null;
+  batchId: string;
+}): IngestPlan {
+  const mismatchedPoint = args.payload.points.find((point) => point.device_id !== args.deviceId);
+  if (mismatchedPoint) {
+    throw new IngestServiceError("invalid_payload", "all points must match the device_id in the request", 400);
+  }
+
+  const visibility = normalizeVisibility(
+    args.requestedVisibility,
+    args.ownerDefaultVisibility ?? defaultBatchVisibilityForSubscription(args.ownerSubscription),
+  );
+  const batchPayload = { ...args.payload, device_id: args.deviceId };
+  return {
+    deviceId: args.deviceId,
+    ownerUserId: args.ownerUserId,
+    ownerUserIds: args.ownerUserIds,
+    visibility,
+    batchPayload,
+    storagePath: buildBatchStoragePath({
+      primaryOwnerUserId: args.ownerUserId,
+      deviceId: args.deviceId,
+      batchId: args.batchId,
+    }),
+  };
+}
+
 export class IngestService {
   private readonly deps: ResolvedIngestDependencies;
 
@@ -99,15 +190,8 @@ export class IngestService {
   async ingest(request: IngestRequest): Promise<IngestResult> {
     const db = this.deps.getDb();
     const bucket = this.deps.getBucket();
-    const parsedBody = this.normalizeIngestPayload(request.rawBody);
-    const payloadDeviceId = parsedBody.device_id || parsedBody.points?.[0]?.device_id;
-    const deviceId = request.deviceId || payloadDeviceId;
-    if (!deviceId) {
-      throw new IngestServiceError("missing_device_id", "missing device_id", 400);
-    }
-    if (payloadDeviceId && payloadDeviceId !== deviceId) {
-      throw new IngestServiceError("invalid_payload", "device_id mismatch between payload and request", 400);
-    }
+    const parsedBody = parseIngestPayload(request.rawBody);
+    const deviceId = resolveIngestDeviceId(parsedBody, request.deviceId);
 
     const devRef = db.collection("devices").doc(deviceId);
     const devSnap = await devRef.get();
@@ -117,30 +201,26 @@ export class IngestService {
     const devData = devSnap.data() ?? {};
     const status = normalizeStatus(devSnap.get("status"), (value) => value.toUpperCase());
     const registryStatus = normalizeStatus(devSnap.get("registryStatus"), (value) => value.toLowerCase());
-    if (isForbiddenDevice(status, registryStatus)) {
-      throw new IngestServiceError("device_forbidden", "device not allowed", 403);
-    }
-    const ownerUserIds = normalizeOwnerIds(devData);
-    const effectiveOwnerUserIds = ownerUserIds;
-    const ownerUserId = primaryOwnerUserId(devData);
-    if (!ownerUserId || !effectiveOwnerUserIds.length) {
-      throw new IngestServiceError("device_forbidden", "device owner unavailable", 403);
-    }
-
-    const mismatchedPoint = parsedBody.points.find((point) => point.device_id !== deviceId);
-    if (mismatchedPoint) {
-      throw new IngestServiceError("invalid_payload", "all points must match the device_id in the request", 400);
-    }
+    const { ownerUserId, ownerUserIds } = resolveIngestDeviceOwner({
+      deviceData: devData,
+      status,
+      registryStatus,
+    });
 
     const batchId = crypto.randomUUID();
     const ownerSubscription = await this.deps.getSubscriptionSummary(ownerUserId, db);
     const ownerDefaultVisibility = await getDeviceDefaultBatchVisibility(devSnap);
-    const visibility = normalizeVisibility(
-      request.visibility,
-      ownerDefaultVisibility ?? defaultBatchVisibilityForSubscription(ownerSubscription),
-    );
-    const storagePath = buildBatchStoragePath({ primaryOwnerUserId: ownerUserId, deviceId, batchId });
-    const batchPayload = { ...parsedBody, device_id: deviceId };
+    const plan = planIngest({
+      payload: parsedBody,
+      deviceId,
+      ownerUserId,
+      ownerUserIds,
+      ownerSubscription,
+      ownerDefaultVisibility,
+      requestedVisibility: request.visibility,
+      batchId,
+    });
+    const { batchPayload, storagePath, visibility } = plan;
     const encoded = encodeBatchPayload(batchPayload);
     let reservation: UploadQuotaReservation | null = null;
     let storedPayload = false;
@@ -170,7 +250,7 @@ export class IngestService {
         compressedBytes: encoded.buffer.byteLength,
         visibility,
         payload: batchPayload,
-        ownerUserIds: effectiveOwnerUserIds,
+        ownerUserIds,
         deviceName: typeof devSnap.get("name") === "string" && devSnap.get("name").trim().length > 0
           ? devSnap.get("name").trim()
           : null,
@@ -201,23 +281,6 @@ export class IngestService {
       }
       throw err;
     }
-  }
-
-  private normalizeIngestPayload(rawBody: string): IngestPayload {
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(rawBody);
-    }
-    catch {
-      throw new IngestServiceError("invalid_payload", "invalid JSON payload", 400);
-    }
-
-    const parsed = IngestPayload.safeParse(parsedJson);
-    if (!parsed.success) {
-      throw new IngestServiceError("invalid_payload", "invalid ingest payload", 400);
-    }
-
-    return parsed.data;
   }
 }
 

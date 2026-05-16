@@ -6,6 +6,7 @@ import { LegalDocumentDialog, LegalDocumentLink, type LegalDocumentId } from "./
 import { APP_ROUTES, getDeepLinkedAppTab, getRouteForDeepLinkedAppTab, isActivationRoute, isDeepLinkedAppRoute, type DeepLinkedAppTab } from "./lib/appRoutes";
 import { PROJECT_LINKS, PROJECT_RESOURCE_LINKS } from "./lib/projectLinks";
 import { logWarning } from "./lib/logger";
+import { pushAppLocation, replaceAppLocation, replaceCurrentUrl, useBrowserLocation } from "./lib/locationStore";
 import { useAuth } from "./providers/AuthProvider";
 import { useUserSettings } from "./providers/UserSettingsProvider";
 import {
@@ -104,68 +105,55 @@ function isDeepLinkedTab(tab: AppTab): tab is DeepLinkedAppTab {
   return tab === "pairing-info" || tab === "about" || tab === "node";
 }
 
-function readThemeCheckoutNotice(): ThemeCheckoutNotice {
-  if (typeof window === "undefined") return null;
-  const status = new URLSearchParams(window.location.search).get("themeCheckout");
+function readThemeCheckoutNotice(search: string): ThemeCheckoutNotice {
+  const status = new URLSearchParams(search).get("themeCheckout");
   return status === "success" || status === "cancelled" ? status : null;
 }
 
 function clearThemeCheckoutNoticeFromUrl() {
-  if (typeof window === "undefined") return;
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.delete("themeCheckout");
-  nextUrl.searchParams.delete("themeCheckoutSessionId");
-  window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  replaceCurrentUrl((nextUrl) => {
+    nextUrl.searchParams.delete("themeCheckout");
+    nextUrl.searchParams.delete("themeCheckoutSessionId");
+  });
 }
 
-function readThemeCheckoutSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  const sessionId = new URLSearchParams(window.location.search).get("themeCheckoutSessionId");
+function readThemeCheckoutSessionId(search: string): string | null {
+  const sessionId = new URLSearchParams(search).get("themeCheckoutSessionId");
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
 }
 
-function readSubscriptionCheckoutNotice(): SubscriptionCheckoutNotice {
-  if (typeof window === "undefined") return null;
-  const status = new URLSearchParams(window.location.search).get("subscriptionCheckout");
+function readSubscriptionCheckoutNotice(search: string): SubscriptionCheckoutNotice {
+  const status = new URLSearchParams(search).get("subscriptionCheckout");
   return status === "success" || status === "cancelled" ? status : null;
 }
 
-function readSubscriptionCheckoutSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  const sessionId = new URLSearchParams(window.location.search).get("subscriptionCheckoutSessionId");
+function readSubscriptionCheckoutSessionId(search: string): string | null {
+  const sessionId = new URLSearchParams(search).get("subscriptionCheckoutSessionId");
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId : null;
 }
 
 function clearSubscriptionCheckoutNoticeFromUrl() {
-  if (typeof window === "undefined") return;
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.delete("subscriptionCheckout");
-  nextUrl.searchParams.delete("subscriptionCheckoutSessionId");
-  window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  replaceCurrentUrl((nextUrl) => {
+    nextUrl.searchParams.delete("subscriptionCheckout");
+    nextUrl.searchParams.delete("subscriptionCheckoutSessionId");
+  });
 }
 
 export default function App() {
   const { user, isLoading, signOut, canAccessAdmin } = useAuth();
   const { settings } = useUserSettings();
+  const location = useBrowserLocation();
   const userScopedKey = user?.uid ?? "anon";
-  const initialDeepLinkedTab = typeof window !== "undefined"
-    ? getDeepLinkedAppTab(window.location.pathname)
-    : null;
-  const initialThemeCheckoutNotice = readThemeCheckoutNotice();
-  const initialThemeCheckoutSessionId = readThemeCheckoutSessionId();
-  const initialSubscriptionCheckoutNotice = readSubscriptionCheckoutNotice();
-  const initialSubscriptionCheckoutSessionId = readSubscriptionCheckoutSessionId();
-  const [tab, setTab] = useState<AppTab>(initialDeepLinkedTab ?? "map");
+  const [tab, setTab] = useState<AppTab>(() => getDeepLinkedAppTab(location.pathname) ?? "map");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthDialogOpen, setAuthDialogOpen] = useState(false);
-  const initialActivationPath = typeof window !== "undefined" && isActivationRoute(window.location.pathname);
-  const [isActivationModalOpen, setActivationModalOpen] = useState(initialActivationPath);
+  const [isActivationModalOpen, setActivationModalOpen] = useState(() => isActivationRoute(location.pathname));
   const [isTeamModalOpen, setTeamModalOpen] = useState(false);
-  const [isThemeModalOpen, setThemeModalOpen] = useState(Boolean(initialThemeCheckoutNotice));
-  const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(initialThemeCheckoutNotice);
-  const [themeCheckoutSessionId, setThemeCheckoutSessionId] = useState<string | null>(initialThemeCheckoutSessionId);
-  const [subscriptionCheckoutNotice, setSubscriptionCheckoutNotice] = useState<SubscriptionCheckoutNotice>(initialSubscriptionCheckoutNotice);
-  const [subscriptionCheckoutSessionId, setSubscriptionCheckoutSessionId] = useState<string | null>(initialSubscriptionCheckoutSessionId);
+  const [isThemeModalOpen, setThemeModalOpen] = useState(() => Boolean(readThemeCheckoutNotice(location.search)));
+  const [themeCheckoutNotice, setThemeCheckoutNotice] = useState<ThemeCheckoutNotice>(() => readThemeCheckoutNotice(location.search));
+  const [themeCheckoutSessionId, setThemeCheckoutSessionId] = useState<string | null>(() => readThemeCheckoutSessionId(location.search));
+  const [subscriptionCheckoutNotice, setSubscriptionCheckoutNotice] = useState<SubscriptionCheckoutNotice>(() => readSubscriptionCheckoutNotice(location.search));
+  const [subscriptionCheckoutSessionId, setSubscriptionCheckoutSessionId] = useState<string | null>(() => readSubscriptionCheckoutSessionId(location.search));
   const [themeDraft, setThemeDraft] = useState<UserThemeSettings | null>(null);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState(0);
 
@@ -223,6 +211,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const nextThemeNotice = readThemeCheckoutNotice(location.search);
+    const nextThemeSessionId = readThemeCheckoutSessionId(location.search);
+    const nextSubscriptionNotice = readSubscriptionCheckoutNotice(location.search);
+    const nextSubscriptionSessionId = readSubscriptionCheckoutSessionId(location.search);
+
+    setThemeCheckoutNotice(nextThemeNotice);
+    setThemeCheckoutSessionId(nextThemeSessionId);
+    setSubscriptionCheckoutNotice(nextSubscriptionNotice);
+    setSubscriptionCheckoutSessionId(nextSubscriptionSessionId);
+
+    if (nextThemeNotice) {
+      setThemeModalOpen(true);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
     if (user) return;
     setThemeDraft(null);
   }, [user]);
@@ -272,47 +276,45 @@ export default function App() {
   }, [toggleThemeModal]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isActivationModalOpen) {
-      if (!isActivationRoute(window.location.pathname)) {
-        window.history.pushState({}, "", APP_ROUTES.activation);
-      }
+    const pathname = location.pathname.toLowerCase();
+    if (isActivationRoute(pathname)) {
+      setActivationModalOpen(true);
+      return;
     }
-    else if (isActivationRoute(window.location.pathname)) {
-      window.history.replaceState({}, "", APP_ROUTES.home);
+    setActivationModalOpen(false);
+
+    const deepLinkedTab = getDeepLinkedAppTab(pathname);
+    if (deepLinkedTab) {
+      setTab(deepLinkedTab);
     }
-  }, [isActivationModalOpen]);
+    else {
+      setTab((currentTab) => isDeepLinkedTab(currentTab) ? "map" : currentTab);
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const pathname = window.location.pathname.toLowerCase();
+    if (isActivationModalOpen) {
+      if (!isActivationRoute(location.pathname)) {
+        pushAppLocation(APP_ROUTES.activation);
+      }
+    }
+    else if (isActivationRoute(location.pathname)) {
+      replaceAppLocation(APP_ROUTES.home);
+    }
+  }, [isActivationModalOpen, location.pathname]);
+
+  useEffect(() => {
+    const pathname = location.pathname.toLowerCase();
     if (isDeepLinkedTab(tab)) {
       const targetRoute = getRouteForDeepLinkedAppTab(tab);
       if (!pathname.startsWith(targetRoute)) {
-        window.history.pushState({}, "", targetRoute);
+        pushAppLocation(targetRoute);
       }
     }
     else if (isDeepLinkedAppRoute(pathname)) {
-      window.history.replaceState({}, "", APP_ROUTES.home);
+      replaceAppLocation(APP_ROUTES.home);
     }
-  }, [tab]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handlePopState = () => {
-      const pathname = window.location.pathname.toLowerCase();
-      const deepLinkedTab = getDeepLinkedAppTab(pathname);
-      setActivationModalOpen(isActivationRoute(pathname));
-      if (deepLinkedTab) {
-        setTab(deepLinkedTab);
-      }
-      else if (isDeepLinkedTab(tab)) {
-        setTab("map");
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [tab]);
+  }, [location.pathname, tab]);
 
   const openActivationModal = () => {
     if (!user) {

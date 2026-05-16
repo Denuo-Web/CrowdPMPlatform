@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserSettings } from "../lib/api";
 import { useAuth } from "./AuthProvider";
 
@@ -65,6 +66,7 @@ function applyUserSettingsDefaults(next: Partial<UserSettings>): UserSettings {
 }
 
 const UserSettingsContext = createContext<UserSettingsContextValue | undefined>(undefined);
+const USER_SETTINGS_QUERY_KEY = "userSettings";
 
 async function loadUserSettingsApi() {
   const { fetchUserSettings, updateUserSettings } = await import("../lib/api");
@@ -73,59 +75,47 @@ async function loadUserSettingsApi() {
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(() => [USER_SETTINGS_QUERY_KEY, user?.uid ?? "anon"], [user?.uid]);
 
-  const refresh = useCallback(async () => {
-    if (!user) {
-      setSettings(DEFAULT_USER_SETTINGS);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
+  const settingsQuery = useQuery({
+    queryKey,
+    enabled: Boolean(user),
+    queryFn: async () => {
       const { fetchUserSettings } = await loadUserSettingsApi();
       const next = await fetchUserSettings();
-      setSettings(applyUserSettingsDefaults(next));
-    }
-    catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to load user settings";
-      setError(message);
-      setSettings(DEFAULT_USER_SETTINGS);
-    }
-    finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+      return applyUserSettingsDefaults(next);
+    },
+    placeholderData: DEFAULT_USER_SETTINGS,
+  });
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const updateSettingsHandler = useCallback(async (next: Partial<UserSettings>) => {
-    if (!user) throw new Error("Sign in is required to update settings.");
-    setIsSaving(true);
-    setError(null);
-    try {
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (next: Partial<UserSettings>) => {
+      if (!user) throw new Error("Sign in is required to update settings.");
       const { updateUserSettings } = await loadUserSettingsApi();
       const updated = await updateUserSettings(next);
-      const normalized = applyUserSettingsDefaults(updated);
-      setSettings(normalized);
-      return normalized;
-    }
-    catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to update settings";
-      setError(message);
-      throw err;
-    }
-    finally {
-      setIsSaving(false);
-    }
-  }, [user]);
+      return applyUserSettingsDefaults(updated);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated);
+    },
+  });
+
+  const refresh = useCallback(async () => {
+    if (!user) return;
+    await settingsQuery.refetch();
+  }, [settingsQuery, user]);
+
+  const updateSettingsHandler = useCallback(async (next: Partial<UserSettings>) => {
+    return updateSettingsMutation.mutateAsync(next);
+  }, [updateSettingsMutation]);
+
+  const settings = user ? settingsQuery.data ?? DEFAULT_USER_SETTINGS : DEFAULT_USER_SETTINGS;
+  const queryError = settingsQuery.error instanceof Error ? settingsQuery.error.message : null;
+  const mutationError = updateSettingsMutation.error instanceof Error ? updateSettingsMutation.error.message : null;
+  const error = mutationError ?? queryError;
+  const isLoading = Boolean(user) && settingsQuery.isLoading;
+  const isSaving = updateSettingsMutation.isPending;
 
   const value = useMemo<UserSettingsContextValue>(() => ({
     settings,

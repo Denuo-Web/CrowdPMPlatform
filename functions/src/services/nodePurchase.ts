@@ -389,22 +389,25 @@ type CreateCheckoutSessionOptions = {
   sessionData?: Record<string, unknown>;
 };
 
-async function createCheckoutSession(
-  config: CheckoutProductConfig,
-  options: CreateCheckoutSessionOptions = {},
-): Promise<NodePurchaseCheckoutSession> {
-  const catalog = await ensureCatalog(config);
-  const { successUrl, cancelUrl } = checkoutRedirectUrls(config);
+type CheckoutSessionPlan = {
+  params: CheckoutSessionCreateParams;
+  quantity: number;
+};
+
+export function buildCheckoutSessionPlan(args: {
+  config: CheckoutProductConfig;
+  catalog: PaymentCatalog;
+  urls: { successUrl: string; cancelUrl: string };
+  options?: CreateCheckoutSessionOptions;
+}): CheckoutSessionPlan {
+  const { config, catalog, urls } = args;
+  const options = args.options ?? {};
   const quantity = options.quantity ?? DEFAULT_NODE_HARDWARE_QUANTITY;
   const metadata: Record<string, string> = {
     purchaseType: config.purchaseType,
+    ...(options.userId ? { userId: options.userId } : {}),
+    ...(options.metadata ?? {}),
   };
-  if (options.userId) {
-    metadata.userId = options.userId;
-  }
-  if (options.metadata) {
-    Object.assign(metadata, options.metadata);
-  }
 
   const params: CheckoutSessionCreateParams = {
     line_items: [
@@ -420,29 +423,35 @@ async function createCheckoutSession(
     billing_address_collection: config.billingAddressCollection,
     custom_text: config.customText,
     metadata,
-    success_url: successUrl,
-    cancel_url: cancelUrl,
+    success_url: urls.successUrl,
+    cancel_url: urls.cancelUrl,
+    ...(config.allowPromotionCodes ? { allow_promotion_codes: true } : {}),
+    ...(config.shippingAddressCollection ? { shipping_address_collection: config.shippingAddressCollection } : {}),
+    ...(options.customerId
+      ? { customer: options.customerId }
+      : options.customerEmail
+        ? { customer_email: options.customerEmail }
+        : {}),
+    ...(options.userId ? { client_reference_id: options.userId } : {}),
+    ...((config.mode ?? "payment") === "subscription" && options.subscriptionMetadata
+      ? { subscription_data: { metadata: options.subscriptionMetadata } }
+      : {}),
   };
-  if (config.allowPromotionCodes) {
-    params.allow_promotion_codes = true;
-  }
-  if (config.shippingAddressCollection) {
-    params.shipping_address_collection = config.shippingAddressCollection;
-  }
-  if (options.customerId) {
-    params.customer = options.customerId;
-  }
-  else if (options.customerEmail) {
-    params.customer_email = options.customerEmail;
-  }
-  if (options.userId) {
-    params.client_reference_id = options.userId;
-  }
-  if ((config.mode ?? "payment") === "subscription" && options.subscriptionMetadata) {
-    params.subscription_data = {
-      metadata: options.subscriptionMetadata,
-    };
-  }
+
+  return { params, quantity };
+}
+
+async function createCheckoutSession(
+  config: CheckoutProductConfig,
+  options: CreateCheckoutSessionOptions = {},
+): Promise<NodePurchaseCheckoutSession> {
+  const catalog = await ensureCatalog(config);
+  const { params, quantity } = buildCheckoutSessionPlan({
+    config,
+    catalog,
+    urls: checkoutRedirectUrls(config),
+    options,
+  });
 
   let session: Stripe.Checkout.Session;
   try {

@@ -10,36 +10,27 @@ import {
   type ActivationSession,
 } from "../lib/api";
 import { APP_ROUTES } from "../lib/appRoutes";
+import { replaceCurrentUrl, useBrowserLocation } from "../lib/locationStore";
 
 type ActivationPageProps = {
   layout?: "standalone" | "dialog";
   onActivationComplete?: () => void;
 };
 
-function getInitialCode(): string {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("code") ?? "";
-  }
-  catch {
-    return "";
-  }
+function readCodeFromSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  return params.get("code") ?? "";
 }
 
 function updateQueryParam(code: string) {
-  try {
-    const url = new URL(window.location.href);
+  replaceCurrentUrl((url) => {
     if (code) {
       url.searchParams.set("code", code);
     }
     else {
       url.searchParams.delete("code");
     }
-    window.history.replaceState({}, "", url.toString());
-  }
-  catch {
-    // ignore
-  }
+  });
 }
 
 function formatDuration(ms: number): string {
@@ -51,10 +42,11 @@ function formatDuration(ms: number): string {
 
 export function ActivationPage({ layout = "standalone", onActivationComplete }: ActivationPageProps = {}) {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const location = useBrowserLocation();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
-  const [userCode, setUserCode] = useState(() => getInitialCode());
+  const [userCode, setUserCode] = useState(() => readCodeFromSearch(location.search));
   const [session, setSession] = useState<ActivationSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
@@ -187,14 +179,14 @@ export function ActivationPage({ layout = "standalone", onActivationComplete }: 
   const deepLink = useMemo(() => {
     if (!session) return null;
     try {
-      const url = new URL(window.location.href);
+      const url = new URL(location.href);
       url.searchParams.set("code", session.user_code);
       return url.toString();
     }
     catch {
       return null;
     }
-  }, [session]);
+  }, [location.href, session]);
 
   const requestedAtLabel = useMemo(() => {
     const requestedAtMs = session ? timestampToMillis(session.requested_at) : null;

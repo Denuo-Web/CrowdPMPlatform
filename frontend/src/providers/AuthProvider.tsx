@@ -92,14 +92,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const clearCachesOnSignOut = useCallback(() => {
-    queryClient.clear();
-    safeLocalStorageRemove(
-      AUTH_SCOPED_STORAGE_KEYS,
-      { context: "auth:sign-out-clear" }
-    );
-  }, [queryClient]);
-
   const signIn = useCallback(async (email: string, password: string) => {
     const { auth, signInWithEmailAndPassword } = await loadFirebaseAuth();
     return signInWithEmailAndPassword(auth, email.trim(), password);
@@ -112,10 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const { auth, signOut: firebaseSignOut } = await loadFirebaseAuth();
-    clearCachesOnSignOut();
-    setRoles([]);
     await firebaseSignOut(auth);
-  }, [clearCachesOnSignOut]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => {

@@ -17,6 +17,17 @@ import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
 import { logWarning } from "../lib/logger";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet, scopedStorageKey } from "../lib/storage";
 import {
+  clampTimelineIndex,
+  MAP_SELECTION_STORAGE_KEYS,
+  MAX_PERSISTED_MAP_ZOOM,
+  MIN_PERSISTED_MAP_ZOOM,
+  normalizeStoredBatchSelection,
+  parseStoredMapZoom,
+  readStoredTimelineIndex,
+  SHOW_ALL_PUBLIC_24H_KEY,
+  writeStoredTimelineIndex,
+} from "../lib/mapSelection";
+import {
   detectCanvasVideoExportSupport,
   startCanvasRecording,
 } from "../lib/videoExport";
@@ -25,15 +36,10 @@ import { useUserSettings } from "../providers/UserSettingsProvider";
 import type { Map3DCaptureSession, Map3DHandle } from "../components/Map3D";
 import { clampPageIndex, getPaginationWindow, ResultCountControl } from "../components/PaginationControl";
 
-// Keys used to scope localStorage entries per user so shared browsers do not mix data.
-const LAST_SELECTION_KEY = "crowdpm:lastBatchSelection";
-const LAST_MAP_ZOOM_KEY = "crowdpm:lastMapZoom";
-const LAST_TIMELINE_INDEX_KEY = "crowdpm:lastTimelineIndex";
 const BATCH_LIST_STALE_MS = 30_000; // keep batch list warm for 30 seconds to avoid redundant refetches
 const DROPDOWN_BATCH_LIMIT = 20;
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
 const SEE_ALL_BATCHES_KEY = "__see_all_batches__";
-const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
 const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const SHOW_ALL_PUBLIC_BATCH_LIMIT = 200;
 const EXPANDED_BATCH_FETCH_LIMIT = 500;
@@ -61,8 +67,6 @@ const VIDEO_EXPORT_ORBIT_DEGREES = 24;
 const VIDEO_EXPORT_START_TILT = 45;
 const VIDEO_EXPORT_TARGET_TILT = 67.5;
 const VIDEO_EXPORT_TILT_RAMP_PORTION = 0.2;
-const MIN_PERSISTED_MAP_ZOOM = 0;
-const MAX_PERSISTED_MAP_ZOOM = 22;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
 const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
 const MAP_PANEL_BLUR = "blur(12px)";
@@ -114,8 +118,6 @@ type MapMeasurementRecord = MeasurementRecord & {
   batchKey?: string;
   batchPointIndex?: number;
 };
-
-type StoredTimelineIndexes = Record<string, number>;
 
 type MapPageProps = {
   mapAppearance: UserThemeAppearance;
@@ -424,54 +426,21 @@ function sanitizeFileSegment(value: string | null | undefined): string {
   return normalized || "batch";
 }
 
-function parseStoredMapZoom(raw: string | null): number | null {
-  if (!raw) return null;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return null;
-  return Math.min(Math.max(parsed, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
-}
-
-function parseStoredTimelineIndexes(raw: string | null): StoredTimelineIndexes {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(parsed)
-        .filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]))
-    );
-  }
-  catch {
-    return {};
-  }
-}
-
-function getStoredTimelineIndex(storageKey: string, batchKey: string, maxIndex: number, userId?: string | null): number | null {
-  const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
-    storageKey,
-    null,
-    { context: "map:timeline:read", userId }
-  ));
-  const index = stored[batchKey];
-  if (typeof index !== "number" || !Number.isFinite(index)) return null;
-  return Math.min(Math.max(Math.round(index), 0), maxIndex);
-}
-
 export default function MapPage({ mapAppearance }: MapPageProps) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
   const userScopedSelectionKey = useMemo(
-    () => scopedStorageKey(LAST_SELECTION_KEY, user?.uid ?? undefined),
+    () => scopedStorageKey(MAP_SELECTION_STORAGE_KEYS.lastSelection, user?.uid ?? undefined),
     [user?.uid]
   );
   const userScopedZoomKey = useMemo(
-    () => scopedStorageKey(LAST_MAP_ZOOM_KEY, user?.uid ?? undefined),
+    () => scopedStorageKey(MAP_SELECTION_STORAGE_KEYS.lastMapZoom, user?.uid ?? undefined),
     [user?.uid]
   );
   const userScopedTimelineKey = useMemo(
-    () => scopedStorageKey(LAST_TIMELINE_INDEX_KEY, user?.uid ?? undefined),
+    () => scopedStorageKey(MAP_SELECTION_STORAGE_KEYS.lastTimelineIndex, user?.uid ?? undefined),
     [user?.uid]
   );
 
@@ -700,11 +669,14 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     if (timelineHydratedRef.current === hydrationKey) return;
     timelineHydratedRef.current = hydrationKey;
 
-    const storedIndex = getStoredTimelineIndex(
-      userScopedTimelineKey,
+    const storedIndex = readStoredTimelineIndex(
+      safeLocalStorageGet(
+        userScopedTimelineKey,
+        null,
+        { context: "map:timeline:read", userId: user?.uid }
+      ),
       selectedBatchKey,
-      rows.length - 1,
-      user?.uid
+      rows.length - 1
     );
     if (storedIndex !== null) {
       setIndexOverride(storedIndex);
@@ -730,26 +702,18 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     if (selectionHydratedRef.current === userScopedSelectionKey) return;
     selectionHydratedRef.current = userScopedSelectionKey;
 
-    const storedSelection = safeLocalStorageGet(
+    const storedSelection = normalizeStoredBatchSelection(safeLocalStorageGet(
       userScopedSelectionKey,
       null,
       { context: "map:selected-batch:hydrate", userId: user?.uid }
-    );
-    if (!storedSelection) {
-      setSelectedBatchKey("");
-      return;
+    ));
+    setSelectedBatchKey(storedSelection.value);
+    if (storedSelection.shouldClearInvalid) {
+      safeLocalStorageRemove(
+        userScopedSelectionKey,
+        { context: "map:selected-batch:clear-invalid", userId: user?.uid }
+      );
     }
-
-    if (storedSelection === SHOW_ALL_PUBLIC_24H_KEY || decodeBatchKey(storedSelection)) {
-      setSelectedBatchKey(storedSelection);
-      return;
-    }
-
-    setSelectedBatchKey("");
-    safeLocalStorageRemove(
-      userScopedSelectionKey,
-      { context: "map:selected-batch:clear-invalid", userId: user?.uid }
-    );
   }, [isAuthLoading, user?.uid, userScopedSelectionKey]);
 
   useEffect(() => {
@@ -902,21 +866,21 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
 
   const handleTimelineIndexChange = useCallback((nextIndex: number) => {
     const maxIndex = Math.max(rows.length - 1, 0);
-    const clampedIndex = Math.min(Math.max(Math.round(nextIndex), 0), maxIndex);
+    const clampedIndex = clampTimelineIndex(nextIndex, maxIndex);
     setIndexOverride(clampedIndex);
 
     if (!selectedBatchKey || selectedBatchKey === SHOW_ALL_PUBLIC_24H_KEY || !rows.length) return;
-    const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
-      userScopedTimelineKey,
-      null,
-      { context: "map:timeline:read", userId: user?.uid }
-    ));
     safeLocalStorageSet(
       userScopedTimelineKey,
-      JSON.stringify({
-        ...stored,
-        [selectedBatchKey]: clampedIndex,
-      }),
+      writeStoredTimelineIndex(
+        safeLocalStorageGet(
+          userScopedTimelineKey,
+          null,
+          { context: "map:timeline:read", userId: user?.uid }
+        ),
+        selectedBatchKey,
+        clampedIndex
+      ),
       { context: "map:timeline:update", userId: user?.uid }
     );
   }, [rows.length, selectedBatchKey, user?.uid, userScopedTimelineKey]);
@@ -946,17 +910,17 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     const pointIndex = typeof point.batchPointIndex === "number" ? point.batchPointIndex : null;
     setIndexOverride(pointIndex);
     if (pointIndex !== null) {
-      const stored = parseStoredTimelineIndexes(safeLocalStorageGet(
-        userScopedTimelineKey,
-        null,
-        { context: "map:timeline:read-from-all", userId: user?.uid }
-      ));
       safeLocalStorageSet(
         userScopedTimelineKey,
-        JSON.stringify({
-          ...stored,
-          [point.batchKey]: pointIndex,
-        }),
+        writeStoredTimelineIndex(
+          safeLocalStorageGet(
+            userScopedTimelineKey,
+            null,
+            { context: "map:timeline:read-from-all", userId: user?.uid }
+          ),
+          point.batchKey,
+          pointIndex
+        ),
         { context: "map:timeline:update-from-all", userId: user?.uid }
       );
     }
