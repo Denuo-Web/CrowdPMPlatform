@@ -5,7 +5,7 @@ import { PathLayer } from "@deck.gl/layers";
 import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SphereGeometry } from "@luma.gl/engine";
 import type { Layer } from "@deck.gl/core";
-import { getMapsLoader } from "../lib/mapsLoader";
+import { getMapsLoader, normalizeGoogleMapId } from "../lib/mapsLoader";
 import { logError, logWarning } from "../lib/logger";
 import { canCaptureCanvas } from "../lib/videoExport";
 
@@ -96,6 +96,12 @@ type GoogleMapsOverlayPrivateState = {
 
 function isGoogleMapsOverlayNotInitializedError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("Not initialized");
+}
+
+function isGoogleMapsWebGlInternalError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message.includes("Cannot read properties of null (reading 'indexOf')")
+    && (error.stack?.includes("webgl.js") ?? false);
 }
 
 function waitForNextAnimationFrame(): Promise<number> {
@@ -1009,6 +1015,12 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     if (!divRef.current) return;
     let cancelled = false;
     const element = divRef.current;
+    const handleMapsWebGlUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (!isGoogleMapsWebGlInternalError(event.reason)) return;
+      event.preventDefault();
+      logWarning("Google Maps WebGL initialization failed; continuing without surfacing an uncaught promise.", undefined, event.reason);
+    };
+    window.addEventListener("unhandledrejection", handleMapsWebGlUnhandledRejection);
 
     let localMap: google.maps.Map | null = null;
     let localOverlay: GoogleMapsOverlay | null = null;
@@ -1019,10 +1031,9 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       const mapsLib = await loader.importLibrary("maps");
       if (cancelled || divRef.current !== element) return;
 
-      const mapId = import.meta.env.VITE_GOOGLE_MAP_ID;
+      const mapId = normalizeGoogleMapId(import.meta.env.VITE_GOOGLE_MAP_ID);
       if (!mapId) {
-        logError("VITE_GOOGLE_MAP_ID is not configured; unable to initialize WebGL overlay.");
-        return;
+        logWarning("VITE_GOOGLE_MAP_ID is not configured with a valid vector map id; rendering the base map without the 3D overlay.");
       }
 
       const currentSeries = latestDataRef.current;
@@ -1043,7 +1054,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
 
       const MapCtor = mapsLib.Map as typeof google.maps.Map;
       const map = new MapCtor(element, {
-        mapId,
+        ...(mapId ? { mapId } : {}),
         colorScheme: appearance === "dark" ? "DARK" : "LIGHT",
         center,
         zoom: initialZoom,
@@ -1075,6 +1086,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       type MapWithCapabilities = google.maps.Map & {
         getMapCapabilities?: () => { isWebGLOverlayViewAvailable?: boolean };
       };
+      if (!mapId) return;
       const deckClass = GoogleMapsOverlay as unknown as { isSupported?: () => boolean | Promise<boolean> };
       const overlaySupported = typeof deckClass.isSupported === "function"
         ? !!(await deckClass.isSupported())
@@ -1102,7 +1114,14 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       });
       guardOverlayLifecycle(overlay);
       localOverlay = overlay;
-      overlay.setMap(map);
+      try {
+        overlay.setMap(map);
+      }
+      catch (error) {
+        logWarning("Unable to attach the 3D map overlay; continuing with the base map.", undefined, error);
+        if (typeof overlay.finalize === "function") overlay.finalize();
+        return;
+      }
       if (cancelled) {
         overlay.setMap(null);
         if (typeof overlay.finalize === "function") overlay.finalize();
@@ -1119,10 +1138,14 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       }
       overlayRef.current = overlay;
       syncOverlayRef.current?.();
-    })();
+    })().catch((error: unknown) => {
+      if (cancelled) return;
+      logError("Unable to initialize the 3D map.", undefined, error);
+    });
 
     return () => {
       cancelled = true;
+      window.removeEventListener("unhandledrejection", handleMapsWebGlUnhandledRejection);
       cameraStateRef.current = readMapCameraState(localMap ?? mapRef.current);
       const overlay = overlayRef.current;
       if (overlay) {
