@@ -352,8 +352,21 @@ function requestOverlayRedraw(overlay: GoogleMapsOverlay | null) {
   }
   catch (error) {
     if (!isGoogleMapsOverlayNotInitializedError(error)) {
-      throw error;
+      logWarning("Unable to request map overlay redraw.", undefined, error);
     }
+  }
+}
+
+function setOverlayPropsSafely(overlay: GoogleMapsOverlay, props: ConstructorParameters<typeof GoogleMapsOverlay>[0]): boolean {
+  try {
+    overlay.setProps(props);
+    return true;
+  }
+  catch (error) {
+    if (!isGoogleMapsOverlayNotInitializedError(error)) {
+      logWarning("Unable to update map overlay props.", undefined, error);
+    }
+    return false;
   }
 }
 
@@ -878,7 +891,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       sphereGeometryRef.current = new SphereGeometry({ radius: 1, nlat: 24, nlong: 24 });
     }
 
-    overlay.setProps({
+    if (!setOverlayPropsSafely(overlay, {
       layers: createLayers(
         latestDataRef.current,
         selectedIndexRef.current,
@@ -888,7 +901,7 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
         showAllMode,
         playbackPathMode
       )
-    });
+    })) return;
 
     const series = latestDataRef.current;
     const current = series[selectedIndexRef.current] ?? series[0];
@@ -970,7 +983,6 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       tilt: frame.tilt ?? (baseCamera.tilt < 10 ? 67.5 : baseCamera.tilt),
       heading: baseCamera.heading + (frame.headingOffsetDeg ?? 0),
     });
-    requestOverlayRedraw(overlayRef.current);
   }, [forceFollowSelection]);
 
   useImperativeHandle(ref, () => ({

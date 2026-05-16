@@ -339,12 +339,36 @@ function getVideoExportMeasurementOverlayLines(
   ];
 }
 
+function getVideoExportWaypointIndexes(pointCount: number, motionDurationMs: number): number[] {
+  const lastIndex = pointCount - 1;
+  if (lastIndex <= 0) return [0];
+
+  const maxSegments = Math.max(1, Math.floor(motionDurationMs / VIDEO_EXPORT_MIN_POINT_MS));
+  const segmentCount = Math.min(lastIndex, maxSegments);
+  if (segmentCount >= lastIndex) {
+    return Array.from({ length: pointCount }, (_, index) => index);
+  }
+
+  const indexes: number[] = [];
+  for (let step = 0; step <= segmentCount; step += 1) {
+    const index = Math.round((lastIndex * step) / segmentCount);
+    const previous = indexes[indexes.length - 1];
+    indexes.push(previous === undefined ? index : Math.max(index, previous + 1));
+  }
+  indexes[indexes.length - 1] = lastIndex;
+  return indexes;
+}
+
 function hasNonBlackCaptureSamples(canvas: HTMLCanvasElement): boolean | null {
   if (canvas.width <= 0 || canvas.height <= 0) return false;
 
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = Math.min(canvas.width, 64);
+  sampleCanvas.height = Math.min(canvas.height, 36);
   let context: CanvasRenderingContext2D | null = null;
   try {
-    context = canvas.getContext("2d", { willReadFrequently: true });
+    context = sampleCanvas.getContext("2d", { willReadFrequently: true });
+    context?.drawImage(canvas, 0, 0, sampleCanvas.width, sampleCanvas.height);
   }
   catch {
     return null;
@@ -365,8 +389,8 @@ function hasNonBlackCaptureSamples(canvas: HTMLCanvasElement): boolean | null {
 
   try {
     return samplePoints.some(([ratioX, ratioY]) => {
-      const x = Math.min(Math.max(Math.round(canvas.width * ratioX), 0), canvas.width - 1);
-      const y = Math.min(Math.max(Math.round(canvas.height * ratioY), 0), canvas.height - 1);
+      const x = Math.min(Math.max(Math.round(sampleCanvas.width * ratioX), 0), sampleCanvas.width - 1);
+      const y = Math.min(Math.max(Math.round(sampleCanvas.height * ratioY), 0), sampleCanvas.height - 1);
       const [red, green, blue, alpha] = context.getImageData(x, y, 1, 1).data;
       return alpha > 8 && red + green + blue > 30;
     });
@@ -1079,7 +1103,6 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     const previousIndex = selectedIndex;
     const pointCount = rows.length;
     const lastIndex = Math.max(pointCount - 1, 0);
-    const segmentCount = Math.max(lastIndex, 1);
     const exportSettings = videoExportSettings;
     const overlayLabel = [
       selectedSummary?.deviceName?.trim() || selectedBatchParsed.deviceId,
@@ -1121,13 +1144,11 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
         throw new Error("Unable to prepare the active map and overlay for video export.");
       }
 
-      const requestedMotionMs = Math.max(0, exportSettings.durationMs - (exportSettings.holdMs * 2));
-      const targetPointDurationMs = Math.max(
-        VIDEO_EXPORT_MIN_POINT_MS,
-        Math.round(requestedMotionMs / segmentCount)
-      );
-      const motionDurationMs = targetPointDurationMs * segmentCount;
-      const plannedDurationMs = exportSettings.holdMs + motionDurationMs + exportSettings.holdMs;
+      const motionDurationMs = Math.max(0, exportSettings.durationMs - (exportSettings.holdMs * 2));
+      const waypointIndexes = getVideoExportWaypointIndexes(pointCount, motionDurationMs);
+      const segmentCount = Math.max(waypointIndexes.length - 1, 1);
+      const targetSegmentDurationMs = motionDurationMs / segmentCount;
+      const plannedDurationMs = exportSettings.durationMs;
       const videoBitsPerSecond = getVideoExportBitrate(exportSettings.quality);
 
       const requestExportFrame = () => {
@@ -1196,37 +1217,34 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       setExportProgress(plannedDurationMs > 0 ? exportSettings.holdMs / plannedDurationMs : 0);
 
       let completedMotionMs = 0;
-      for (let index = 0; index < lastIndex; index += 1) {
-        const nextIndex = index + 1;
+      for (let waypointIndex = 0; waypointIndex < waypointIndexes.length - 1; waypointIndex += 1) {
+        const fromIndex = waypointIndexes[waypointIndex] ?? 0;
+        const nextIndex = waypointIndexes[waypointIndex + 1] ?? lastIndex;
         const stepStartedAt = performance.now();
         setFrameOverlayIndex(nextIndex);
         setExportStatus(`Flying to point ${nextIndex + 1} of ${pointCount}...`);
 
         for (;;) {
           const elapsedMs = performance.now() - stepStartedAt;
-          const pointProgress = Math.min(elapsedMs / targetPointDurationMs, 1);
-          const totalProgress = plannedDurationMs > 0
-            ? Math.min((exportSettings.holdMs + completedMotionMs + (pointProgress * targetPointDurationMs)) / plannedDurationMs, 1)
+          const pointProgress = targetSegmentDurationMs > 0
+            ? Math.min(elapsedMs / targetSegmentDurationMs, 1)
             : 1;
-          applyExportCameraFrame(index, nextIndex, pointProgress, totalProgress);
+          const totalProgress = plannedDurationMs > 0
+            ? Math.min((exportSettings.holdMs + completedMotionMs + (pointProgress * targetSegmentDurationMs)) / plannedDurationMs, 1)
+            : 1;
+          const overlayIndex = Math.round(fromIndex + ((nextIndex - fromIndex) * pointProgress));
+          setFrameOverlayIndex(overlayIndex);
+          applyExportCameraFrame(fromIndex, nextIndex, pointProgress, totalProgress);
           setExportProgress(totalProgress);
           if (pointProgress >= 1) break;
           await waitForAnimationFrame(signal);
           requestExportFrame();
         }
 
-        completedMotionMs += targetPointDurationMs;
+        completedMotionMs += targetSegmentDurationMs;
         setIndexOverride(nextIndex);
-        await waitForAnimationFrames(VIDEO_EXPORT_VISUAL_SETTLE_FRAMES, signal);
         applyExportCameraFrame(nextIndex, nextIndex, 1, Math.min((exportSettings.holdMs + completedMotionMs) / plannedDurationMs, 1));
         requestExportFrame();
-        await waitForSettledCaptureFrame();
-
-        const renderLatencyMs = performance.now() - stepStartedAt - targetPointDurationMs;
-        if (renderLatencyMs < VIDEO_EXPORT_MIN_POINT_MS) {
-          await sleep(VIDEO_EXPORT_MIN_POINT_MS - renderLatencyMs, signal);
-          requestExportFrame();
-        }
       }
 
       applyExportCameraFrame(lastIndex, lastIndex, 1, 1);
