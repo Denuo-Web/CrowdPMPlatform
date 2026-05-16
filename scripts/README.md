@@ -1,9 +1,9 @@
 # Scripts
 
-Scripts in this directory emulate sensor devices and support deployed-device checks. Run them from the repository root after selecting Node 24.
+Scripts in this directory emulate sensor devices and support deployed-device checks. Run them from the repository root after selecting Node.js 24.15.0.
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use 24
+source ~/.nvm/nvm.sh && nvm use 24.15.0
 ```
 
 ## Local Device Emulator

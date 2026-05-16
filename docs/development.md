@@ -5,7 +5,7 @@ This guide is the canonical local workflow. It runs the frontend and Firebase se
 ## 1. Runtime
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use 24
+source ~/.nvm/nvm.sh && nvm use 24.15.0
 corepack enable
 corepack prepare pnpm@10.18.1 --activate
 pnpm install
@@ -13,7 +13,7 @@ pnpm install
 
 Required tools:
 
-- Node.js 24.x
+- Node.js 24.15.0
 - pnpm 10.x
 - Firebase CLI
 - Java JDK 25 for the Firebase emulators

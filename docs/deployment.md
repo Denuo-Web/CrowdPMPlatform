@@ -13,7 +13,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use 24
+source ~/.nvm/nvm.sh && nvm use 24.15.0
 git checkout main
 git pull --ff-only
 git status --short
@@ -48,7 +48,7 @@ For a new deployed Firebase project, verify these services before the first rele
 
 The functions code reads runtime values from `process.env`.
 
-The repository, CI, and Firebase Functions runtime are aligned on Node.js 24. Do not deploy a Functions runtime with Node.js 22 while building or testing on Node.js 24.
+The repository and CI are pinned to Node.js 24.15.0, while the Firebase Functions runtime remains on the `nodejs24` major runtime. Do not deploy a Functions runtime with Node.js 22 while building or testing on Node.js 24.15.0.
 
 Required deployed Firebase secrets:
 

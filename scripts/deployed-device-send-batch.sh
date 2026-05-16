@@ -2,15 +2,33 @@
 
 set -euo pipefail
 
-if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
-  # Match the repo's required runtime before invoking node helpers.
-  # shellcheck disable=SC1090
-  source "${HOME}/.nvm/nvm.sh"
-  nvm use 24 >/dev/null 2>&1 || {
-    nvm install 24 >/dev/null
-    nvm use 24 >/dev/null
-  }
-fi
+REQUIRED_NODE_VERSION="24.15.0"
+
+ensure_required_node() {
+  if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
+    # Match the repo's required runtime before invoking node helpers.
+    # shellcheck disable=SC1090
+    source "${HOME}/.nvm/nvm.sh"
+    nvm use "${REQUIRED_NODE_VERSION}" >/dev/null 2>&1 || {
+      nvm install "${REQUIRED_NODE_VERSION}" >/dev/null
+      nvm use "${REQUIRED_NODE_VERSION}" >/dev/null
+    }
+    return 0
+  fi
+
+  if command -v node >/dev/null 2>&1; then
+    local current_version
+    current_version="$(node -p 'process.versions.node')"
+    if [[ "${current_version}" == "${REQUIRED_NODE_VERSION}" ]]; then
+      return 0
+    fi
+  fi
+
+  echo "Node.js ${REQUIRED_NODE_VERSION} is required. Install nvm or make node ${REQUIRED_NODE_VERSION} available on PATH." >&2
+  exit 1
+}
+
+ensure_required_node
 
 API_BASE="${CROWDPM_API_BASE:-https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi}"
 KEY_FILE="${CROWDPM_KEY_FILE:-.crowdpm-deployed-device-key.json}"

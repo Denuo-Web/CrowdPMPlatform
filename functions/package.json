@@ -16,7 +16,7 @@
     "admin:grant-role": "node ./scripts/grant-role.mjs"
   },
   "engines": {
-    "node": "^24.0.0"
+    "node": ">=24.15.0 <25"
   },
   "dependencies": {
     "@fastify/cors": "11.2.0",
