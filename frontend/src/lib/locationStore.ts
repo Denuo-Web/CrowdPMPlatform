@@ -15,10 +15,21 @@ const SERVER_LOCATION: BrowserLocationSnapshot = {
   hash: "",
 };
 
+let cachedBrowserLocation: BrowserLocationSnapshot = SERVER_LOCATION;
+
 function readBrowserLocation(): BrowserLocationSnapshot {
   if (typeof window === "undefined") return SERVER_LOCATION;
   const { href, pathname, search, hash } = window.location;
-  return { href, pathname, search, hash };
+  if (
+    cachedBrowserLocation.href === href
+    && cachedBrowserLocation.pathname === pathname
+    && cachedBrowserLocation.search === search
+    && cachedBrowserLocation.hash === hash
+  ) {
+    return cachedBrowserLocation;
+  }
+  cachedBrowserLocation = { href, pathname, search, hash };
+  return cachedBrowserLocation;
 }
 
 function emitLocationChange(): void {
