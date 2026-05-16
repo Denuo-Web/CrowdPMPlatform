@@ -12,7 +12,12 @@ export type CanvasVideoExportSupport = {
 
 export type CanvasRecordingSession = {
   mimeType: string;
+  requestFrame: () => void;
   stop: () => Promise<Blob>;
+};
+
+type RequestableCanvasTrack = MediaStreamTrack & {
+  requestFrame?: () => void;
 };
 
 export function detectCanvasVideoExportSupport(): CanvasVideoExportSupport {
@@ -59,7 +64,7 @@ export function canCaptureCanvas(canvas: HTMLCanvasElement | null | undefined): 
 
 export function startCanvasRecording(
   canvas: HTMLCanvasElement,
-  options?: { fps?: number; mimeType?: string }
+  options?: { fps?: number; mimeType?: string; videoBitsPerSecond?: number }
 ): CanvasRecordingSession {
   if (!canCaptureCanvas(canvas)) {
     throw new Error("The active map canvas is not ready for capture.");
@@ -80,14 +85,18 @@ export function startCanvasRecording(
     throw new Error(message);
   }
 
-  if (!stream.getVideoTracks().length) {
+  const videoTrack = stream.getVideoTracks()[0] as RequestableCanvasTrack | undefined;
+  if (!videoTrack) {
     stream.getTracks().forEach((track) => track.stop());
     throw new Error("The active map canvas did not expose a video track for recording.");
   }
 
   let recorder: MediaRecorder;
   try {
-    recorder = new MediaRecorder(stream, { mimeType });
+    recorder = new MediaRecorder(stream, {
+      mimeType,
+      ...(typeof options?.videoBitsPerSecond === "number" ? { videoBitsPerSecond: options.videoBitsPerSecond } : {}),
+    });
   }
   catch (err) {
     stream.getTracks().forEach((track) => track.stop());
@@ -113,6 +122,14 @@ export function startCanvasRecording(
 
   return {
     mimeType,
+    requestFrame: () => {
+      try {
+        videoTrack.requestFrame?.();
+      }
+      catch {
+        // Some browsers expose requestFrame but throw after the track stops.
+      }
+    },
     stop: () => new Promise<Blob>((resolve, reject) => {
       const cleanup = () => {
         stream.getTracks().forEach((track) => track.stop());

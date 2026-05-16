@@ -24,17 +24,35 @@ export type PlaybackPathMode = "full" | "progressive";
 
 export type Map3DCaptureSession = {
   canvas: HTMLCanvasElement;
+  requestFrame: () => void;
   stop: () => void;
 };
 
 type Map3DCaptureOptions = {
   watermarkText?: string | null;
+  captureFps?: number;
+  frameOverlayLines?: () => string[];
+};
+
+type Map3DVisualReadyOptions = {
+  forExport?: boolean;
+  idleTimeoutMs?: number;
+};
+
+export type Map3DExportCameraFrame = {
+  fromIndex: number;
+  toIndex: number;
+  progress: number;
+  headingOffsetDeg?: number;
+  tilt?: number;
+  zoom?: number;
 };
 
 export type Map3DHandle = {
   getCaptureCanvas: () => HTMLCanvasElement | null;
   startCaptureSession: (options?: Map3DCaptureOptions) => Promise<Map3DCaptureSession | null>;
-  waitForVisualReady: () => Promise<void>;
+  waitForVisualReady: (options?: Map3DVisualReadyOptions) => Promise<void>;
+  setExportCameraFrame: (frame: Map3DExportCameraFrame | null) => void;
 };
 
 type MapCameraState = {
@@ -92,6 +110,22 @@ async function waitForAnimationFrames(count: number) {
   }
 }
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function easeInOutCubic(t: number): number {
+  const clamped = clamp01(t);
+  return clamped < 0.5
+    ? 4 * clamped * clamped * clamped
+    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
+}
+
 function waitForMapIdle(map: google.maps.Map | null, timeoutMs: number): Promise<void> {
   if (!map) {
     return Promise.resolve();
@@ -112,6 +146,16 @@ function waitForMapIdle(map: google.maps.Map | null, timeoutMs: number): Promise
   });
 }
 
+function getVisualReadyIdleTimeoutMs(forceFollowSelection: boolean, options?: Map3DVisualReadyOptions): number {
+  if (typeof options?.idleTimeoutMs === "number" && Number.isFinite(options.idleTimeoutMs)) {
+    return Math.max(0, options.idleTimeoutMs);
+  }
+  if (options?.forExport) {
+    return forceFollowSelection ? 1_200 : 1_000;
+  }
+  return forceFollowSelection ? 450 : 250;
+}
+
 function readMapCameraState(map: google.maps.Map | null): MapCameraState | null {
   if (!map) return null;
 
@@ -124,6 +168,22 @@ function readMapCameraState(map: google.maps.Map | null): MapCameraState | null 
     tilt: map.getTilt() ?? undefined,
     heading: map.getHeading() ?? undefined,
   };
+}
+
+function moveMapCamera(map: google.maps.Map, camera: MapCameraState) {
+  if (typeof map.moveCamera === "function") {
+    const cameraOptions: google.maps.CameraOptions = { center: camera.center };
+    if (typeof camera.zoom === "number") cameraOptions.zoom = camera.zoom;
+    if (typeof camera.tilt === "number") cameraOptions.tilt = camera.tilt;
+    if (typeof camera.heading === "number") cameraOptions.heading = camera.heading;
+    map.moveCamera(cameraOptions);
+    return;
+  }
+
+  map.setCenter(camera.center);
+  if (typeof camera.zoom === "number") map.setZoom(camera.zoom);
+  if (typeof camera.tilt === "number") map.setTilt(camera.tilt);
+  if (typeof camera.heading === "number") map.setHeading(camera.heading);
 }
 
 function ensureRange(min: number, max: number): [number, number] {
@@ -391,6 +451,88 @@ function drawWatermark(
   context.restore();
 }
 
+function getFrameOverlayLines(options?: Map3DCaptureOptions): string[] {
+  if (!options?.frameOverlayLines) return [];
+
+  try {
+    return options.frameOverlayLines()
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 6);
+  }
+  catch (err) {
+    logWarning("Unable to render video export frame overlay.", undefined, err);
+    return [];
+  }
+}
+
+function fitCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (context.measureText(text).width <= maxWidth) return text;
+
+  const ellipsis = "...";
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const candidate = `${text.slice(0, mid)}${ellipsis}`;
+    if (context.measureText(candidate).width <= maxWidth) {
+      low = mid;
+    }
+    else {
+      high = mid - 1;
+    }
+  }
+  return `${text.slice(0, low)}${ellipsis}`;
+}
+
+function drawFrameOverlay(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  dpr: number,
+  lines: string[],
+) {
+  if (!lines.length) return;
+
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.scale(dpr, dpr);
+
+  const widthCss = canvas.width / dpr;
+  const heightCss = canvas.height / dpr;
+  const fontSize = Math.max(12, Math.round(Math.min(widthCss, heightCss) * 0.023));
+  const lineHeight = Math.round(fontSize * 1.35);
+  const paddingX = Math.round(fontSize * 0.85);
+  const paddingY = Math.round(fontSize * 0.7);
+  const margin = Math.max(10, Math.round(fontSize * 0.8));
+  const maxTextWidth = Math.max(180, widthCss - (margin * 2) - (paddingX * 2));
+
+  context.font = `600 ${fontSize}px system-ui, sans-serif`;
+  const fittedLines = lines.map((line) => fitCanvasText(context, line, maxTextWidth));
+  const boxWidth = Math.min(
+    widthCss - (margin * 2),
+    Math.max(...fittedLines.map((line) => context.measureText(line).width)) + (paddingX * 2)
+  );
+  const boxHeight = (lineHeight * fittedLines.length) + (paddingY * 2);
+  const x = margin;
+  const y = margin;
+
+  context.fillStyle = "rgba(0, 0, 0, 0.58)";
+  context.beginPath();
+  context.roundRect(x, y, boxWidth, boxHeight, 10);
+  context.fill();
+  context.fillStyle = "rgba(255, 255, 255, 0.94)";
+  context.textAlign = "left";
+  context.textBaseline = "top";
+
+  fittedLines.forEach((line, index) => {
+    context.font = index === 0
+      ? `700 ${fontSize}px system-ui, sans-serif`
+      : `500 ${Math.max(11, fontSize - 1)}px system-ui, sans-serif`;
+    context.fillText(line, x + paddingX, y + paddingY + (index * lineHeight));
+  });
+  context.restore();
+}
+
 function createCompositeCaptureSession(root: HTMLDivElement | null, options?: Map3DCaptureOptions): Map3DCaptureSession | null {
   if (!root) return null;
 
@@ -418,28 +560,41 @@ function createCompositeCaptureSession(root: HTMLDivElement | null, options?: Ma
 
   const context = compositeCanvas.getContext("2d");
   if (!context) return null;
+  const stagingCanvas = document.createElement("canvas");
+  stagingCanvas.width = compositeCanvas.width;
+  stagingCanvas.height = compositeCanvas.height;
+  const stagingContext = stagingCanvas.getContext("2d");
+  if (!stagingContext) return null;
 
   let disposed = false;
   let rafId = 0;
 
   const drawFrame = () => {
     if (disposed) return;
-    rafId = window.requestAnimationFrame(drawFrame);
 
     const currentRootRect = root.getBoundingClientRect();
     const originLeft = currentRootRect.width > 0 ? currentRootRect.left : (fallbackRect?.left ?? 0);
     const originTop = currentRootRect.height > 0 ? currentRootRect.top : (fallbackRect?.top ?? 0);
+    const currentCanvases = getVisibleCanvases(root)
+      .sort(compareCanvasOrder)
+      .filter((canvas) => {
+        const rect = canvas.getBoundingClientRect();
+        return canvas.width > 0 && canvas.height > 0 && rect.width > 0 && rect.height > 0;
+      });
+    if (!currentCanvases.length) return;
 
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
-    context.scale(dpr, dpr);
+    stagingContext.setTransform(1, 0, 0, 1, 0, 0);
+    stagingContext.clearRect(0, 0, stagingCanvas.width, stagingCanvas.height);
+    stagingContext.scale(dpr, dpr);
 
-    getVisibleCanvases(root).sort(compareCanvasOrder).forEach((canvas) => {
+    let drewFrame = false;
+    currentCanvases.forEach((canvas) => {
       const rect = canvas.getBoundingClientRect();
       const dx = rect.left - originLeft;
       const dy = rect.top - originTop;
       try {
-        context.drawImage(canvas, dx, dy, rect.width, rect.height);
+        stagingContext.drawImage(canvas, dx, dy, rect.width, rect.height);
+        drewFrame = true;
       }
       catch (err) {
         logWarning("Unable to composite map canvas layer for export.", {
@@ -448,15 +603,30 @@ function createCompositeCaptureSession(root: HTMLDivElement | null, options?: Ma
         }, err);
       }
     });
+    if (!drewFrame) return;
+    drawFrameOverlay(stagingContext, stagingCanvas, dpr, getFrameOverlayLines(options));
     if (options?.watermarkText) {
-      drawWatermark(context, compositeCanvas, dpr, options.watermarkText);
+      drawWatermark(stagingContext, stagingCanvas, dpr, options.watermarkText);
     }
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+    context.drawImage(stagingCanvas, 0, 0);
+  };
+
+  const scheduleFrame = () => {
+    if (disposed) return;
+    rafId = window.requestAnimationFrame(() => {
+      drawFrame();
+      scheduleFrame();
+    });
   };
 
   drawFrame();
+  scheduleFrame();
 
   return {
     canvas: compositeCanvas,
+    requestFrame: drawFrame,
     stop: () => {
       disposed = true;
       if (rafId) window.cancelAnimationFrame(rafId);
@@ -470,13 +640,14 @@ function createDirectCanvasCaptureSession(root: HTMLDivElement | null): Map3DCap
 
   return {
     canvas,
+    requestFrame: () => {},
     stop: () => {},
   };
 }
 
 async function createStreamBackedCaptureSession(
   root: HTMLDivElement | null,
-  options?: { allowCompositeFallback?: boolean; watermarkText?: string | null }
+  options?: Map3DCaptureOptions & { allowCompositeFallback?: boolean }
 ): Promise<Map3DCaptureSession | null> {
   if (!root) return null;
   const allowCompositeFallback = options?.allowCompositeFallback ?? true;
@@ -504,10 +675,15 @@ async function createStreamBackedCaptureSession(
 
   const context = compositeCanvas.getContext("2d");
   if (!context) return null;
+  const stagingCanvas = document.createElement("canvas");
+  stagingCanvas.width = compositeCanvas.width;
+  stagingCanvas.height = compositeCanvas.height;
+  const stagingContext = stagingCanvas.getContext("2d");
+  if (!stagingContext) return null;
 
   let baseStream: MediaStream;
   try {
-    baseStream = baseCanvas.captureStream(30);
+    baseStream = baseCanvas.captureStream(options?.captureFps ?? 30);
   }
   catch {
     return allowCompositeFallback ? createCompositeCaptureSession(root, options) : null;
@@ -532,30 +708,47 @@ async function createStreamBackedCaptureSession(
 
   const drawFrame = () => {
     if (disposed) return;
-    rafId = window.requestAnimationFrame(drawFrame);
 
     const currentRootRect = root.getBoundingClientRect();
     const originLeft = currentRootRect.width > 0 ? currentRootRect.left : baseRect.left;
     const originTop = currentRootRect.height > 0 ? currentRootRect.top : baseRect.top;
 
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
-    context.scale(dpr, dpr);
+    stagingContext.setTransform(1, 0, 0, 1, 0, 0);
+    stagingContext.clearRect(0, 0, stagingCanvas.width, stagingCanvas.height);
+    stagingContext.scale(dpr, dpr);
 
+    let drewFrame = false;
     const currentBaseRect = baseCanvas.getBoundingClientRect();
     const baseDx = currentBaseRect.left - originLeft;
     const baseDy = currentBaseRect.top - originTop;
-    if (baseVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      context.drawImage(baseVideo, baseDx, baseDy, currentBaseRect.width, currentBaseRect.height);
+    if (
+      baseVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      && currentBaseRect.width > 0
+      && currentBaseRect.height > 0
+      && baseVideo.videoWidth > 0
+      && baseVideo.videoHeight > 0
+    ) {
+      try {
+        stagingContext.drawImage(baseVideo, baseDx, baseDy, currentBaseRect.width, currentBaseRect.height);
+        drewFrame = true;
+      }
+      catch (err) {
+        logWarning("Unable to composite streamed map canvas layer for export.", {
+          width: currentBaseRect.width,
+          height: currentBaseRect.height
+        }, err);
+      }
     }
 
     getVisibleCanvases(root).sort(compareCanvasOrder).forEach((canvas) => {
       if (canvas === baseCanvas) return;
       const rect = canvas.getBoundingClientRect();
+      if (canvas.width <= 0 || canvas.height <= 0 || rect.width <= 0 || rect.height <= 0) return;
       const dx = rect.left - originLeft;
       const dy = rect.top - originTop;
       try {
-        context.drawImage(canvas, dx, dy, rect.width, rect.height);
+        stagingContext.drawImage(canvas, dx, dy, rect.width, rect.height);
+        drewFrame = true;
       }
       catch (err) {
         logWarning("Unable to composite map canvas layer for export.", {
@@ -564,15 +757,30 @@ async function createStreamBackedCaptureSession(
         }, err);
       }
     });
+    if (!drewFrame) return;
+    drawFrameOverlay(stagingContext, stagingCanvas, dpr, getFrameOverlayLines(options));
     if (options?.watermarkText) {
-      drawWatermark(context, compositeCanvas, dpr, options.watermarkText);
+      drawWatermark(stagingContext, stagingCanvas, dpr, options.watermarkText);
     }
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+    context.drawImage(stagingCanvas, 0, 0);
+  };
+
+  const scheduleFrame = () => {
+    if (disposed) return;
+    rafId = window.requestAnimationFrame(() => {
+      drawFrame();
+      scheduleFrame();
+    });
   };
 
   drawFrame();
+  scheduleFrame();
 
   return {
     canvas: compositeCanvas,
+    requestFrame: drawFrame,
     stop: () => {
       disposed = true;
       if (rafId) window.cancelAnimationFrame(rafId);
@@ -585,21 +793,27 @@ async function createStreamBackedCaptureSession(
 
 async function createCaptureSession(
   root: HTMLDivElement | null,
-  options?: { preferDirectCanvas?: boolean; watermarkText?: string | null }
+  options?: Map3DCaptureOptions & { preferDirectCanvas?: boolean }
 ): Promise<Map3DCaptureSession | null> {
-  if (options?.watermarkText) {
+  const needsCompositedOverlay = Boolean(options?.watermarkText || options?.frameOverlayLines);
+  if (needsCompositedOverlay) {
     return createStreamBackedCaptureSession(root, {
       allowCompositeFallback: true,
-      watermarkText: options.watermarkText,
+      watermarkText: options?.watermarkText,
+      captureFps: options?.captureFps,
+      frameOverlayLines: options?.frameOverlayLines,
     });
   }
   if (options?.preferDirectCanvas) {
     // Interleaved Google Maps renders deck.gl into the Maps WebGL canvas. Redrawing
     // that canvas through 2D drawImage can produce black frames, so record it directly.
     return createDirectCanvasCaptureSession(root)
-      ?? createStreamBackedCaptureSession(root, { allowCompositeFallback: false });
+      ?? createStreamBackedCaptureSession(root, {
+        allowCompositeFallback: false,
+        captureFps: options.captureFps,
+      });
   }
-  return createStreamBackedCaptureSession(root);
+  return createStreamBackedCaptureSession(root, { captureFps: options?.captureFps });
 }
 
 const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
@@ -630,6 +844,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   const sphereGeometryRef = useRef<SphereGeometry | null>(null);
   const cameraStateRef = useRef<MapCameraState | null>(null);
   const hasUserControlRef = useRef(typeof defaultZoom === "number");
+  const exportCameraActiveRef = useRef(false);
+  const exportCameraBaseRef = useRef<{ zoom: number; tilt: number; heading: number } | null>(null);
   const initialDefaultZoomRef = useRef(defaultZoom);
   const dataSignatureRef = useRef(signature(data));
   const defaultCenterLat = defaultCenter?.lat;
@@ -680,17 +896,16 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
       const center = { lat: current.lat, lng: current.lon };
       const map = mapRef.current;
       if (map && (!hasUserControlRef.current || options?.forceCenter || forceFollowSelection)) {
+        if (exportCameraActiveRef.current) {
+          requestOverlayRedraw(overlay);
+          return;
+        }
         const targetZoom = forceFollowSelection
           ? Math.max(map.getZoom() ?? 18, 18)
           : Math.max(map.getZoom() ?? 17, 16);
         const currentTilt = map.getTilt() ?? 0;
         const targetTilt = currentTilt < 10 ? 67.5 : undefined;
-        if (typeof map.moveCamera === "function") map.moveCamera({ center, zoom: targetZoom, tilt: targetTilt });
-        else {
-          map.setCenter(center);
-          map.setZoom(targetZoom);
-          if (targetTilt !== undefined) map.setTilt(targetTilt);
-        }
+        moveMapCamera(map, { center, zoom: targetZoom, tilt: targetTilt });
       }
     }
 
@@ -716,22 +931,67 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
     []
   );
 
+  const setExportCameraFrame = useCallback((frame: Map3DExportCameraFrame | null) => {
+    if (!frame) {
+      exportCameraActiveRef.current = false;
+      exportCameraBaseRef.current = null;
+      return;
+    }
+
+    exportCameraActiveRef.current = true;
+    const map = mapRef.current;
+    const series = latestDataRef.current;
+    if (!map || !series.length) return;
+
+    const maxIndex = series.length - 1;
+    const fromIndex = Math.min(Math.max(Math.round(frame.fromIndex), 0), maxIndex);
+    const toIndex = Math.min(Math.max(Math.round(frame.toIndex), 0), maxIndex);
+    const from = series[fromIndex];
+    const to = series[toIndex] ?? from;
+    if (!from || !to) return;
+
+    if (!exportCameraBaseRef.current) {
+      const currentCamera = readMapCameraState(map);
+      exportCameraBaseRef.current = {
+        zoom: Math.max(currentCamera?.zoom ?? map.getZoom() ?? 18, forceFollowSelection ? 18 : 16),
+        tilt: currentCamera?.tilt ?? map.getTilt() ?? 67.5,
+        heading: currentCamera?.heading ?? map.getHeading() ?? 0,
+      };
+    }
+
+    const easedProgress = easeInOutCubic(frame.progress);
+    const baseCamera = exportCameraBaseRef.current;
+    moveMapCamera(map, {
+      center: {
+        lat: lerp(from.lat, to.lat, easedProgress),
+        lng: lerp(from.lon, to.lon, easedProgress),
+      },
+      zoom: frame.zoom ?? baseCamera.zoom,
+      tilt: frame.tilt ?? (baseCamera.tilt < 10 ? 67.5 : baseCamera.tilt),
+      heading: baseCamera.heading + (frame.headingOffsetDeg ?? 0),
+    });
+    requestOverlayRedraw(overlayRef.current);
+  }, [forceFollowSelection]);
+
   useImperativeHandle(ref, () => ({
     getCaptureCanvas,
     startCaptureSession: (options) => createCaptureSession(divRef.current, {
       preferDirectCanvas: interleaved,
       watermarkText: options?.watermarkText,
+      captureFps: options?.captureFps,
+      frameOverlayLines: options?.frameOverlayLines,
     }),
-    waitForVisualReady: async () => {
+    waitForVisualReady: async (options) => {
       syncOverlayRef.current?.();
       requestOverlayRedraw(overlayRef.current);
       await waitForNextAnimationFrame();
-      await waitForMapIdle(mapRef.current, forceFollowSelection ? 450 : 250);
+      await waitForMapIdle(mapRef.current, getVisualReadyIdleTimeoutMs(forceFollowSelection, options));
       syncOverlayRef.current?.();
       requestOverlayRedraw(overlayRef.current);
-      await waitForAnimationFrames(2);
+      await waitForAnimationFrames(options?.forExport ? 3 : 2);
     },
-  }), [forceFollowSelection, getCaptureCanvas, interleaved]);
+    setExportCameraFrame,
+  }), [forceFollowSelection, getCaptureCanvas, interleaved, setExportCameraFrame]);
 
   useEffect(() => {
     if (!divRef.current) return;
