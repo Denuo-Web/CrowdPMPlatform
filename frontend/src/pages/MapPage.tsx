@@ -37,10 +37,30 @@ const SHOW_ALL_PUBLIC_24H_KEY = "__all_public_last_24h__";
 const SHOW_ALL_PUBLIC_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const SHOW_ALL_PUBLIC_BATCH_LIMIT = 200;
 const EXPANDED_BATCH_FETCH_LIMIT = 500;
-const VIDEO_EXPORT_DURATION_MS = 12_000;
-const VIDEO_EXPORT_FPS = 30;
-const VIDEO_EXPORT_MIN_POINT_MS = 160;
-const VIDEO_EXPORT_FINAL_POINT_MS = 320;
+const VIDEO_EXPORT_DURATION_OPTIONS = [
+  { label: "6s", value: 6_000 },
+  { label: "12s", value: 12_000 },
+  { label: "24s", value: 24_000 },
+  { label: "30s", value: 30_000 },
+] as const;
+const VIDEO_EXPORT_FPS_OPTIONS = [24, 30, 60] as const;
+const VIDEO_EXPORT_QUALITY_OPTIONS = [
+  { label: "Low (2.5 Mbps)", value: "low", videoBitsPerSecond: 2_500_000 },
+  { label: "Medium (5 Mbps)", value: "medium", videoBitsPerSecond: 5_000_000 },
+  { label: "High (10 Mbps)", value: "high", videoBitsPerSecond: 10_000_000 },
+] as const;
+const VIDEO_EXPORT_HOLD_OPTIONS = [
+  { label: "Off", value: 0 },
+  { label: "1s", value: 1_000 },
+  { label: "2s", value: 2_000 },
+] as const;
+const VIDEO_EXPORT_MIN_POINT_MS = 300;
+const VIDEO_EXPORT_VISUAL_SETTLE_FRAMES = 4;
+const VIDEO_EXPORT_NON_BLACK_RETRIES = 10;
+const VIDEO_EXPORT_ORBIT_DEGREES = 24;
+const VIDEO_EXPORT_START_TILT = 45;
+const VIDEO_EXPORT_TARGET_TILT = 67.5;
+const VIDEO_EXPORT_TILT_RAMP_PORTION = 0.2;
 const MIN_PERSISTED_MAP_ZOOM = 0;
 const MAX_PERSISTED_MAP_ZOOM = 22;
 const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
@@ -68,6 +88,27 @@ type VisibleBatchSummary = BatchSummary & {
 };
 
 type BatchBrowserTimeRange = "all" | "8h" | "24h" | "7d" | "30d";
+type VideoExportDurationMs = (typeof VIDEO_EXPORT_DURATION_OPTIONS)[number]["value"];
+type VideoExportFps = (typeof VIDEO_EXPORT_FPS_OPTIONS)[number];
+type VideoExportQuality = (typeof VIDEO_EXPORT_QUALITY_OPTIONS)[number]["value"];
+type VideoExportHoldMs = (typeof VIDEO_EXPORT_HOLD_OPTIONS)[number]["value"];
+type VideoExportSettings = {
+  durationMs: VideoExportDurationMs;
+  fps: VideoExportFps;
+  quality: VideoExportQuality;
+  holdMs: VideoExportHoldMs;
+  enableHeadingOrbit: boolean;
+  enableTiltRamp: boolean;
+};
+
+const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
+  durationMs: 12_000,
+  fps: 30,
+  quality: "medium",
+  holdMs: 1_000,
+  enableHeadingOrbit: true,
+  enableTiltRamp: true,
+};
 
 type MapMeasurementRecord = MeasurementRecord & {
   batchKey?: string;
@@ -79,6 +120,41 @@ type StoredTimelineIndexes = Record<string, number>;
 type MapPageProps = {
   mapAppearance: UserThemeAppearance;
 };
+
+class VideoExportCancelledError extends Error {
+  constructor() {
+    super("Video export cancelled.");
+    this.name = "VideoExportCancelledError";
+  }
+}
+
+function throwIfVideoExportAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new VideoExportCancelledError();
+  }
+}
+
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  throwIfVideoExportAborted(signal);
+  if (!signal) return promise;
+
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => {
+      reject(new VideoExportCancelledError());
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      }
+    );
+  });
+}
 
 function formatBatchLabel(batch: BatchSummary) {
   const timeMs = timestampToMillis(batch.processedAt);
@@ -171,22 +247,148 @@ function pointsToMeasurementRecords(
     });
 }
 
-function waitForAnimationFrame(): Promise<number> {
-  return new Promise((resolve) => {
-    window.requestAnimationFrame(resolve);
+function waitForAnimationFrame(signal?: AbortSignal): Promise<number> {
+  throwIfVideoExportAborted(signal);
+  return new Promise((resolve, reject) => {
+    let rafId = 0;
+    const cleanup = () => {
+      if (signal) signal.removeEventListener("abort", handleAbort);
+    };
+    const handleAbort = () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      cleanup();
+      reject(new VideoExportCancelledError());
+    };
+    if (signal) signal.addEventListener("abort", handleAbort, { once: true });
+    rafId = window.requestAnimationFrame((timestamp) => {
+      cleanup();
+      resolve(timestamp);
+    });
   });
 }
 
-async function waitForAnimationFrames(count: number) {
+async function waitForAnimationFrames(count: number, signal?: AbortSignal) {
   for (let index = 0; index < count; index += 1) {
-    await waitForAnimationFrame();
+    await waitForAnimationFrame(signal);
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfVideoExportAborted(signal);
+  return new Promise((resolve, reject) => {
+    let timeoutId = 0;
+    const cleanup = () => {
+      if (signal) signal.removeEventListener("abort", handleAbort);
+    };
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      cleanup();
+      reject(new VideoExportCancelledError());
+    };
+    if (signal) signal.addEventListener("abort", handleAbort, { once: true });
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
   });
+}
+
+function easeInOutCubic(t: number): number {
+  const clamped = Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1);
+  return clamped < 0.5
+    ? 4 * clamped * clamped * clamped
+    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
+}
+
+function getVideoExportBitrate(quality: VideoExportQuality): number {
+  return VIDEO_EXPORT_QUALITY_OPTIONS.find((option) => option.value === quality)?.videoBitsPerSecond
+    ?? 5_000_000;
+}
+
+function getVideoExportTilt(settings: VideoExportSettings, progress: number): number {
+  if (!settings.enableTiltRamp) return VIDEO_EXPORT_TARGET_TILT;
+  const rampProgress = Math.min(Math.max(progress / VIDEO_EXPORT_TILT_RAMP_PORTION, 0), 1);
+  const easedProgress = easeInOutCubic(rampProgress);
+  return VIDEO_EXPORT_START_TILT + (VIDEO_EXPORT_TARGET_TILT - VIDEO_EXPORT_START_TILT) * easedProgress;
+}
+
+function formatVideoExportTimestamp(point: MapMeasurementRecord): string {
+  const timestampMs = timestampToMillis(point.timestamp);
+  return timestampMs === null ? "Timestamp unavailable" : new Date(timestampMs).toLocaleString();
+}
+
+function getVideoExportMeasurementOverlayLines(
+  point: MapMeasurementRecord | undefined,
+  index: number,
+  totalCount: number,
+  label: string
+): string[] {
+  if (!point) return [label, `Point ${Math.min(index + 1, totalCount)} of ${totalCount}`];
+
+  const pollutant = String(point.pollutant);
+  const pollutantLabel = pollutant === "pm25" ? "PM2.5" : pollutant.toUpperCase();
+  const valueLabel = `${pollutantLabel}: ${point.value} ${point.unit || "µg/m³"}`;
+  const precisionLabel = point.precision != null ? ` · ±${Math.round(point.precision)}m` : "";
+  const altitudeLabel = point.altitude != null ? ` · alt ${Math.round(point.altitude)}m` : "";
+
+  return [
+    label,
+    `Point ${index + 1} of ${totalCount} · ${formatVideoExportTimestamp(point)}`,
+    valueLabel,
+    `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}${precisionLabel}${altitudeLabel}`,
+  ];
+}
+
+function hasNonBlackCaptureSamples(canvas: HTMLCanvasElement): boolean | null {
+  if (canvas.width <= 0 || canvas.height <= 0) return false;
+
+  let context: CanvasRenderingContext2D | null = null;
+  try {
+    context = canvas.getContext("2d", { willReadFrequently: true });
+  }
+  catch {
+    return null;
+  }
+  if (!context) return null;
+
+  const samplePoints = [
+    [0.08, 0.08],
+    [0.5, 0.08],
+    [0.92, 0.08],
+    [0.2, 0.35],
+    [0.5, 0.5],
+    [0.8, 0.35],
+    [0.08, 0.92],
+    [0.5, 0.92],
+    [0.92, 0.92],
+  ] as const;
+
+  try {
+    return samplePoints.some(([ratioX, ratioY]) => {
+      const x = Math.min(Math.max(Math.round(canvas.width * ratioX), 0), canvas.width - 1);
+      const y = Math.min(Math.max(Math.round(canvas.height * ratioY), 0), canvas.height - 1);
+      const [red, green, blue, alpha] = context.getImageData(x, y, 1, 1).data;
+      return alpha > 8 && red + green + blue > 30;
+    });
+  }
+  catch {
+    return null;
+  }
+}
+
+async function waitForNonBlackCaptureFrame(
+  canvas: HTMLCanvasElement,
+  onRetry?: () => Promise<void>,
+  maxRetries = VIDEO_EXPORT_NON_BLACK_RETRIES,
+  signal?: AbortSignal
+) {
+  for (let retry = 0; retry <= maxRetries; retry += 1) {
+    throwIfVideoExportAborted(signal);
+    const result = hasNonBlackCaptureSamples(canvas);
+    if (result !== false) return;
+    await waitForAnimationFrames(1, signal);
+    await onRetry?.();
+  }
 }
 
 function sanitizeFileSegment(value: string | null | undefined): string {
@@ -264,6 +466,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const timelineHydratedRef = useRef<string | null>(null);
   const skipIndexResetRef = useRef(false);
   const map3DRef = useRef<Map3DHandle | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
   const [captureAvailable, setCaptureAvailable] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -272,6 +475,8 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [renderedVideoName, setRenderedVideoName] = useState<string | null>(null);
   const [, setRenderedVideoMimeType] = useState<string | null>(null);
+  const [isVideoExportSettingsOpen, setVideoExportSettingsOpen] = useState(false);
+  const [videoExportSettings, setVideoExportSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS);
   const recordingSupport = useMemo(() => detectCanvasVideoExportSupport(), []);
   const [isMapViewportActivated, setMapViewportActivated] = useState(false);
 
@@ -851,6 +1056,16 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     };
   }, [renderedVideoUrl]);
 
+  const handleOpenVideoExportSettings = useCallback(() => {
+    if (!canStartExport) return;
+    setVideoExportSettingsOpen(true);
+  }, [canStartExport]);
+
+  const handleCancelVideoExport = useCallback(() => {
+    exportAbortRef.current?.abort();
+    setExportStatus("Cancelling export...");
+  }, []);
+
   const handleRenderVideo = useCallback(async () => {
     if (!canStartExport || !selectedBatchParsed) return;
 
@@ -864,10 +1079,19 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     const previousIndex = selectedIndex;
     const pointCount = rows.length;
     const lastIndex = Math.max(pointCount - 1, 0);
+    const segmentCount = Math.max(lastIndex, 1);
+    const exportSettings = videoExportSettings;
+    const overlayLabel = [
+      selectedSummary?.deviceName?.trim() || selectedBatchParsed.deviceId,
+      selectedBatchParsed.batchId,
+    ].filter(Boolean).join(" · ");
+    let currentFrameOverlayLines = getVideoExportMeasurementOverlayLines(rows[0], 0, pointCount, overlayLabel);
     const deviceSegment = sanitizeFileSegment(selectedSummary?.deviceName ?? selectedBatchParsed.deviceId);
     const batchSegment = sanitizeFileSegment(selectedBatchParsed.batchId);
     let recordingSession: ReturnType<typeof startCanvasRecording> | null = null;
     let captureSession: Map3DCaptureSession | null = null;
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
     if (renderedVideoUrl) {
       URL.revokeObjectURL(renderedVideoUrl);
@@ -878,58 +1102,141 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     setExportError(null);
     setExportProgress(0);
     setExportStatus("Preparing active map capture...");
+    setVideoExportSettingsOpen(false);
     setIsExporting(true);
     setIndexOverride(0);
+    exportAbortRef.current = abortController;
 
     try {
-      await waitForAnimationFrames(2);
+      await waitForAnimationFrames(VIDEO_EXPORT_VISUAL_SETTLE_FRAMES, signal);
 
       captureSession = await (map3DRef.current?.startCaptureSession({
         watermarkText: isWatermarkedExport ? "CrowdPM Preview" : null,
+        captureFps: exportSettings.fps,
+        frameOverlayLines: () => currentFrameOverlayLines,
       }) ?? Promise.resolve(null));
+      throwIfVideoExportAborted(signal);
       const captureCanvas = captureSession?.canvas ?? null;
       if (!captureCanvas) {
         throw new Error("Unable to prepare the active map and overlay for video export.");
       }
 
+      const requestedMotionMs = Math.max(0, exportSettings.durationMs - (exportSettings.holdMs * 2));
       const targetPointDurationMs = Math.max(
         VIDEO_EXPORT_MIN_POINT_MS,
-        Math.round(VIDEO_EXPORT_DURATION_MS / pointCount)
+        Math.round(requestedMotionMs / segmentCount)
       );
+      const motionDurationMs = targetPointDurationMs * segmentCount;
+      const plannedDurationMs = exportSettings.holdMs + motionDurationMs + exportSettings.holdMs;
+      const videoBitsPerSecond = getVideoExportBitrate(exportSettings.quality);
 
-      await waitForAnimationFrames(2);
-      await (map3DRef.current?.waitForVisualReady() ?? waitForAnimationFrames(3));
+      const requestExportFrame = () => {
+        captureSession?.requestFrame();
+        recordingSession?.requestFrame();
+      };
+      const setFrameOverlayIndex = (index: number) => {
+        const safeIndex = Math.min(Math.max(Math.round(index), 0), lastIndex);
+        currentFrameOverlayLines = getVideoExportMeasurementOverlayLines(
+          rows[safeIndex],
+          safeIndex,
+          pointCount,
+          overlayLabel
+        );
+        requestExportFrame();
+      };
+      const waitForExportVisualReady = async () => {
+        await abortable(
+          map3DRef.current?.waitForVisualReady({ forExport: true }) ?? waitForAnimationFrames(3, signal),
+          signal
+        );
+        throwIfVideoExportAborted(signal);
+        requestExportFrame();
+      };
+      const waitForSettledCaptureFrame = async () => {
+        await waitForExportVisualReady();
+        await waitForNonBlackCaptureFrame(captureCanvas, async () => {
+          requestExportFrame();
+        }, VIDEO_EXPORT_NON_BLACK_RETRIES, signal);
+      };
+      const applyExportCameraFrame = (
+        fromIndex: number,
+        toIndex: number,
+        pointProgress: number,
+        totalProgress: number
+      ) => {
+        map3DRef.current?.setExportCameraFrame({
+          fromIndex,
+          toIndex,
+          progress: pointProgress,
+          headingOffsetDeg: exportSettings.enableHeadingOrbit ? VIDEO_EXPORT_ORBIT_DEGREES * totalProgress : 0,
+          tilt: getVideoExportTilt(exportSettings, totalProgress),
+        });
+      };
+
+      applyExportCameraFrame(0, 0, 0, 0);
+      setFrameOverlayIndex(0);
+      await waitForAnimationFrames(VIDEO_EXPORT_VISUAL_SETTLE_FRAMES, signal);
+      requestExportFrame();
+      await waitForSettledCaptureFrame();
 
       recordingSession = startCanvasRecording(captureCanvas, {
-        fps: VIDEO_EXPORT_FPS,
+        fps: exportSettings.fps,
         mimeType: recordingSupport.mimeType ?? undefined,
+        videoBitsPerSecond,
       });
+      recordingSession.requestFrame();
 
-      await waitForAnimationFrames(1);
-      setExportStatus(`Rendering point 1 of ${pointCount}...`);
-      setExportProgress(pointCount ? 1 / pointCount : 1);
-      await sleep(targetPointDurationMs);
+      await waitForAnimationFrames(VIDEO_EXPORT_VISUAL_SETTLE_FRAMES, signal);
+      requestExportFrame();
+      if (exportSettings.holdMs > 0) {
+        setExportStatus(`Holding first point for ${exportSettings.holdMs / 1000}s...`);
+        await sleep(exportSettings.holdMs, signal);
+        requestExportFrame();
+      }
+      setExportProgress(plannedDurationMs > 0 ? exportSettings.holdMs / plannedDurationMs : 0);
 
-      for (let index = 1; index <= lastIndex; index += 1) {
+      let completedMotionMs = 0;
+      for (let index = 0; index < lastIndex; index += 1) {
+        const nextIndex = index + 1;
         const stepStartedAt = performance.now();
-        setIndexOverride(index);
-        setExportStatus(`Rendering point ${index + 1} of ${pointCount}...`);
+        setFrameOverlayIndex(nextIndex);
+        setExportStatus(`Flying to point ${nextIndex + 1} of ${pointCount}...`);
 
-        await waitForAnimationFrames(1);
-        await (map3DRef.current?.waitForVisualReady() ?? waitForAnimationFrames(3));
-
-        const elapsedMs = performance.now() - stepStartedAt;
-        const remainingMs = Math.max(
-          index === lastIndex ? VIDEO_EXPORT_FINAL_POINT_MS : 0,
-          targetPointDurationMs - elapsedMs
-        );
-        if (remainingMs > 0) {
-          await sleep(remainingMs);
+        for (;;) {
+          const elapsedMs = performance.now() - stepStartedAt;
+          const pointProgress = Math.min(elapsedMs / targetPointDurationMs, 1);
+          const totalProgress = plannedDurationMs > 0
+            ? Math.min((exportSettings.holdMs + completedMotionMs + (pointProgress * targetPointDurationMs)) / plannedDurationMs, 1)
+            : 1;
+          applyExportCameraFrame(index, nextIndex, pointProgress, totalProgress);
+          setExportProgress(totalProgress);
+          if (pointProgress >= 1) break;
+          await waitForAnimationFrame(signal);
+          requestExportFrame();
         }
 
-        setExportProgress((index + 1) / pointCount);
+        completedMotionMs += targetPointDurationMs;
+        setIndexOverride(nextIndex);
+        await waitForAnimationFrames(VIDEO_EXPORT_VISUAL_SETTLE_FRAMES, signal);
+        applyExportCameraFrame(nextIndex, nextIndex, 1, Math.min((exportSettings.holdMs + completedMotionMs) / plannedDurationMs, 1));
+        requestExportFrame();
+        await waitForSettledCaptureFrame();
+
+        const renderLatencyMs = performance.now() - stepStartedAt - targetPointDurationMs;
+        if (renderLatencyMs < VIDEO_EXPORT_MIN_POINT_MS) {
+          await sleep(VIDEO_EXPORT_MIN_POINT_MS - renderLatencyMs, signal);
+          requestExportFrame();
+        }
       }
 
+      applyExportCameraFrame(lastIndex, lastIndex, 1, 1);
+      setFrameOverlayIndex(lastIndex);
+      requestExportFrame();
+      if (exportSettings.holdMs > 0) {
+        setExportStatus(`Holding final point for ${exportSettings.holdMs / 1000}s...`);
+        await sleep(exportSettings.holdMs, signal);
+        requestExportFrame();
+      }
       setExportProgress(1);
       setExportStatus("Finalizing video...");
 
@@ -946,12 +1253,21 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       if (recordingSession) {
         await recordingSession.stop().catch(() => {});
       }
+      if (err instanceof VideoExportCancelledError) {
+        setExportStatus(null);
+        setExportError(null);
+        return;
+      }
       const message = err instanceof Error ? err.message : "Unable to render the batch video.";
       setExportError(message);
       setExportStatus(null);
     }
     finally {
+      map3DRef.current?.setExportCameraFrame(null);
       captureSession?.stop();
+      if (exportAbortRef.current === abortController) {
+        exportAbortRef.current = null;
+      }
       setIsExporting(false);
       setIndexOverride(Math.min(previousIndex, lastIndex));
     }
@@ -959,8 +1275,9 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     canStartExport,
     recordingSupport.mimeType,
     renderedVideoUrl,
-    rows.length,
+    rows,
     isWatermarkedExport,
+    videoExportSettings,
     selectedBatchParsed,
     selectedIndex,
     selectedSummary?.deviceName,
@@ -1335,6 +1652,22 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                           }}
                         />
                       </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelVideoExport}
+                        style={{
+                          alignSelf: "flex-start",
+                          padding: "var(--space-1) var(--space-3)",
+                          borderRadius: "var(--radius-2)",
+                          border: "1px solid var(--gray-a6)",
+                          background: "transparent",
+                          color: "var(--gray-12)",
+                          fontSize: "var(--font-size-1)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cancel Export
+                      </button>
                     </>
                   ) : (
                     <>
@@ -1360,7 +1693,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                             </a>
                             <button
                               type="button"
-                              onClick={handleRenderVideo}
+                              onClick={handleOpenVideoExportSettings}
                               style={{
                                 padding: "var(--space-1) var(--space-3)",
                                 borderRadius: "var(--radius-2)",
@@ -1377,7 +1710,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
                         ) : (
                           <button
                             type="button"
-                            onClick={handleRenderVideo}
+                            onClick={handleOpenVideoExportSettings}
                             disabled={!canStartExport}
                             style={{
                               padding: "var(--space-1) var(--space-3)",
@@ -1420,6 +1753,142 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
           ) : null}
         </div>
       </div>
+      <Dialog.Root
+        open={isVideoExportSettingsOpen}
+        onOpenChange={(open) => {
+          if (!isExporting) setVideoExportSettingsOpen(open);
+        }}
+      >
+        <Dialog.Content
+          size="3"
+          style={{
+            width: "min(440px, 94vw)",
+            maxWidth: "440px",
+          }}
+        >
+          <Dialog.Title>{isWatermarkedExport ? "Preview export settings" : "Video export settings"}</Dialog.Title>
+          <Dialog.Description size="2" color="gray">
+            Choose recording parameters before rendering the map flythrough. Large batches may run longer to keep each point visible.
+          </Dialog.Description>
+
+          <Flex direction="column" gap="3" style={{ marginTop: "var(--space-4)" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+              <Text size="2" weight="medium">Duration</Text>
+              <Select.Root
+                value={String(videoExportSettings.durationMs)}
+                onValueChange={(value) => {
+                  setVideoExportSettings((prev) => ({ ...prev, durationMs: Number(value) as VideoExportDurationMs }));
+                }}
+              >
+                <Select.Trigger aria-label="Video export duration" />
+                <Select.Content>
+                  {VIDEO_EXPORT_DURATION_OPTIONS.map((option) => (
+                    <Select.Item key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+              <Text size="2" weight="medium">FPS</Text>
+              <Select.Root
+                value={String(videoExportSettings.fps)}
+                onValueChange={(value) => {
+                  setVideoExportSettings((prev) => ({ ...prev, fps: Number(value) as VideoExportFps }));
+                }}
+              >
+                <Select.Trigger aria-label="Video export frame rate" />
+                <Select.Content>
+                  {VIDEO_EXPORT_FPS_OPTIONS.map((fps) => (
+                    <Select.Item key={fps} value={String(fps)}>
+                      {fps}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+              <Text size="2" weight="medium">Video quality</Text>
+              <Select.Root
+                value={videoExportSettings.quality}
+                onValueChange={(value) => {
+                  setVideoExportSettings((prev) => ({ ...prev, quality: value as VideoExportQuality }));
+                }}
+              >
+                <Select.Trigger aria-label="Video export quality" />
+                <Select.Content>
+                  {VIDEO_EXPORT_QUALITY_OPTIONS.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+              <Text size="2" weight="medium">Intro/outro hold</Text>
+              <Select.Root
+                value={String(videoExportSettings.holdMs)}
+                onValueChange={(value) => {
+                  setVideoExportSettings((prev) => ({ ...prev, holdMs: Number(value) as VideoExportHoldMs }));
+                }}
+              >
+                <Select.Trigger aria-label="Video export intro and outro hold" />
+                <Select.Content>
+                  {VIDEO_EXPORT_HOLD_OPTIONS.map((option) => (
+                    <Select.Item key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </label>
+
+            <label
+              htmlFor="video-export-heading-orbit"
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}
+            >
+              <Text size="2" weight="medium">Slow heading orbit</Text>
+              <Switch
+                id="video-export-heading-orbit"
+                checked={videoExportSettings.enableHeadingOrbit}
+                onCheckedChange={(checked) => {
+                  setVideoExportSettings((prev) => ({ ...prev, enableHeadingOrbit: checked }));
+                }}
+              />
+            </label>
+
+            <label
+              htmlFor="video-export-tilt-ramp"
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}
+            >
+              <Text size="2" weight="medium">Dive-in tilt ramp</Text>
+              <Switch
+                id="video-export-tilt-ramp"
+                checked={videoExportSettings.enableTiltRamp}
+                onCheckedChange={(checked) => {
+                  setVideoExportSettings((prev) => ({ ...prev, enableTiltRamp: checked }));
+                }}
+              />
+            </label>
+          </Flex>
+
+          <Flex gap="2" justify="end" style={{ marginTop: "var(--space-5)" }}>
+            <Dialog.Close>
+              <Button type="button" variant="soft">
+                Cancel
+              </Button>
+            </Dialog.Close>
+            <Button type="button" onClick={handleRenderVideo} disabled={!canStartExport}>
+              Start Export
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
       <Dialog.Root open={isBatchBrowserOpen} onOpenChange={setBatchBrowserOpen}>
         <Dialog.Content
           size="4"
