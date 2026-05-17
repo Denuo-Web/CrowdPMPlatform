@@ -11,6 +11,7 @@ pnpm --filter crowdpm-functions build
 pnpm --filter crowdpm-functions build:watch
 pnpm --filter crowdpm-functions test
 pnpm --filter crowdpm-functions emulate
+pnpm --filter crowdpm-functions payments:seed-catalog
 ```
 
 `pnpm dev` at the repository root builds functions once, starts the Firebase Emulator Suite, and watches TypeScript output into `functions/lib/`.
@@ -38,6 +39,37 @@ The code reads these values from `process.env`. In deployed Firebase Functions, 
 The node purchase flow now relies on Stripe Checkout shipping-address collection plus Stripe Tax. Configure Stripe Tax in the Stripe Dashboard so the physical-goods product can add US sales tax on top of the `$375` base node price after the buyer enters a US shipping address. Single-sensor variants are `$420`, and the combined CO2 + NO2 variant is `$480`, before tax.
 
 Stripe Checkout can still show `$0.00` tax for a valid US address when the Stripe account is not registered to collect tax in that jurisdiction. In Stripe's tax breakdown, that appears as `taxability_reason=not_collecting`. This is expected account configuration behavior, not a missing `automatic_tax` integration parameter.
+
+## Stripe Catalog Seeding
+
+Production checkout expects Firestore `paymentCatalog` documents to exist for each live Stripe product + default price. Seed them with:
+
+```bash
+pnpm --filter crowdpm-functions payments:seed-catalog
+```
+
+By default the seeding script loads `functions/.env.local` when present and syncs all known Stripe-backed products:
+
+- `nodeHardware`
+- `nodeHardwareNo2`
+- `nodeHardwareCo2`
+- `nodeHardwareCo2No2`
+- `themeSaveUnlock`
+- `subscriptionProMonthly`
+- `subscriptionProYearly`
+
+To seed only specific entries:
+
+```bash
+pnpm --filter crowdpm-functions payments:seed-catalog -- --only nodeHardware,nodeHardwareCo2
+```
+
+To seed a deployed Firebase project, provide credentials with Firestore access plus a live `STRIPE_SECRET_KEY`. Cloud Function Secret Manager bindings are not visible to this local script, so export the live key or load it from an env file explicitly:
+
+```bash
+FIREBASE_PROJECT_ID=crowdpmplatform STRIPE_SECRET_KEY=sk_live_... \
+pnpm --filter crowdpm-functions payments:seed-catalog -- --project crowdpmplatform
+```
 
 ## API Surface
 

@@ -24,7 +24,7 @@ const DEFAULT_NODE_HARDWARE_QUANTITY = 1;
 const MAX_NODE_HARDWARE_QUANTITY = 10;
 const SUBSCRIPTION_SESSION_COLLECTION = "subscriptionCheckoutSessions";
 
-type PaymentCatalog = {
+export type PaymentCatalog = {
   productId: string;
   defaultPriceId: string;
   currency: string;
@@ -37,7 +37,7 @@ type PaymentCatalog = {
 type PurchaseType = "node_hardware" | "theme_save_unlock" | "subscription";
 type CheckoutSessionCreateParams = NonNullable<Parameters<Stripe["checkout"]["sessions"]["create"]>[0]>;
 
-type CheckoutProductConfig = {
+export type CheckoutProductConfig = {
   catalogDocId: string;
   sessionCollection: string;
   purchaseType: PurchaseType;
@@ -57,6 +57,13 @@ type CheckoutProductConfig = {
   allowPromotionCodes?: boolean;
   successSessionIdQueryParam?: string;
   shippingAddressCollection?: CheckoutSessionCreateParams["shipping_address_collection"];
+};
+
+export type StripeCatalogSyncResult = {
+  catalogDocId: string;
+  productName: string;
+  state: "current" | "seeded";
+  catalog: PaymentCatalog;
 };
 
 export type NodePurchaseCheckoutSession = {
@@ -319,20 +326,10 @@ function normalizeStripeAddress(address: Stripe.Address | null | undefined): Rec
 }
 
 async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCatalog> {
-  const ref = db().collection(CATALOG_COLLECTION).doc(config.catalogDocId);
-  const snap = await ref.get();
-  const stored = readStoredCatalog(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
-  if (stored && isCurrentCatalog(stored, config)) {
-    return stored;
-  }
-  if (!allowStripeCatalogAutoCreate()) {
-    throw httpError(
-      500,
-      "stripe_catalog_not_seeded",
-      `Stripe catalog for ${config.productName} is missing or stale. Seed paymentCatalog before enabling checkout.`
-    );
-  }
+  return (await synchronizeStripeCatalog(config, { allowCreate: allowStripeCatalogAutoCreate() })).catalog;
+}
 
+async function createStripeCatalog(config: CheckoutProductConfig): Promise<PaymentCatalog> {
   let product: Stripe.Product;
   try {
     product = await getStripeClient().products.create({
@@ -361,7 +358,7 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
     throw httpError(502, "stripe_error", `Stripe did not return a default price for ${config.productName}.`);
   }
 
-  const catalog: PaymentCatalog = {
+  return {
     productId: product.id,
     defaultPriceId,
     currency: config.currency,
@@ -370,13 +367,44 @@ async function ensureCatalog(config: CheckoutProductConfig): Promise<PaymentCata
     taxBehavior: config.taxBehavior,
     recurringInterval: config.recurringInterval ?? null,
   };
+}
+
+export async function synchronizeStripeCatalog(
+  config: CheckoutProductConfig,
+  options: { allowCreate: boolean },
+): Promise<StripeCatalogSyncResult> {
+  const ref = db().collection(CATALOG_COLLECTION).doc(config.catalogDocId);
+  const snap = await ref.get();
+  const stored = readStoredCatalog(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
+  if (stored && isCurrentCatalog(stored, config)) {
+    return {
+      catalogDocId: config.catalogDocId,
+      productName: config.productName,
+      state: "current",
+      catalog: stored,
+    };
+  }
+  if (!options.allowCreate) {
+    throw httpError(
+      500,
+      "stripe_catalog_not_seeded",
+      `Stripe catalog for ${config.productName} is missing or stale. Seed paymentCatalog before enabling checkout.`
+    );
+  }
+
+  const catalog = await createStripeCatalog(config);
 
   await ref.set({
     ...catalog,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  return catalog;
+  return {
+    catalogDocId: config.catalogDocId,
+    productName: config.productName,
+    state: "seeded",
+    catalog,
+  };
 }
 
 type CreateCheckoutSessionOptions = {
@@ -530,6 +558,18 @@ function subscriptionConfigForOffer(offerId: "pro_monthly" | "pro_yearly"): Chec
     recurringInterval: offer.billingInterval,
     allowPromotionCodes: true,
   };
+}
+
+export function listStripeCatalogSeedConfigs(): CheckoutProductConfig[] {
+  return [
+    nodeHardwareConfigForVariant("standard"),
+    nodeHardwareConfigForVariant("no2"),
+    nodeHardwareConfigForVariant("co2"),
+    nodeHardwareConfigForVariant("co2_no2"),
+    THEME_SAVE_UNLOCK_CONFIG,
+    subscriptionConfigForOffer("pro_monthly"),
+    subscriptionConfigForOffer("pro_yearly"),
+  ];
 }
 
 export async function createNodePurchaseCheckoutSession(args: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCheckoutSessionPlan } from "../../src/services/nodePurchase.js";
+import { buildCheckoutSessionPlan, listStripeCatalogSeedConfigs } from "../../src/services/nodePurchase.js";
 
 describe("buildCheckoutSessionPlan", () => {
   it("builds Stripe Checkout params from config, catalog, URLs, and caller options", () => {
@@ -93,5 +93,19 @@ describe("buildCheckoutSessionPlan", () => {
         },
       },
     });
+  });
+});
+
+describe("listStripeCatalogSeedConfigs", () => {
+  it("returns all live Stripe-backed catalog definitions", () => {
+    expect(listStripeCatalogSeedConfigs().map((config) => config.catalogDocId)).toEqual([
+      "nodeHardware",
+      "nodeHardwareNo2",
+      "nodeHardwareCo2",
+      "nodeHardwareCo2No2",
+      "themeSaveUnlock",
+      "subscriptionProMonthly",
+      "subscriptionProYearly",
+    ]);
   });
 });
