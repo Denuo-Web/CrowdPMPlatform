@@ -1,6 +1,20 @@
 import admin from "firebase-admin";
 let inited = false;
-export function app() { if (!inited) { admin.initializeApp(); inited = true; } return admin; }
+
+function initOptions() {
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+  return projectId ? { projectId } : undefined;
+}
+
+export function app() {
+  if (!inited) {
+    if (!admin.apps.length) {
+      admin.initializeApp(initOptions());
+    }
+    inited = true;
+  }
+  return admin;
+}
 export const db = () => app().firestore();
 export const bucket = () => app().storage().bucket();
 export function hourBucket(ts: Date) {
