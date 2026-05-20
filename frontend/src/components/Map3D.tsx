@@ -371,7 +371,33 @@ function guardOverlayLifecycle(overlay: GoogleMapsOverlay) {
   }
 }
 
-const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
+const E2eMapStub = forwardRef<Map3DHandle, Map3DProps>(function E2eMapStub({ data }: Map3DProps, ref) {
+  useImperativeHandle(ref, () => ({
+    getCaptureCanvas: () => null,
+    startCaptureSession: async () => null,
+    waitForVisualReady: async () => {},
+    setExportCameraFrame: () => {},
+  }), []);
+
+  return (
+    <div
+      data-testid="map-3d-stub"
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        color: "var(--gray-11)",
+      }}
+    >
+      Test map placeholder ({data.length} points)
+    </div>
+  );
+});
+
+E2eMapStub.displayName = "E2eMapStub";
+
+const RealMap3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   data,
   appearance,
   selectedIndex,
@@ -690,6 +716,8 @@ const Map3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   return <div ref={divRef} style={{ width: "100%", height: "100%" }} />;
 });
 
-Map3D.displayName = "Map3D";
+RealMap3D.displayName = "Map3D";
+
+const Map3D = import.meta.env.VITE_E2E_MAP_STUB === "true" ? E2eMapStub : RealMap3D;
 
 export default Map3D;

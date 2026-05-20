@@ -5,6 +5,7 @@ Workspace package published internally as `@crowdpm/types`. It contains TypeScri
 ## Commands
 
 ```bash
+pnpm --filter @crowdpm/types test
 pnpm --filter @crowdpm/types build
 ```
 
@@ -13,6 +14,19 @@ The root build also compiles this package:
 ```bash
 pnpm build
 ```
+
+## Testing
+
+Most of this package is compile-time TypeScript contracts, so tests are intentionally limited to runtime helpers such as admin-role normalization and timestamp conversion.
+
+Run from the repository root:
+
+```bash
+source ~/.nvm/nvm.sh && nvm use 24.15.0
+pnpm test:shared-types
+```
+
+The root `pnpm test` command also runs these tests.
 
 ## Exports
 

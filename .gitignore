@@ -11,6 +11,8 @@ npm-debug.log
 functions/lib/
 functions/local-deps/
 frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
 shared/dist/
 shared-types/dist/
 

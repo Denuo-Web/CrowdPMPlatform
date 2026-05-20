@@ -8,11 +8,41 @@ Run from the repository root:
 
 ```bash
 pnpm --filter crowdpm-frontend dev
+pnpm --filter crowdpm-frontend typecheck
+pnpm --filter crowdpm-frontend test:e2e
+pnpm --filter crowdpm-frontend test:e2e:ui
 pnpm --filter crowdpm-frontend build
 pnpm --filter crowdpm-frontend preview
 ```
 
 `pnpm dev` at the repository root starts this app together with the Firebase emulators and functions build watcher.
+
+## Testing
+
+The frontend uses Playwright for a small smoke/regression suite. The tests cover public routing, protected-route gating, mocked dashboard data, admin access, sign-out, and the node checkout redirect contract.
+
+Run from the repository root:
+
+```bash
+source ~/.nvm/nvm.sh && nvm use 24.15.0
+pnpm test:frontend
+```
+
+The suite starts Vite through `frontend/playwright.config.ts`, mocks `/api/v1/*` in `frontend/e2e/fixtures.ts`, and enables test-only auth/map shims through Vite env vars. It should not require Firebase emulators, Google Maps, or Stripe credentials.
+
+Install the Playwright Chromium browser once on a fresh machine:
+
+```bash
+pnpm --filter crowdpm-frontend exec playwright install chromium
+```
+
+For local debugging with Playwright's UI:
+
+```bash
+pnpm --filter crowdpm-frontend test:e2e:ui
+```
+
+Playwright traces and screenshots are kept only for failures and are ignored by git.
 
 ## Environment
 
