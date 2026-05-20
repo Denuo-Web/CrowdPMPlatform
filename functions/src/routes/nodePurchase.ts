@@ -26,7 +26,7 @@ type RequestWithRawBody = {
 };
 
 const nodeCheckoutBodySchema = z.object({
-  variantId: z.enum(["standard", "co2", "no2", "co2_no2"]).optional(),
+  variantId: z.enum(["standard"]).optional(),
   quantity: z.number().int().min(1).max(10).optional(),
 }).strict();
 

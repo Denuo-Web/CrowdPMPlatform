@@ -29,7 +29,7 @@ function parseCsvArg(name) {
 function usage() {
   console.log("Usage:");
   console.log("  pnpm --filter crowdpm-functions payments:seed-catalog");
-  console.log("  pnpm --filter crowdpm-functions payments:seed-catalog -- --only nodeHardware,nodeHardwareCo2");
+  console.log("  pnpm --filter crowdpm-functions payments:seed-catalog -- --only nodeHardware");
   console.log("  pnpm --filter crowdpm-functions payments:seed-catalog -- --env-file functions/.env.live --project crowdpmplatform");
   console.log("");
   console.log("Options:");

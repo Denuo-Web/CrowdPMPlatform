@@ -201,7 +201,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
           message: "We currently ship CrowdPM nodes only to addresses in the United States.",
         },
         submit: {
-          message: "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.",
+          message: "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Power source and USB-A-to-micro-USB cable are not included. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.",
         },
       },
       metadata: {
@@ -241,90 +241,14 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     await app.close();
   });
 
-  it("creates the CO2-expanded node variant at the matching Stripe price", async () => {
-    mocks.productsCreate.mockResolvedValueOnce({
-      id: "prod_node_co2_123",
-      default_price: "price_node_co2_123",
-    });
-    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_node_co2_123",
-      url: "https://checkout.stripe.com/c/pay/cs_node_co2_123",
-      mode: "payment",
-      currency: "usd",
-      amount_subtotal: 42000,
-      amount_total: 42000,
-    });
-    const app = await buildApp();
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/node-purchase/checkout-session",
-      payload: {
-        variantId: "co2",
-      },
-      headers: {
-        "content-type": "application/json",
-      },
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(mocks.productsCreate).toHaveBeenCalledWith({
-      name: "CrowdPM Node Hardware - PM2.5 + CO2",
-      description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
-      tax_code: "txcd_99999999",
-      default_price_data: {
-        currency: "usd",
-        unit_amount: 42000,
-        tax_behavior: "exclusive",
-      },
-    });
-    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith(expect.objectContaining({
-      line_items: [
-        {
-          price: "price_node_co2_123",
-          quantity: 1,
-        },
-      ],
-      metadata: {
-        purchaseType: "node_hardware",
-        variantId: "co2",
-        variantLabel: "PM2.5 + CO2 node",
-        quantity: "1",
-      },
-    }));
-    expect(dbStore.get("paymentCatalog/nodeHardwareCo2")).toMatchObject({
-      productId: "prod_node_co2_123",
-      defaultPriceId: "price_node_co2_123",
-      currency: "usd",
-      unitAmount: 42000,
-      taxCode: "txcd_99999999",
-      taxBehavior: "exclusive",
-    });
-    expect(dbStore.get("nodePurchaseSessions/cs_node_co2_123")).toMatchObject({
-      sessionId: "cs_node_co2_123",
-      purchaseType: "node_hardware",
-      unitAmount: 42000,
-      quantity: 1,
-      amountSubtotal: 42000,
-      amountTotal: 42000,
-      variantId: "co2",
-      variantLabel: "PM2.5 + CO2 node",
-    });
-    await app.close();
-  });
-
   it("attaches signed-in buyer metadata and checkout quantity to node purchases", async () => {
-    mocks.productsCreate.mockResolvedValueOnce({
-      id: "prod_node_no2_123",
-      default_price: "price_node_no2_123",
-    });
     mocks.checkoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_node_no2_qty_123",
-      url: "https://checkout.stripe.com/c/pay/cs_node_no2_qty_123",
+      id: "cs_node_qty_123",
+      url: "https://checkout.stripe.com/c/pay/cs_node_qty_123",
       mode: "payment",
       currency: "usd",
-      amount_subtotal: 84_000,
-      amount_total: 84_000,
+      amount_subtotal: 75_000,
+      amount_total: 75_000,
     });
     const app = await buildApp();
 
@@ -332,7 +256,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       method: "POST",
       url: "/v1/node-purchase/checkout-session",
       payload: {
-        variantId: "no2",
+        variantId: "standard",
         quantity: 2,
       },
       headers: {
@@ -345,7 +269,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith(expect.objectContaining({
       line_items: [
         {
-          price: "price_node_no2_123",
+          price: "price_node_123",
           quantity: 2,
         },
       ],
@@ -354,20 +278,20 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       metadata: {
         purchaseType: "node_hardware",
         userId: "user-123",
-        variantId: "no2",
-        variantLabel: "PM2.5 + NO2 node",
+        variantId: "standard",
+        variantLabel: "PM2.5 standard node",
         quantity: "2",
       },
     }));
-    expect(dbStore.get("nodePurchaseSessions/cs_node_no2_qty_123")).toMatchObject({
+    expect(dbStore.get("nodePurchaseSessions/cs_node_qty_123")).toMatchObject({
       userId: "user-123",
       customerEmail: "buyer@example.com",
-      variantId: "no2",
-      variantLabel: "PM2.5 + NO2 node",
-      unitAmount: 42_000,
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
+      unitAmount: 37_500,
       quantity: 2,
-      amountSubtotal: 84_000,
-      amountTotal: 84_000,
+      amountSubtotal: 75_000,
+      amountTotal: 75_000,
     });
     await app.close();
   });
@@ -549,16 +473,16 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       purchaseType: "node_hardware",
       userId: "user-123",
       paymentStatus: "paid",
-      variantId: "co2_no2",
-      variantLabel: "PM2.5 + CO2 + NO2 node",
+      variantId: "standard",
+      variantLabel: "PM2.5 standard node",
       quantity: 3,
       currency: "usd",
-      unitAmount: 48_000,
-      amountSubtotal: 144_000,
-      amountTax: 12_960,
+      unitAmount: 37_500,
+      amountSubtotal: 112_500,
+      amountTax: 10_125,
       amountShipping: 0,
       amountDiscount: 0,
-      amountTotal: 156_960,
+      amountTotal: 122_625,
       completedAt: "2026-02-01T00:00:00.000Z",
       customerEmail: "buyer@example.com",
     });
@@ -589,9 +513,9 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       expect.objectContaining({
         sessionId: "cs_new",
         status: "completed",
-        variantId: "co2_no2",
+        variantId: "standard",
         quantity: 3,
-        amountTotal: 156_960,
+        amountTotal: 122_625,
       }),
       expect.objectContaining({
         sessionId: "cs_old",

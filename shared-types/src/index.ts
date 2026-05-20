@@ -37,7 +37,7 @@ export type DeviceSummary = {
   lastSeenAt: string | null;
 } & Record<string, unknown>;
 
-export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+export type NodePurchaseVariantId = "standard";
 
 export type NodePurchaseReceipt = {
   sessionId: string;

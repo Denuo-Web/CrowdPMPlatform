@@ -4,7 +4,6 @@ import {
   Button,
   Callout,
   Card,
-  Checkbox,
   Flex,
   Heading,
   Select,
@@ -33,22 +32,7 @@ type TableProps = {
   rows: ReactNode[][];
 };
 
-type NodeProductVariantId = "standard" | "co2" | "no2" | "co2_no2";
-
-type NodeProductVariant = {
-  id: NodeProductVariantId;
-  label: string;
-  summary: string;
-  addedHardware: string;
-  addOnAmountCents: number;
-  totalAmountCents: number;
-};
-
 const BASE_NODE_PRICE_CENTS = 37_500;
-const SINGLE_SENSOR_ADD_ON_PRICE_CENTS = 4_500;
-const BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS = 10_500;
-const CO2_SENSOR_ADD_ON_CENTS = SINGLE_SENSOR_ADD_ON_PRICE_CENTS;
-const NO2_SENSOR_ADD_ON_CENTS = SINGLE_SENSOR_ADD_ON_PRICE_CENTS;
 const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
@@ -59,60 +43,8 @@ const SD_CARD_URL = "https://www.amazon.com/SanDisk-Ultra-microSDHC-Memory-Adapt
 const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=5e49b7bc297b33e721e671312e45f1a1&language=en_US&ref_=as_li_ss_tl";
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
-const PISUGAR_3_PLUS_URL = "https://www.amazon.com/PiSugar-Plus-Pwnagotchi-Management-Raspberry/dp/B0FBK89B8H?crid=LFBH2KAF10OE&dib=eyJ2IjoiMSJ9.L0Ud_TUpDnpSJdO5W3nbRsP6KDdvl9mBzCTXI1Wgu8N8TErLSyNRjB761bzndZGqn8-A8kN77bnyCNm25h_AtH8fbGcUDaW2gupHScAfR8t7ylwXTTgwRxWWtJXzMZ6r4ew80IZaX6eRtLnMMl14zg.0HpvF_Oc66MzhahEEWzs9yCISfYWDvDd3YIgQQlW6BQ&dib_tag=se&keywords=PiSugar2+Plus+5000+mAh&qid=1778400315&s=electronics&sprefix=pisugar2+plus+5000+mah%2Celectronics%2C161&sr=1-3&linkCode=ll2&tag=lipbalm01-20&linkId=c7d788c8d0b545684e272d2ae0c677cf&language=en_US&ref_=as_li_ss_tl";
-const CO2_SENSOR_URL = "https://www.amazon.com/HiLetgo-Temperature-Humidity-Communication-Monitoring/dp/B0CDWXWCS5?psc=1&pd_rd_w=blPda&content-id=amzn1.sym.e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_p=e7d77f83-4d42-48ed-825c-e0597e1533d7&pf_rd_r=59515EY9GQNTR9T545T5&pd_rd_wg=8fbmW&pd_rd_r=74728aef-4573-4948-b457-68178961b213&sp_csd=d2lkZ2V0TmFtZT1zcF9kZXRhaWxfdGhlbWF0aWM%3D&linkCode=ll2&tag=lipbalm01-20&linkId=ea274a4ca23462d3503110f5d7ac5e4f&language=en_US&ref_=as_li_ss_tl";
-const NO2_SENSOR_URL = "https://www.amazon.com/dp/B0BG2YZP5L?&linkCode=ll2&tag=lipbalm01-20&linkId=6bbc3169ef4e30f4e28a1ea88660826b&language=en_US&ref_=as_li_ss_tl";
-const ADS1115_URL = "https://www.amazon.com/ADS1115-4-Channel-Converter-Arduino-Raspberry/dp/B0FLNDLX8K?crid=3RYX9FG87U6CM&dib=eyJ2IjoiMSJ9.vSXpQFCIOGW8Td7egqghItKea7rWhgp1u88Hzd4_30ya41b80qvopTqt3nuXewJ-SJaiqILg_eRk14OZIhExEVDLoudgGQxwK3jhWd3XiCOz7cdguU674-vANvudUPOfYFBAcCd16OGBGkvGHNFvB-b_Pboa5cdXyi5LdZc22Le5DO0pwdY0HJEkVrt37HJJeTtz0D8L421WubLPedN57g.BK5SdzZVxNfpMmMqtuSJL_oKs1QRxyNdLfNicsYlwZA&dib_tag=se&keywords=ADS1115&qid=1778541032&sprefix=ads1115%2Caps%2C416&xpid=wwbj2redDMdny&linkCode=ll2&tag=lipbalm01-20&linkId=ba8f1b74761bdb64217b8ea538d62d01&language=en_US&ref_=as_li_ss_tl";
-
-const NODE_PRODUCT_VARIANTS: NodeProductVariant[] = [
-  {
-    id: "standard",
-    label: "PM2.5 standard node",
-    summary: "Current shipped build with PMS5003, GPS, temperature/humidity, local storage, and battery management.",
-    addedHardware: "No additional gas sensor hardware",
-    addOnAmountCents: 0,
-    totalAmountCents: BASE_NODE_PRICE_CENTS,
-  },
-  {
-    id: "no2",
-    label: "PM2.5 + NO2 node",
-    summary: "Adds a MiCS-6814 multi-gas module and ADS1115 ADC. The oxidizing channel is the default NO2-oriented path, and the reducing channel can be wired for CO-oriented response.",
-    addedHardware: "MiCS-6814 multi-gas module + ADS1115 ADC",
-    addOnAmountCents: NO2_SENSOR_ADD_ON_CENTS,
-    totalAmountCents: BASE_NODE_PRICE_CENTS + NO2_SENSOR_ADD_ON_CENTS,
-  },
-  {
-    id: "co2",
-    label: "PM2.5 + CO2 node",
-    summary: "Adds an SCD41 CO2 sensor with published ppm accuracy over I2C. The sensor also reports temperature and humidity.",
-    addedHardware: "SCD41 CO2 sensor",
-    addOnAmountCents: CO2_SENSOR_ADD_ON_CENTS,
-    totalAmountCents: BASE_NODE_PRICE_CENTS + CO2_SENSOR_ADD_ON_CENTS,
-  },
-  {
-    id: "co2_no2",
-    label: "PM2.5 + CO2 + NO2 node",
-    summary: "Combines the SCD41 CO2 sensor with the MiCS-6814 multi-gas module and ADS1115 on one Pi Zero 2 W build.",
-    addedHardware: "SCD41 CO2 sensor + MiCS-6814 multi-gas module + ADS1115 ADC",
-    addOnAmountCents: BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS,
-    totalAmountCents: BASE_NODE_PRICE_CENTS + BOTH_SENSOR_CONFIGURATION_PREMIUM_CENTS,
-  },
-];
-
-const SENSOR_ADD_ONS = [
-  {
-    id: "co2",
-    label: "CO2 sensor",
-    description: "Adds quantified SCD41 CO2 sensing over I2C.",
-    amountCents: CO2_SENSOR_ADD_ON_CENTS,
-  },
-  {
-    id: "no2",
-    label: "NO2 sensor",
-    description: "Adds MiCS-6814 gas-response sensing plus the interface ADC for NO2-oriented and optional CO-oriented readout.",
-    amountCents: NO2_SENSOR_ADD_ON_CENTS,
-  },
-] as const;
+const NODE_PRODUCT_LABEL = "PM2.5 standard node";
+const NODE_PRODUCT_SUMMARY = "Current shipped build with PMS5003, GPS, temperature/humidity, local storage, and USB micro power input.";
 
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -121,13 +53,6 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
 
 function formatUsd(cents: number): string {
   return USD_FORMATTER.format(cents / 100);
-}
-
-function nodeVariantIdForAddOns(includeCo2: boolean, includeNo2: boolean): NodeProductVariantId {
-  if (includeCo2 && includeNo2) return "co2_no2";
-  if (includeCo2) return "co2";
-  if (includeNo2) return "no2";
-  return "standard";
 }
 
 function Section({ title, children }: SectionProps) {
@@ -369,20 +294,14 @@ export default function NodePage() {
   const [checkoutError, setCheckoutError] = useState("");
   const checkoutNotice = readCheckoutNotice(location.search);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
-  const [includeCo2, setIncludeCo2] = useState(false);
-  const [includeNo2, setIncludeNo2] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const selectedVariantId = nodeVariantIdForAddOns(includeCo2, includeNo2);
-  const selectedVariant = NODE_PRODUCT_VARIANTS.find(({ id }) => id === selectedVariantId) ?? NODE_PRODUCT_VARIANTS[0];
-  const unitAddOnAmountCents = selectedVariant.addOnAmountCents;
-  const unitTotalAmountCents = selectedVariant.totalAmountCents;
-  const orderSubtotalCents = unitTotalAmountCents * quantity;
+  const orderSubtotalCents = BASE_NODE_PRICE_CENTS * quantity;
 
   const handlePurchaseNode = async () => {
     setCheckoutError("");
     setIsStartingCheckout(true);
     try {
-      const session = await createNodePurchaseCheckoutSession(selectedVariant.id, quantity);
+      const session = await createNodePurchaseCheckoutSession("standard", quantity);
       window.location.assign(session.url);
       return;
     }
@@ -410,10 +329,8 @@ export default function NodePage() {
               locally, and uploads the data to CrowdPM when internet is available.
             </Text>
             <Text size="2" mt="3" as="p">
-              Start with the standard PM2.5 node, then add CO2, NO2, both sensors,
-              or neither. Single-sensor builds are {formatUsd(42_000)} total per
-              device, and the dual-sensor build is {formatUsd(48_000)}. US shipping
-              is included; sales tax is calculated at checkout.
+              The base model is the only current production configuration. US
+              shipping is included; sales tax is calculated at checkout.
             </Text>
             <Box mt="4">
               <ProductGallery />
@@ -437,12 +354,12 @@ export default function NodePage() {
                 </Heading>
                 <Flex align="baseline" gap="2" mt="2" wrap="wrap">
                   <Text as="div" size="6" weight="bold">
-                    {formatUsd(unitTotalAmountCents)}
+                    {formatUsd(BASE_NODE_PRICE_CENTS)}
                   </Text>
                   <Text size="2" color="gray">per device</Text>
                 </Flex>
                 <Text size="2" color="gray" as="p" mt="2">
-                  {selectedVariant.summary}
+                  {NODE_PRODUCT_SUMMARY}
                 </Text>
               </Box>
 
@@ -453,57 +370,10 @@ export default function NodePage() {
                   Included
                 </Text>
                 <BulletList>
-                  <ListItem>PM2.5 sensing, GPS, temperature/humidity, local storage, and battery management.</ListItem>
+                  <ListItem>PM2.5 sensing, GPS, temperature/humidity, local storage, and USB micro power input.</ListItem>
+                  <ListItem>Power source and USB-A-to-micro-USB cable are supplied by the customer.</ListItem>
                   <ListItem>US shipping and first-time setup documentation.</ListItem>
                 </BulletList>
-              </Box>
-
-              <Box>
-                <Text size="2" weight="bold" as="div" mb="2">
-                  Add-ons
-                </Text>
-                <Flex direction="column" gap="2">
-                  {SENSOR_ADD_ONS.map((addOn) => {
-                    const checked = addOn.id === "co2" ? includeCo2 : includeNo2;
-                    const setChecked = addOn.id === "co2" ? setIncludeCo2 : setIncludeNo2;
-                    return (
-                      <Box
-                        key={addOn.id}
-                        asChild
-                        style={{
-                          border: checked ? "1px solid var(--accent-8)" : "1px solid var(--gray-a6)",
-                          borderRadius: "8px",
-                          background: checked ? "var(--accent-a3)" : "var(--color-surface)",
-                          cursor: "pointer",
-                          padding: "0.75rem",
-                        }}
-                      >
-                        <label>
-                          <Flex align="start" gap="3">
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(nextChecked) => setChecked(nextChecked === true)}
-                              mt="1"
-                            />
-                            <Flex justify="between" gap="3" style={{ flex: 1 }}>
-                              <Box>
-                                <Text size="2" weight="bold" as="div">{addOn.label}</Text>
-                                <Text size="1" color="gray" as="p" mt="1">{addOn.description}</Text>
-                              </Box>
-                              <Text size="2" weight="bold" style={{ whiteSpace: "nowrap" }}>
-                                +{formatUsd(addOn.amountCents)}
-                              </Text>
-                            </Flex>
-                          </Flex>
-                        </label>
-                      </Box>
-                    );
-                  })}
-                </Flex>
-                <Text size="1" color="gray" as="p" mt="2">
-                  A single added sensor brings the node to {formatUsd(42_000)} total.
-                  Selecting both sensors switches to the {formatUsd(48_000)} dual-sensor build.
-                </Text>
               </Box>
 
               <Flex align="center" justify="between" gap="3">
@@ -541,12 +411,8 @@ export default function NodePage() {
                   <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
                 </Flex>
                 <Flex justify="between" gap="3" mt="1">
-                  <Text size="2" color="gray">Configuration premium</Text>
-                  <Text size="2">{unitAddOnAmountCents === 0 ? "$0.00" : `+${formatUsd(unitAddOnAmountCents)}`}</Text>
-                </Flex>
-                <Flex justify="between" gap="3" mt="1">
-                  <Text size="2" color="gray">Selected build</Text>
-                  <Text size="2">{selectedVariant.label}</Text>
+                  <Text size="2" color="gray">Configuration</Text>
+                  <Text size="2">{NODE_PRODUCT_LABEL}</Text>
                 </Flex>
                 <Flex justify="between" gap="3" mt="1">
                   <Text size="2" color="gray">Quantity</Text>
@@ -619,26 +485,17 @@ export default function NodePage() {
 
       <Section title="Configuration Options">
         <Text size="2" color="gray" as="p">
-          Each order starts with the standard PM2.5 node. Add CO2, NO2, both
-          sensors, or neither; the selected configuration applies to every device
-          in the checkout quantity.
+          Each order is for the standard PM2.5 node. The selected quantity
+          applies to identical base-model devices.
         </Text>
 
         <InfoTable
           headers={["Configuration", "What it adds", "Price"]}
           rows={[
-            ...NODE_PRODUCT_VARIANTS.map((variant) => [variant.label, variant.addedHardware, formatUsd(variant.totalAmountCents)]),
+            [NODE_PRODUCT_LABEL, "PM2.5 sensing, GPS, temperature/humidity, local storage, and USB micro power input", formatUsd(BASE_NODE_PRICE_CENTS)],
             ["Quantity", "1 to 10 devices per checkout", "Applied at checkout"],
           ]}
         />
-
-        <Callout.Root color="blue" variant="surface">
-          <Callout.Text>
-            For batches captured with extra gas sensors, the map can later add a
-            pollutant dropdown so viewers can switch between PM2.5, NO2, CO2,
-            and similar channels.
-          </Callout.Text>
-        </Callout.Root>
       </Section>
 
       <Tabs.Root defaultValue="setup">
@@ -671,7 +528,7 @@ export default function NodePage() {
                 rows={[
                   [
                     "1. Power it on",
-                    "Move the node near your Wi-Fi router, flip the power switch to On, and let it finish booting. If the battery is low, connect external power first.",
+                    "Move the node near your Wi-Fi router, connect a customer-supplied USB-A power source to the node's micro-USB power input, and let it finish booting.",
                     "The node boots its local software and, if it does not already have saved Wi-Fi credentials, starts setup mode.",
                   ],
                   [
@@ -711,7 +568,7 @@ export default function NodePage() {
               <BulletList>
                 <ListItem>
                   When the node is powered on, it continues taking PM2.5
-                  measurements until it is switched off or the battery is depleted.
+                  measurements until external USB power is removed.
                 </ListItem>
                 <ListItem>
                   When it can reach your configured Wi-Fi, it uploads readings to
@@ -746,8 +603,7 @@ export default function NodePage() {
         <Text size="2" color="gray" as="p">
           This page focuses on the standard CrowdPM mobile node prototype: a
           Raspberry Pi Zero 2 W, PM2.5 sensor, GPS, temperature/humidity sensor,
-          local setup controls, and integrated battery management. Optional
-          add-ons can include CO2 sensing, NO2 vehicle-exhaust sensing, or both.
+          local setup controls, and USB micro power input.
         </Text>
         <Text size="1" color="gray" as="p">
           As an Amazon Associate I earn from qualifying purchases. Hardware part
@@ -771,18 +627,6 @@ export default function NodePage() {
               "Temperature and humidity sensor",
             ],
             [
-              <PartLink key="co2-sensor" href={CO2_SENSOR_URL}>HiLetgo SCD41 CO2 sensor</PartLink>,
-              "Optional CO2 add-on over I2C. This is a true ppm CO2 sensor with a published accuracy range, and it also reports temperature and humidity.",
-            ],
-            [
-              <PartLink key="no2-sensor" href={NO2_SENSOR_URL}>MiCS-6814 NO2 / exhaust sensor module</PartLink>,
-              "Optional multi-gas add-on. The OX and RED channels are commonly used for relative NO2-like and CO-like response, but the module is not a turnkey calibrated ppm sensor.",
-            ],
-            [
-              <PartLink key="ads1115" href={ADS1115_URL}>ADS1115 ADC</PartLink>,
-              "Required for analog-output MiCS-6814 boards because the Pi Zero 2 W does not provide native analog input pins.",
-            ],
-            [
               <PartLink key="gps-featherwing" href={GPS_FEATHERWING_URL}>Adafruit Ultimate GPS FeatherWing</PartLink>,
               "Latitude, longitude, time, and optional PPS signal",
             ],
@@ -803,10 +647,6 @@ export default function NodePage() {
               "Jumper wiring for sensor and setup connections",
             ],
             [
-              <PartLink key="pisugar-3-plus" href={PISUGAR_3_PLUS_URL}>PiSugar 3 Plus</PartLink>,
-              "Integrated battery and power management for the mobile node",
-            ],
-            [
               "Button and status LED",
               "Recommended for setup mode, reset, and field diagnostics",
             ],
@@ -823,14 +663,14 @@ export default function NodePage() {
         </Text>
 
         <BulletList>
-          <ListItem>Runs from the PiSugar 3 Plus battery module.</ListItem>
+          <ListItem>Runs from a customer-supplied 5 V USB-A power source through the node&apos;s micro-USB power input.</ListItem>
           <ListItem>Uses GPS for each mobile reading.</ListItem>
           <ListItem>Writes every reading locally before upload.</ListItem>
           <ListItem>Does not require Wi-Fi or a phone hotspot while measuring.</ListItem>
           <ListItem>Uploads later when the node reconnects to known Wi-Fi.</ListItem>
           <ListItem>
             Good default sample interval: 5–15 seconds for detailed mapping,
-            30–60 seconds for longer battery life.
+            30–60 seconds for lighter storage and upload volume.
           </ListItem>
         </BulletList>
       </Section>
@@ -935,136 +775,21 @@ DHT22:
           />
         </Subsection>
 
-        <Subsection title="Optional CO2 Sensor (SCD41)">
-          <Text size="2" color="gray" as="p">
-            The SCD41 CO2 add-on is the cleanest extra sensor option for the Pi
-            Zero 2 W because it speaks I2C directly. Wire it to the Raspberry Pi
-            I2C bus and keep the module in free airflow, away from the PMS5003
-            exhaust and away from the Pi&apos;s warmest surfaces.
-          </Text>
-
-          <InfoTable
-            headers={["SCD41 Pin", "Raspberry Pi Connection", "Physical Pin"]}
-            rows={[
-              ["VIN / VCC", "3.3 V", "Pin 1"],
-              ["GND", "GND", "Pin 6 or 9"],
-              ["SDA", "GPIO2 / SDA1", "Pin 3"],
-              ["SCL", "GPIO3 / SCL1", "Pin 5"],
-            ]}
-          />
-
-          <Text size="2" color="gray" as="p">
-            The SCD41 is a quantitative CO2 sensor, not a mere presence switch.
-            Sensirion specifies a 0 to 40,000 ppm output range, a specified
-            400 to 5,000 ppm range for the SCD41, and published accuracy bands
-            within that range. Placement still matters because self-heating and
-            directed exhaust can bias the reading.
-          </Text>
-        </Subsection>
-
-        <Subsection title="Optional MiCS-6814 Gas Module (NO2 / CO + ADS1115)">
-          <Text size="2" color="gray" as="p">
-            The MiCS-6814 is a three-element MOS gas sensor with separate
-            oxidizing, reducing, and NH3-sensitive elements. In a Pi build, the
-            module&apos;s analog outputs go into an ADS1115 ADC. The oxidizing
-            channel is the best fit for the NO2-oriented signal path, and the
-            reducing channel can also be wired if you want a CO-oriented signal.
-          </Text>
-
-          <InfoTable
-            headers={["ADS1115 Pin", "Raspberry Pi Connection", "Physical Pin"]}
-            rows={[
-              ["VDD", "3.3 V", "Pin 1"],
-              ["GND", "GND", "Pin 6 or 9"],
-              ["SDA", "GPIO2 / SDA1", "Pin 3"],
-              ["SCL", "GPIO3 / SCL1", "Pin 5"],
-              ["ADDR", "GND for default I2C address", "Pin 6 or 9"],
-            ]}
-          />
-
-          <InfoTable
-            headers={["MiCS-6814 Signal", "Connect To", "Notes"]}
-            rows={[
-              ["VCC", "5 V, physical pin 2 or 4", "Many breakout boards are designed around a 5 V supply."],
-              ["GND", "Raspberry Pi GND", "Common ground is required."],
-              ["OX / NO2-oriented analog output", "ADS1115 A0", "Default oxidizing-gas channel for the NO2-oriented build."],
-              ["RED / CO-oriented analog output (optional)", "ADS1115 A1", "Wire this too if you want the reducing-gas channel for CO-oriented response."],
-            ]}
-          />
-
-          <Text size="2" color="gray" as="p">
-            Board labels vary a little between Amazon sellers. Look for the
-            oxidizing output, often marked <InlineCode>OX</InlineCode>,
-            <InlineCode>NO2</InlineCode>, or a similar analog-output label, and
-            route that channel into the ADS1115. If your board exposes the
-            reducing channel separately, it is often marked <InlineCode>RED</InlineCode> or <InlineCode>CO</InlineCode>.
-          </Text>
-
-          <Text size="2" color="gray" as="p">
-            Treat the MiCS-6814 outputs as gas-response channels, not direct ppm
-            readings. SGX publishes typical CO and NO2 detection ranges for the
-            bare sensor, but a breakout-board build still needs baseline
-            calibration, environmental compensation, and validation before you
-            can claim concentration accuracy.
-          </Text>
-
-          <Text size="2" color="gray" as="p">
-            Be careful with module voltage levels. Many MiCS-6814 boards run
-            from 5 V, and board designs vary. Before hard-wiring the analog
-            outputs into an ADS1115 powered from 3.3 V, confirm with the seller
-            docs or a multimeter that the analog outputs stay inside the ADC
-            input limit. If a module can swing above the ADC supply, add a
-            divider or buffer stage.
-          </Text>
-        </Subsection>
-
-        <Subsection title="Using Both Add-ons Together">
-          <Text size="2" color="gray" as="p">
-            Both add-ons can be connected to the same Pi Zero 2 W build. The
-            SCD41 and ADS1115 are both I2C devices, and their default addresses
-            do not conflict.
-          </Text>
-
-          <InfoTable
-            headers={["Device", "Bus / Address", "Notes"]}
-            rows={[
-              ["SCD41", "I2C / 0x62", "Fixed sensor address."],
-              ["ADS1115", "I2C / 0x48 with ADDR tied to GND", "Use A0 for the OX path and A1 for the optional RED path."],
-            ]}
-          />
-
-          <Text size="2" color="gray" as="p">
-            Enable I2C in Raspberry Pi OS before expecting either board to show
-            up, then verify the bus after wiring.
-          </Text>
-
-          <CodeBlock>{`sudo raspi-config nonint do_i2c 0
-sudo apt install -y i2c-tools
-
-sudo i2cdetect -y 1`}</CodeBlock>
-
-          <Text size="2" color="gray" as="p">
-            A healthy shared-bus setup should show <InlineCode>48</InlineCode>{" "}
-            for the ADS1115 and <InlineCode>62</InlineCode> for the SCD41.
-          </Text>
-        </Subsection>
       </Section>
 
       {/* ---- Pi Setup ---- */}
       <Section title="Raspberry Pi Setup">
-        <Subsection title="Enable UART for GPS and I2C for Sensor Add-ons">
+        <Subsection title="Enable UART for GPS">
           <Text size="2" color="gray" as="p">
-            Enable serial hardware and disable the serial login console. If you
-            plan to use the CO2 or MiCS-6814 add-ons, enable I2C at the same
-            time.
+            Enable serial hardware and disable the serial login console so the
+            GPS FeatherWing can use the Raspberry Pi UART.
           </Text>
 
           <CodeBlock>{`sudo apt update
-sudo apt install -y curl python3-venv python3-pip python3-dev libgpiod2 i2c-tools
+sudo apt install -y curl python3-venv python3-pip python3-dev libgpiod2
 
 sudo raspi-config nonint do_serial_cons 1
 sudo raspi-config nonint do_serial_hw 0
-sudo raspi-config nonint do_i2c 0
 
 sudo systemctl disable --now hciuart || true
 
@@ -1153,7 +878,7 @@ python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 
 pip install --upgrade pip
-pip install pyserial pynmea2 adafruit-blinka adafruit-circuitpython-dht adafruit-circuitpython-scd4x adafruit-circuitpython-ads1x15`}</CodeBlock>
+pip install pyserial pynmea2 adafruit-blinka adafruit-circuitpython-dht`}</CodeBlock>
         </Subsection>
       </Section>
 
@@ -1165,7 +890,7 @@ pip install pyserial pynmea2 adafruit-blinka adafruit-circuitpython-dht adafruit
         </Text>
 
         <CodeBlock>{`During field use:
-  - Run from the PiSugar 3 Plus battery module.
+  - Run from a customer-supplied 5 V USB-A power source.
   - Read PMS5003.
   - Read GPS.
   - Read DHT22.
@@ -1182,7 +907,7 @@ After field use:
           rows={[
             ["Detailed route mapping", "5–15 seconds"],
             ["Normal field logging", "10–30 seconds"],
-            ["Battery-saving mode", "30–60 seconds"],
+            ["Lower-volume logging", "30–60 seconds"],
           ]}
         />
 
@@ -1193,39 +918,34 @@ After field use:
         </Text>
       </Section>
 
-      {/* ---- Battery ---- */}
-      <Section title="Battery and Power">
+      {/* ---- Power ---- */}
+      <Section title="USB Power">
         <Text size="2" color="gray" as="p">
-          A Pi Zero 2 W plus PMS5003 plus GPS plus USB serial adapter draws too
-          much current for very small batteries. The PiSugar 3 Plus gives the
-          standard mobile node an integrated battery and power-management layer
-          while keeping the build compact.
+          CrowdPM nodes ship without an included power source. Power the node
+          from a customer-supplied 5 V USB-A source connected to the node&apos;s
+          micro-USB power input.
         </Text>
 
         <InfoTable
-          headers={["Battery", "Use"]}
+          headers={["Item", "Use"]}
           rows={[
-            [
-              <PartLink key="battery-pisugar-3-plus" href={PISUGAR_3_PLUS_URL}>PiSugar 3 Plus</PartLink>,
-              "Recommended integrated battery and power-management module",
-            ],
-            ["External 5 V / 3 A USB-C power", "Useful for bench testing and long indoor setup sessions"],
-            ["Spare charged module", "Useful when field sessions exceed one battery cycle"],
+            ["Customer-supplied USB-A power source", "Powers the node during setup, measurement, and upload"],
+            ["USB-A-to-micro-USB cable", "Connects the external power source to the node power input"],
+            ["5 V / 3 A output", "Recommended power rating for stable Pi Zero 2 W operation with sensors attached"],
           ]}
         />
 
         <Text size="2" color="gray" as="p">
-          Recommended mobile setup:
+          Recommended setup:
         </Text>
 
-        <CodeBlock>{`PiSugar 3 Plus mounted under the Raspberry Pi Zero 2 W
-USB-C charging cable available for setup and recovery
+        <CodeBlock>{`Customer-supplied USB-A power source
+USB-A-to-micro-USB cable
 Power budget tested with PMS5003, GPS, DHT22, and USB serial attached`}</CodeBlock>
 
         <Text size="2" color="gray" as="p">
           Validate runtime with the final enclosure, sample interval, Wi-Fi
-          behavior, and GPS placement. Sensor warm-up and weak Wi-Fi can change
-          the real power draw.
+          behavior, GPS placement, and the exact power source used in the field.
         </Text>
       </Section>
 
@@ -1233,7 +953,6 @@ Power budget tested with PMS5003, GPS, DHT22, and USB serial attached`}</CodeBlo
       <Section title="Physical Layout">
         <CodeBlock>{`Main enclosure:
   - Raspberry Pi Zero 2 W
-  - PiSugar 3 Plus
   - USB serial adapter
   - wiring strain relief
 
@@ -1246,7 +965,7 @@ Sky-facing or upper-frame area:
 
 Shielded airflow area:
   - DHT22
-  - away from Pi heat, battery heat, direct sun, and rain`}</CodeBlock>
+  - away from Pi heat, direct sun, and rain`}</CodeBlock>
 
         <Text size="2" color="gray" as="p">
           Do not seal the PMS5003 inside an airtight box. It needs airflow. The
@@ -1380,7 +1099,7 @@ POST /api/factory-reset`}</CodeBlock>
       <Section title="Quality Flags and Diagnostics">
         <Text size="2" color="gray" as="p">
           The node should record enough diagnostic metadata to explain bad data
-          later. Locally, store details such as GPS status, HDOP, battery level,
+          later. Locally, store details such as GPS status, HDOP, power status,
           PMS checksum failures, upload attempts, and last upload error.
         </Text>
 
@@ -1391,7 +1110,7 @@ POST /api/factory-reset`}</CodeBlock>
             ["1", "GPS missing"],
             ["2", "Sensor read failed"],
             ["4", "Weak GPS precision"],
-            ["8", "Low battery"],
+            ["8", "Power interruption"],
             ["16", "Value outside expected range"],
           ]}
         />
@@ -1407,10 +1126,6 @@ POST /api/factory-reset`}</CodeBlock>
             PMS5003 frames begin with hex bytes <InlineCode>42 4d</InlineCode>.
           </ListItem>
           <ListItem>DHT22 returns temperature and humidity.</ListItem>
-          <ListItem>
-            If you use the CO2 or MiCS add-ons, <InlineCode>i2cdetect -y 1</InlineCode>{" "}
-            shows <InlineCode>48</InlineCode> for the ADS1115 and <InlineCode>62</InlineCode> for the SCD41.
-          </ListItem>
           <ListItem>Device registration prints a CrowdPM user code.</ListItem>
           <ListItem>Activation succeeds in the browser.</ListItem>
           <ListItem>Test batch upload succeeds.</ListItem>
