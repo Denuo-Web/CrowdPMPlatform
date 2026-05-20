@@ -15,7 +15,7 @@ const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_TAX_CODE = "txcd_99999999";
 
 const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
-const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.";
+const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Power source and USB-A-to-micro-USB cable are not included. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.";
 const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
 const SUBSCRIPTION_CHECKOUT_SUBMIT_MESSAGE = "Recurring CrowdPM account subscription. Applicable taxes are calculated in Stripe Checkout. Cancel any time from the billing portal.";
@@ -77,7 +77,7 @@ export type ConfirmSubscriptionCheckoutSessionResult = {
   subscriptionSynchronized: true;
 };
 
-export type NodePurchaseVariantId = "standard" | "co2" | "no2" | "co2_no2";
+export type NodePurchaseVariantId = "standard";
 
 export type NodePurchaseReceipt = {
   sessionId: string;
@@ -135,27 +135,6 @@ const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantC
     description: "Physical node hardware purchase with US shipping included.",
     unitAmount: 37_500,
   },
-  no2: {
-    catalogDocId: "nodeHardwareNo2",
-    label: "PM2.5 + NO2 node",
-    productName: "CrowdPM Node Hardware - PM2.5 + NO2",
-    description: "PM2.5 node with MiCS-6814 gas-response module and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 42_000,
-  },
-  co2: {
-    catalogDocId: "nodeHardwareCo2",
-    label: "PM2.5 + CO2 node",
-    productName: "CrowdPM Node Hardware - PM2.5 + CO2",
-    description: "PM2.5 node with SCD41 CO2 sensor hardware, with US shipping included.",
-    unitAmount: 42_000,
-  },
-  co2_no2: {
-    catalogDocId: "nodeHardwareCo2No2",
-    label: "PM2.5 + CO2 + NO2 node",
-    productName: "CrowdPM Node Hardware - PM2.5 + CO2 + NO2",
-    description: "PM2.5 node with SCD41 CO2 sensor, MiCS-6814 gas-response module, and ADS1115 interface hardware, with US shipping included.",
-    unitAmount: 48_000,
-  },
 };
 
 function nodeHardwareConfigForVariant(variantId: NodePurchaseVariantId): CheckoutProductConfig {
@@ -209,7 +188,7 @@ function readNonEmptyString(value: unknown): string | null {
 }
 
 function readNodeVariantId(value: unknown): NodePurchaseVariantId | null {
-  if (value === "standard" || value === "co2" || value === "no2" || value === "co2_no2") {
+  if (value === "standard") {
     return value;
   }
   return null;
@@ -563,9 +542,6 @@ function subscriptionConfigForOffer(offerId: "pro_monthly" | "pro_yearly"): Chec
 export function listStripeCatalogSeedConfigs(): CheckoutProductConfig[] {
   return [
     nodeHardwareConfigForVariant("standard"),
-    nodeHardwareConfigForVariant("no2"),
-    nodeHardwareConfigForVariant("co2"),
-    nodeHardwareConfigForVariant("co2_no2"),
     THEME_SAVE_UNLOCK_CONFIG,
     subscriptionConfigForOffer("pro_monthly"),
     subscriptionConfigForOffer("pro_yearly"),

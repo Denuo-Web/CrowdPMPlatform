@@ -159,15 +159,15 @@ function TermsOfService() {
         <P>
           CrowdPM node hardware is sold by {COMPANY_NAME}. Node purchases are one-time hardware
           purchases processed through Stripe Checkout. The base node price is $375 with standard US
-          shipping included. Current single-sensor configurations are $420, and the combined CO2 +
-          NO2 configuration is $480, before applicable sales tax. Applicable sales tax is
-          calculated during checkout from the shipping address.
+          shipping included, before applicable sales tax. Applicable sales tax is calculated during
+          checkout from the shipping address.
         </P>
         <P>
           You are purchasing physical CrowdPM node hardware and any expressly listed related services
-          from {COMPANY_NAME}. CrowdPM Platform software is open-source software maintained by{" "}
-          {COMPANY_NAME} and contributors. Purchase of hardware does not restrict your rights
-          under the applicable open-source software license.
+          from {COMPANY_NAME}. Power source and USB-A-to-micro-USB cable are not included. CrowdPM
+          Platform software is open-source software maintained by {COMPANY_NAME} and contributors.
+          Purchase of hardware does not restrict your rights under the applicable open-source
+          software license.
         </P>
         <P>
           Purchase of a node does not transfer ownership of {COMPANY_NAME} trademarks, branding,
@@ -200,9 +200,9 @@ function TermsOfService() {
           cancelled. This policy does not limit rights that cannot be waived under applicable law.
         </P>
         <P>
-          Node hardware, firmware, sensors, battery components, GPS, wireless networking, and
-          environmental measurements are provided for community, research, and educational use. They
-          are not certified safety, medical, emergency, industrial hygiene, or regulatory monitoring
+          Node hardware, firmware, sensors, GPS, wireless networking, and environmental
+          measurements are provided for community, research, and educational use. They are not
+          certified safety, medical, emergency, industrial hygiene, or regulatory monitoring
           equipment.
         </P>
       </Section>

@@ -100,9 +100,6 @@ describe("listStripeCatalogSeedConfigs", () => {
   it("returns all live Stripe-backed catalog definitions", () => {
     expect(listStripeCatalogSeedConfigs().map((config) => config.catalogDocId)).toEqual([
       "nodeHardware",
-      "nodeHardwareNo2",
-      "nodeHardwareCo2",
-      "nodeHardwareCo2No2",
       "themeSaveUnlock",
       "subscriptionProMonthly",
       "subscriptionProYearly",

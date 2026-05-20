@@ -34,14 +34,14 @@ paths:
       description: >
         Creates a Stripe Checkout session for the one-time CrowdPM node hardware
         purchase. Checkout collects a US shipping address, applies Stripe Tax
-        based on that destination, and charges the selected hardware variant.
-        The standard PM2.5 node is $375 with shipping included. Single-sensor
-        variants are $420, and the combined CO2 + NO2 variant is $480 before
-        tax. The selected quantity can be 1 through 10 devices. If a valid
-        bearer token is supplied, the completed hardware receipt is tied to that
-        account. The backing live Stripe product + price must be seeded in
-        Firestore `paymentCatalog` before public checkout is enabled; local and
-        test environments may opt into automatic catalog creation.
+        based on that destination, and charges the standard PM2.5 hardware
+        product. The standard PM2.5 node is $375 with shipping included before
+        tax. Power source and USB-A-to-micro-USB cable are not included. The
+        selected quantity can be 1 through 10 devices. If a valid bearer token is
+        supplied, the completed hardware receipt is tied to that account. The
+        backing live Stripe product + price must be seeded in Firestore
+        `paymentCatalog` before public checkout is enabled; local and test
+        environments may opt into automatic catalog creation.
       security: []
       requestBody:
         required: false
@@ -1233,9 +1233,6 @@ components:
           type: string
           enum:
             - standard
-            - no2
-            - co2
-            - co2_no2
           description: Selected CrowdPM hardware product variant.
         quantity:
           type: integer
@@ -1267,9 +1264,6 @@ components:
           type: [string, 'null']
           enum:
             - standard
-            - no2
-            - co2
-            - co2_no2
             - null
         variantLabel:
           type: [string, 'null']
