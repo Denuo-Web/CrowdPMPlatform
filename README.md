@@ -70,10 +70,45 @@ Local URLs:
 pnpm dev                                  # frontend, functions emulator, TS watch
 pnpm lint                                 # workspace ESLint
 pnpm typecheck                            # frontend TypeScript no-emit check
+pnpm test                                 # workspace test suites: functions + shared-types
+pnpm test:frontend                        # frontend Playwright smoke tests
+pnpm test:shared-types                    # shared runtime helper tests
 pnpm --filter crowdpm-functions test      # functions Vitest suite
 pnpm build                                # build all workspaces
 pnpm --filter crowdpm-frontend build      # frontend only
 pnpm --filter crowdpm-functions build     # functions only
+```
+
+## Testing
+
+Use Node.js 24.15.0 before running test commands:
+
+```bash
+source ~/.nvm/nvm.sh && nvm use 24.15.0
+```
+
+The main regression command is:
+
+```bash
+pnpm test
+```
+
+That runs the backend Functions Vitest suite and the `@crowdpm/types` runtime helper tests. The frontend has a separate Playwright smoke suite because it starts a Vite server and browser:
+
+```bash
+pnpm test:frontend
+```
+
+The frontend smoke tests mock `/api/v1/*` responses and use test-only auth/map shims, so they do not require Firebase emulators, Google Maps, or Stripe credentials. On a fresh machine, install the Playwright Chromium browser once:
+
+```bash
+pnpm --filter crowdpm-frontend exec playwright install chromium
+```
+
+For interactive frontend debugging:
+
+```bash
+pnpm --filter crowdpm-frontend test:e2e:ui
 ```
 
 Device emulator examples:

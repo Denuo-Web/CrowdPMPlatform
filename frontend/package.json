@@ -9,7 +9,9 @@
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@crowdpm/types": "workspace:*",
@@ -29,6 +31,7 @@
     "swagger-ui-dist": "5.30.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@tanstack/react-query-devtools": "5.100.9",
     "@types/google.maps": "3.64.0",
     "@types/react": "19.2.14",
