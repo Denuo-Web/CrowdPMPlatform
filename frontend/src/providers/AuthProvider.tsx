@@ -83,7 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (import.meta.env.VITE_E2E_AUTH_ENABLED === "true") {
-      setIsLoading(false);
       return;
     }
 
