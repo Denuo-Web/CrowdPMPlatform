@@ -37,7 +37,7 @@ Two-piece 3D-printable enclosure for a node with a clear inside cavity of
 - Raspberry Pi standoff pattern: rotated 90 degrees and pushed toward A / +X and D / -Y with 0.5 mm board-edge clearance from the inside walls.
 - Raspberry Pi standoffs: 0.25 in tall, 6.5 mm outside diameter, 2.2 mm pilot holes for M2.5-style screws.
 - GPS lid opening: 10/16 in x 10/16 in, or 15.875 mm x 15.875 mm, shifted upward to leave room for the two-line sky-direction etching underneath.
-- GPS reference board: Adafruit Ultimate GPS breakout style, using a 15 mm x 15 mm patch antenna and two mounting holes spaced 0.8 in apart.
+- GPS reference board: Adafruit Ultimate GPS breakout #5440, using a 15 mm x 15 mm patch antenna and two mounting holes spaced 0.8 in apart.
 - GPS lid bosses: 6.0 mm outside diameter with 2.2 mm screw pilot holes. Boss centers match the Adafruit Ultimate GPS Eagle board mounting holes at X = 2.54 mm / 22.86 mm and Y = 31.75 mm, referenced from the U1 antenna/module center at X = 12.192 mm and Y = 17.526 mm. The current GPS PCB mounting holes are 2.5 mm.
 
 ## Regenerate STLs
@@ -53,7 +53,7 @@ reset button, wall thickness, or fit clearance needs tuning for your printer.
 ## References Used
 
 - Raspberry Pi Zero 2 W mechanical drawing: https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf
-- Adafruit Ultimate GPS product dimensions and antenna size: https://www.adafruit.com/product/746
+- Adafruit Ultimate GPS product dimensions and antenna size: https://www.adafruit.com/product/5440
 - Adafruit Ultimate GPS fabrication print: https://learn.adafruit.com/adafruit-ultimate-gps/downloads
 - Snap-fit design guidance: https://www.hubs.com/knowledge-base/how-design-snap-fit-joints-3d-printing/
 - FDM snap-fit tolerance guidance: https://3dspro.com/resources/3dspro-lab/how-to-design-snap-fit-geometry-for-3d-printing

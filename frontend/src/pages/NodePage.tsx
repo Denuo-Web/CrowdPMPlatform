@@ -38,7 +38,7 @@ const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
 const DHT22_URL = "https://www.amazon.com/dp/B0DSW7D3S9?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=8a2b4c580bdeb37c7affe8f834a72a28&language=en_US&ref_=as_li_ss_tl";
-const GPS_FEATHERWING_URL = "https://www.amazon.com/Adafruit-3133-Ultimate-GPS-FeatherWing/dp/B01G00Q5HA?crid=1X53I1W4DISNM&dib=eyJ2IjoiMSJ9.JSJlLK9_Sq4L3fPvtooh22eJd9cKJC_-7hcW-ui76Bp20Og4vxbBOm2Tam5u3WxPE9aWvKesoatagCEyl6mbZ6AIbRm1MMX8aLm099jTuCwhTSdD-5lqK_Sv2CXTZzl-o82ilDBVsJ4klAAy19Sm-cpgLgB_oHfKJyn15NJGxbsPqmZCALgzYTBmiPqQpasO5nqDuQ5TDYuCgy3Uliefxw.xLDgaCkY86xRO4swaIcX-0BaEAlz6EGBdfd1h_6GYTY&dib_tag=se&keywords=Adafruit+Ultimate+GPS+Pi+HAT&qid=1778399043&sprefix=adafruit+ultimate+gps+pi+hat%2Caps%2C326&xpid=KcdfhSO3ZXN-G&linkCode=ll2&tag=lipbalm01-20&linkId=6d5d342f3cbe67d00de8ec0f4c9fd577&language=en_US&ref_=as_li_ss_tl";
+const GPS_BREAKOUT_URL = "https://www.adafruit.com/product/5440";
 const SD_CARD_URL = "https://www.amazon.com/SanDisk-Ultra-microSDHC-Memory-Adapter/dp/B08GY9NYRM?crid=2KSLXNGFQ6QTU&dib=eyJ2IjoiMSJ9.cC5cEhilIJZ8uIFkRCnkltIEzWQtFgQq-85a7sC5zOBuxlNn7kV6Acl2AEPksDanzwUdhsAYtVHVcpBMsxrySYzrIn8iKKPReGo-n6Sm25xY5h_s3gxOBvxB6biVeYvbSVMpdqq0V04ys73DryoywF8MfCrJ0bFo5CPk8JW5oaqJQVcZYqtWJvDbeCPKeUUgPqh7fX4boOjRY1ycBDPa5Q.mpsFJuv4tSWFqRD0s4gHz8UtruEG4l92pbms5TJAAjU&dib_tag=se&keywords=sandisk%2Bextreme%2B32%2Bsd&qid=1778531180&sprefix=sandisk%2Bextreme%2B%2Bsd%2Caps%2C491&xpid=Z4LCntxaYnMES&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=ecb68eedf02441ad989f4b465c8037ba&language=en_US&ref_=as_li_ss_tl";
 const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=5e49b7bc297b33e721e671312e45f1a1&language=en_US&ref_=as_li_ss_tl";
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
@@ -627,7 +627,7 @@ export default function NodePage() {
               "Temperature and humidity sensor",
             ],
             [
-              <PartLink key="gps-featherwing" href={GPS_FEATHERWING_URL}>Adafruit Ultimate GPS FeatherWing</PartLink>,
+              <PartLink key="gps-breakout" href={GPS_BREAKOUT_URL}>Adafruit Ultimate GPS Breakout with GLONASS + GPS (#5440)</PartLink>,
               "Latitude, longitude, time, and optional PPS signal",
             ],
             [
@@ -679,13 +679,13 @@ export default function NodePage() {
       <Section title="Wiring">
         <Subsection title="Important UART Constraint">
           <Text size="2" color="gray" as="p">
-            Both the GPS FeatherWing and the PMS5003 use UART serial. The
+            Both the GPS breakout and the PMS5003 use UART serial. The
             Raspberry Pi Zero 2 W has one convenient primary UART exposed on
-            GPIO14/GPIO15. The cleanest design is to put the GPS FeatherWing on
+            GPIO14/GPIO15. The cleanest design is to put the GPS breakout on
             the Pi UART and the PMS5003 on a USB-to-TTL serial adapter.
           </Text>
 
-          <CodeBlock>{`GPS FeatherWing:
+          <CodeBlock>{`GPS breakout:
   Use Raspberry Pi UART on GPIO14/GPIO15.
 
 PMS5003:
@@ -695,15 +695,15 @@ DHT22:
   Use normal GPIO, such as GPIO17.`}</CodeBlock>
         </Subsection>
 
-        <Subsection title="GPS FeatherWing">
+        <Subsection title="GPS Breakout (#5440)">
           <Text size="2" color="gray" as="p">
-            Wire the Adafruit Ultimate GPS FeatherWing to the Raspberry Pi Zero
-            2 W UART pins. Keep the GPS board and antenna oriented toward open
-            sky when possible.
+            Wire the Adafruit Ultimate GPS breakout (#5440) to the Raspberry Pi
+            Zero 2 W UART pins. Keep the GPS board and antenna oriented toward
+            open sky when possible.
           </Text>
 
           <InfoTable
-            headers={["GPS FeatherWing Pin", "Raspberry Pi Connection", "Physical Pin"]}
+            headers={["GPS Breakout Pin", "Raspberry Pi Connection", "Physical Pin"]}
             rows={[
               ["VIN", "5 V", "Pin 2 or 4"],
               ["GND", "GND", "Pin 6 or 9"],
@@ -782,7 +782,7 @@ DHT22:
         <Subsection title="Enable UART for GPS">
           <Text size="2" color="gray" as="p">
             Enable serial hardware and disable the serial login console so the
-            GPS FeatherWing can use the Raspberry Pi UART.
+            GPS breakout can use the Raspberry Pi UART.
           </Text>
 
           <CodeBlock>{`sudo apt update
@@ -812,7 +812,8 @@ timeout 10 cat /dev/serial0`}</CodeBlock>
 
           <Text size="2" color="gray" as="p">
             Good output contains NMEA lines such as{" "}
-            <InlineCode>$GPGGA</InlineCode> or <InlineCode>$GPRMC</InlineCode>.
+            <InlineCode>$GNGGA</InlineCode>, <InlineCode>$GNRMC</InlineCode>,{" "}
+            <InlineCode>$GPGGA</InlineCode>, or <InlineCode>$GPRMC</InlineCode>.
           </Text>
         </Subsection>
 
@@ -961,7 +962,7 @@ Ventilated air path:
   - protected from rain and road debris
 
 Sky-facing or upper-frame area:
-  - GPS FeatherWing with less body or metal obstruction
+  - GPS breakout with less body or metal obstruction
 
 Shielded airflow area:
   - DHT22
