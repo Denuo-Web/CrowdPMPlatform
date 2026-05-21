@@ -129,3 +129,11 @@ The hosted service, hardware node sales, support, fulfillment, and related comme
 Commercial licensing may be available from Denuo Web LLC for portions of the project owned by, assigned to, or otherwise licensed to Denuo Web LLC for that purpose. Contributor-owned portions remain subject to their applicable license terms unless separate written permission has been obtained.
 
 See LICENSE.md, NOTICE.md, AUTHORS.md, CONTRIBUTING.md, and CLA.md.
+
+## Portfolio Case Study
+
+This repository is part of Jaron Rosenau's implementation, developer-support, and integration engineering portfolio. The public case study summarizes the problem, delivery scope, architecture, and operational result.
+
+- Case study: [CrowdPM Platform implementation case study](https://rosenau.info/projects/th58yUyKnQCs4CnrHZe6)
+- Full portfolio: [Jaron Rosenau](https://rosenau.info)
+- Summary: Secure PM2.5 ingest, calibrated storage, partner APIs, and WebGL map operations in one Firebase-backed platform.
