@@ -3,11 +3,12 @@ import type { Request } from "firebase-functions/v2/https";
 import { normalizeBatchVisibility } from "../lib/batchVisibility.js";
 import { verifyDeviceAccessToken } from "./deviceTokens.js";
 import { calculateDpopAth, checkDpopReplay, verifyDpopProof } from "../lib/dpop.js";
-import { canonicalRequestUrl } from "../lib/http.js";
+import { buildCanonicalEndpointUrl } from "../lib/http.js";
 import { applyCorsHeaders } from "../lib/corsPolicy.js";
 import { ingestGatewayRuntimeOptions } from "../lib/functionOptions.js";
 import { ingestService, type IngestBody } from "./ingestService.js";
 import { httpError, toHttpError } from "../lib/httpError.js";
+import { getIngestGatewayBaseUrl } from "../lib/runtimeConfig.js";
 
 type RequestWithRawBody = Request & { rawBody?: Buffer | string };
 
@@ -84,7 +85,7 @@ export async function ingestGatewayHandler(
     }
 
     const accessToken = await dependencies.verifyDeviceAccessToken(token);
-    const htu = canonicalRequestUrl(req.url, req.headers);
+    const htu = buildCanonicalEndpointUrl(getIngestGatewayBaseUrl(), req.url);
     const dpopProof = requestHeader(req, "dpop");
     const verifiedProof = await dependencies.verifyDpopProof(dpopProof, {
       method: req.method.toUpperCase(),

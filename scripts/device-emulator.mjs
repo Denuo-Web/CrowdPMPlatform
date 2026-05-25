@@ -68,18 +68,8 @@ function buildUrl(base, pathname) {
   return new URL(pathname.startsWith("/") ? pathname.slice(1) : pathname, normalized);
 }
 
-function deriveHtu(targetUrl, apiBase, proto) {
-  let basePath = "";
-  try {
-    basePath = new URL(apiBase).pathname.replace(/\/$/u, "");
-  }
-  catch {
-    basePath = "";
-  }
-  const trimmedPath = targetUrl.pathname.startsWith(basePath)
-    ? targetUrl.pathname.slice(basePath.length) || "/"
-    : targetUrl.pathname;
-  return `${proto}://${targetUrl.host}${trimmedPath}`;
+function deriveHtu(targetUrl) {
+  return `${targetUrl.origin}${targetUrl.pathname}${targetUrl.search}`;
 }
 
 function sleep(ms) {
@@ -175,8 +165,7 @@ Options:
 
 async function requestAccessToken({ apiBase, deviceId, privateJwk, publicJwk }) {
   const accessUrl = buildUrl(apiBase, "/device/access-token");
-  const accessProto = accessUrl.protocol.replace(":", "") || "https";
-  const accessHtu = deriveHtu(accessUrl, apiBase, accessProto);
+  const accessHtu = deriveHtu(accessUrl);
   const accessDpop = await createDpopProof({
     htu: accessHtu,
     method: "POST",
@@ -189,7 +178,6 @@ async function requestAccessToken({ apiBase, deviceId, privateJwk, publicJwk }) 
     headers: {
       "content-type": "application/json",
       dpop: accessDpop,
-      "x-forwarded-proto": accessProto,
     },
     body: JSON.stringify({ device_id: deviceId, scope: ["ingest.write"] }),
   });
@@ -206,8 +194,7 @@ async function requestAccessToken({ apiBase, deviceId, privateJwk, publicJwk }) 
 
 async function sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, accessToken, points }) {
   const ingestUrl = new URL(ingestUrlRaw);
-  const ingestProto = ingestUrl.protocol.replace(":", "") || "https";
-  const ingestHtu = deriveHtu(ingestUrl, ingestUrlRaw, ingestProto);
+  const ingestHtu = deriveHtu(ingestUrl);
   const ingestDpop = await createDpopProof({
     htu: ingestHtu,
     method: "POST",
@@ -224,7 +211,6 @@ async function sendIngest({ ingestUrlRaw, deviceId, privateJwk, publicJwk, acces
       authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
       dpop: ingestDpop,
-      "x-forwarded-proto": ingestProto,
     },
     body: JSON.stringify(ingestPayload),
   });
@@ -472,8 +458,7 @@ async function main() {
   // Begin polling for registration token and auto-register.
   const targetDeviceCode = values["device-code"] ?? deviceCode;
   const tokenUrl = buildUrl(apiBase, "/device/token");
-  const tokenProto = tokenUrl.protocol.replace(":", "") || "https";
-  const tokenHtu = deriveHtu(tokenUrl, apiBase, tokenProto);
+  const tokenHtu = deriveHtu(tokenUrl);
   let pollSeconds = Number(values.interval ?? pollInterval ?? 3);
   if (!Number.isFinite(pollSeconds) || pollSeconds <= 0) pollSeconds = 3;
 
@@ -487,7 +472,6 @@ async function main() {
       headers: {
         "content-type": "application/json",
         dpop,
-        "x-forwarded-proto": tokenProto,
       },
       body: JSON.stringify({ device_code: targetDeviceCode }),
     });
@@ -503,8 +487,7 @@ async function main() {
       }
 
       const registerUrl = buildUrl(apiBase, "/device/register");
-      const registerProto = registerUrl.protocol.replace(":", "") || "https";
-      const registerHtu = deriveHtu(registerUrl, apiBase, registerProto);
+      const registerHtu = deriveHtu(registerUrl);
       const registerDpop = await createDpopProof({
         htu: registerHtu,
         method: "POST",
@@ -519,7 +502,6 @@ async function main() {
           authorization: `Bearer ${regToken}`,
           "content-type": "application/json",
           dpop: registerDpop,
-          "x-forwarded-proto": registerProto,
         },
         body: JSON.stringify({ jwk_pub_kl: publicJwk }),
       });

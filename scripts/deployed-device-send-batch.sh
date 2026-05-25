@@ -202,30 +202,11 @@ NODE
 
 derive_htu() {
   local target_url="$1"
-  local base_url="$2"
 
-  node --input-type=module - "${target_url}" "${base_url}" <<'NODE'
-const [targetUrlRaw, baseUrlRaw] = process.argv.slice(2);
+  node --input-type=module - "${target_url}" <<'NODE'
+const [targetUrlRaw] = process.argv.slice(2);
 const target = new URL(targetUrlRaw);
-let basePath = "";
-try {
-  basePath = new URL(baseUrlRaw).pathname.replace(/\/$/u, "");
-}
-catch {
-  basePath = "";
-}
-const trimmedPath = target.pathname.startsWith(basePath)
-  ? (target.pathname.slice(basePath.length) || "/")
-  : target.pathname;
-process.stdout.write(`${target.protocol}//${target.host}${trimmedPath}`);
-NODE
-}
-
-url_proto() {
-  local raw_url="$1"
-  node --input-type=module - "${raw_url}" <<'NODE'
-const [rawUrl] = process.argv.slice(2);
-process.stdout.write(new URL(rawUrl).protocol.replace(":", ""));
+process.stdout.write(`${target.origin}${target.pathname}${target.search}`);
 NODE
 }
 
@@ -500,11 +481,9 @@ DEVICE_ID="$(resolve_device_id)"
 RAW_PAYLOAD_FILE="${TMP_DIR}/batch.raw.json"
 NORMALIZED_PAYLOAD_FILE="${TMP_DIR}/batch.normalized.json"
 ACCESS_URL="$(endpoint_url "/device/access-token")"
-ACCESS_HTU="$(derive_htu "${ACCESS_URL}" "${API_BASE}")"
-ACCESS_PROTO="$(url_proto "${ACCESS_URL}")"
+ACCESS_HTU="$(derive_htu "${ACCESS_URL}")"
 ACCESS_OUT="${TMP_DIR}/access.json"
-INGEST_PROTO="$(url_proto "${INGEST_URL}")"
-INGEST_HTU="$(derive_htu "${INGEST_URL}" "${INGEST_URL}")"
+INGEST_HTU="$(derive_htu "${INGEST_URL}")"
 INGEST_OUT="${TMP_DIR}/ingest.json"
 
 write_payload_to_file "${1:-}" "${RAW_PAYLOAD_FILE}"
@@ -533,7 +512,6 @@ else
   print_section "Mint Access Token"
   ACCESS_STATUS="$(http_request "POST" "${ACCESS_URL}" "${ACCESS_BODY}" "${ACCESS_OUT}" \
     "content-type: application/json" \
-    "x-forwarded-proto: ${ACCESS_PROTO}" \
     "DPoP: $(make_dpop "${ACCESS_HTU}" "POST" "${KEY_FILE}")")"
 
   if [[ "${ACCESS_STATUS}" != "200" ]]; then
@@ -552,7 +530,6 @@ fi
 INGEST_HEADERS=(
   "Authorization: Bearer ${ACCESS_TOKEN}"
   "content-type: application/json"
-  "x-forwarded-proto: ${INGEST_PROTO}"
   "DPoP: $(make_dpop "${INGEST_HTU}" "POST" "${KEY_FILE}")"
 )
 

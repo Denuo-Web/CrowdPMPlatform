@@ -7,6 +7,12 @@ function firstHeaderValue(value: string | string[] | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isLocalRuntime(): boolean {
+  return process.env.FUNCTIONS_EMULATOR === "true"
+    || Boolean(process.env.FIREBASE_EMULATOR_HUB)
+    || process.env.NODE_ENV === "test";
+}
+
 export function stripApiEntryPrefix(url: string | undefined): string {
   const raw = typeof url === "string" && url.length > 0 ? url : "/";
   if (!raw.startsWith("/api")) {
@@ -28,20 +34,45 @@ export function stripApiEntryPrefix(url: string | undefined): string {
   return stripped;
 }
 
-export function canonicalRequestUrl(url: string | undefined, headers: IncomingHttpHeaders): string {
-  const proto = firstHeaderValue(headers["x-forwarded-proto"])
-    || firstHeaderValue(headers[":scheme"])
-    || "https";
-  const host = firstHeaderValue(headers["x-forwarded-host"]) || firstHeaderValue(headers.host);
-  if (!host) {
-    throw new Error("Unable to determine request host");
+function normalizeBaseUrl(baseUrl: string): URL {
+  const parsed = new URL(baseUrl);
+  parsed.hash = "";
+  parsed.search = "";
+  parsed.pathname = parsed.pathname.replace(/\/+$/u, "") || "/";
+  return parsed;
+}
+
+export function buildCanonicalEndpointUrl(baseUrl: string, requestUrl: string | undefined): string {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const cleaned = (requestUrl ?? "/").split("#", 1)[0] || "/";
+  if (cleaned.startsWith("?")) {
+    return `${normalizedBaseUrl.toString()}${cleaned}`;
   }
-  const cleaned = (url ?? "/").split("#", 1)[0] || "/";
-  const normalizedPath = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
-  return `${proto.toLowerCase()}://${host.toLowerCase()}${normalizedPath}`;
+  if (cleaned.startsWith("/?")) {
+    return `${normalizedBaseUrl.toString()}${cleaned.slice(1)}`;
+  }
+  if (cleaned === "/" || cleaned.length === 0) {
+    return normalizedBaseUrl.toString();
+  }
+  const joinableBaseUrl = new URL(normalizedBaseUrl.toString());
+  joinableBaseUrl.pathname = joinableBaseUrl.pathname.replace(/\/+$/u, "");
+  joinableBaseUrl.pathname = joinableBaseUrl.pathname.length > 0 ? `${joinableBaseUrl.pathname}/` : "/";
+  const relativePath = cleaned === "/"
+    ? ""
+    : cleaned.startsWith("/")
+      ? cleaned.slice(1)
+      : cleaned;
+  return new URL(relativePath, joinableBaseUrl).toString();
 }
 
 export function extractClientIp(headers: IncomingHttpHeaders): string | null {
+  const appEngineIp = firstHeaderValue(headers["x-appengine-user-ip"]);
+  if (appEngineIp) return appEngineIp;
+
+  if (!isLocalRuntime()) {
+    return null;
+  }
+
   const forwardedFor = firstHeaderValue(headers["x-forwarded-for"]);
   if (forwardedFor) {
     const ip = forwardedFor.split(",")[0]?.trim();
@@ -49,8 +80,6 @@ export function extractClientIp(headers: IncomingHttpHeaders): string | null {
   }
   const realIp = firstHeaderValue(headers["x-real-ip"]);
   if (realIp) return realIp;
-  const appEngineIp = firstHeaderValue(headers["x-appengine-user-ip"]);
-  if (appEngineIp) return appEngineIp;
   return null;
 }
 
@@ -66,12 +95,14 @@ export function coarsenIpForDisplay(ip: string | null): string | null {
 }
 
 export function deriveNetworkHint(headers: IncomingHttpHeaders, ip: string | null): string | null {
-  const explicit =
-    firstHeaderValue(headers["cf-asn"])
-    || firstHeaderValue(headers["x-client-asn"])
-    || firstHeaderValue(headers["x-geoip-asnum"]);
-  if (explicit) {
-    return `AS${explicit.replace(/^AS/i, "")}`;
+  if (isLocalRuntime()) {
+    const explicit =
+      firstHeaderValue(headers["cf-asn"])
+      || firstHeaderValue(headers["x-client-asn"])
+      || firstHeaderValue(headers["x-geoip-asnum"]);
+    if (explicit) {
+      return `AS${explicit.replace(/^AS/i, "")}`;
+    }
   }
   if (!ip) return null;
   if (ip.includes(":")) {
