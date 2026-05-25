@@ -5,10 +5,9 @@ Two-piece 3D-printable enclosure for a node with a clear inside cavity of
 
 ## Files
 
-- `node_case.scad`: Parametric OpenSCAD source.
 - `node_case_base.stl`: Open base with +Y side airflow slots, -X USB cutout, -X reset button hole, Raspberry Pi Zero 2 W standoffs, and chamfered rim/port edges.
 - `node_case_lid.stl`: Vented snap-detent lid with a GPS antenna opening, GPS mounting bosses, and etched outside E-face product/GPS/site markings. The lid STL has the lip pointing upward so it can print without supports.
-- `node_case_combined.scad`: Wrapper that builds the base and lid from the parametric source modules onto one build plate, avoiding STL-on-STL boolean artifacts.
+- `node_case_combined.scad`: Self-contained OpenSCAD wrapper that imports `node_case_combined.stl` so the model opens cleanly even though the original parametric `node_case.scad` source is not included in this directory.
 - `node_case_combined.stl`: Base and lid on one build plate with a 10 mm gap. This combined-only export adds two long thin slots through the base bottom.
 
 ## Current Defaults
@@ -40,15 +39,19 @@ Two-piece 3D-printable enclosure for a node with a clear inside cavity of
 - GPS reference board: Adafruit Ultimate GPS breakout style, using a 15 mm x 15 mm patch antenna and two mounting holes spaced 0.8 in apart.
 - GPS lid bosses: 6.0 mm outside diameter with 2.2 mm screw pilot holes. Boss centers match the Adafruit Ultimate GPS Eagle board mounting holes at X = 2.54 mm / 22.86 mm and Y = 31.75 mm, referenced from the U1 antenna/module center at X = 12.192 mm and Y = 17.526 mm. The current GPS PCB mounting holes are 2.5 mm.
 
-## Regenerate STLs
+## Parametric Source
+
+The original `node_case.scad` parametric source is not present in this
+directory. That means the base, lid, and combined STL files here can be viewed
+and printed as-is, but they cannot be regenerated from source without first
+restoring that missing file.
+
+If `node_case.scad` is restored later, the original regeneration commands are:
 
 ```sh
 openscad -o node_case_base.stl -D 'part="base"' node_case.scad
 openscad -o node_case_lid.stl  -D 'part="lid"'  node_case.scad
 ```
-
-Adjust the parameters at the top of `node_case.scad` if the USB connector,
-reset button, wall thickness, or fit clearance needs tuning for your printer.
 
 ## References Used
 
