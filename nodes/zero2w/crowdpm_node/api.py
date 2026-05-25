@@ -19,15 +19,9 @@ class CrowdPmApiError(RuntimeError):
 
 def derive_htu(url: str, api_base: str | None = None) -> str:
     target = urlparse(url)
-    if api_base:
-      # Mirror the repo's device-emulator behavior: DPoP htu strips the Functions base prefix.
-        base = urlparse(api_base)
-        path = target.path
-        if path.startswith(base.path.rstrip("/")):
-            path = path[len(base.path.rstrip("/")):] or "/"
-    else:
-        path = target.path or "/"
-    return f"{target.scheme}://{target.netloc}{path}"
+    path = target.path or "/"
+    query = f"?{target.query}" if target.query else ""
+    return f"{target.scheme}://{target.netloc}{path}{query}"
 
 
 @dataclass(slots=True)
@@ -105,7 +99,6 @@ class CrowdPmApiClient:
             {"device_code": device_code},
             headers={
                 "DPoP": dpop,
-                "x-forwarded-proto": urlparse(url).scheme,
             },
         )
 
@@ -130,7 +123,6 @@ class CrowdPmApiClient:
             headers={
                 "Authorization": f"Bearer {registration_token}",
                 "DPoP": dpop,
-                "x-forwarded-proto": urlparse(url).scheme,
             },
         )
 
@@ -153,7 +145,6 @@ class CrowdPmApiClient:
             {"device_id": device_id, "scope": ["ingest.write"]},
             headers={
                 "DPoP": dpop,
-                "x-forwarded-proto": urlparse(url).scheme,
             },
         )
 
@@ -179,7 +170,6 @@ class CrowdPmApiClient:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "DPoP": dpop,
-                "x-forwarded-proto": urlparse(url).scheme,
             },
         )
 

@@ -1,6 +1,6 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { BatchVisibility } from "@crowdpm/types";
-import { IngestBatch, type IngestPayload } from "../lib/validation.js";
+import { IngestPayload, type IngestPayload as IngestPayloadType } from "../lib/validation.js";
 
 export const BATCH_SCHEMA_VERSION = 2;
 
@@ -55,7 +55,7 @@ export function buildBatchStoragePath(args: { primaryOwnerUserId: string; device
   ].join("/");
 }
 
-export function encodeBatchPayload(payload: IngestPayload): { buffer: Buffer; canonicalJson: string } {
+export function encodeBatchPayload(payload: IngestPayloadType): { buffer: Buffer; canonicalJson: string } {
   const canonicalJson = JSON.stringify(payload);
   return {
     canonicalJson,
@@ -63,19 +63,19 @@ export function encodeBatchPayload(payload: IngestPayload): { buffer: Buffer; ca
   };
 }
 
-export function decodeBatchPayload(buffer: Buffer, storagePath: string): IngestPayload {
+export function decodeBatchPayload(buffer: Buffer, storagePath: string): IngestPayloadType {
   if (!storagePath.endsWith(".json.gz")) {
     throw new Error("stored batch payload must use the v2 gzip format");
   }
   const json = gunzipSync(buffer).toString("utf8");
-  const parsed = IngestBatch.safeParse(JSON.parse(json));
+  const parsed = IngestPayload.safeParse(JSON.parse(json));
   if (!parsed.success) {
     throw new Error("stored batch payload is invalid");
   }
   return parsed.data;
 }
 
-export function summarizeBatchPayload(payload: IngestPayload): BatchPayloadMetadata {
+export function summarizeBatchPayload(payload: IngestPayloadType): BatchPayloadMetadata {
   const points = payload.points;
   let startedAt: Date | null = null;
   let endedAt: Date | null = null;

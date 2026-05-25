@@ -96,6 +96,15 @@ describe("IngestService", () => {
     })).toThrow("all points must match the device_id in the request");
   });
 
+  it("rejects unexpected top-level ingest metadata before storage accounting", () => {
+    const payload = {
+      ...buildPayload("device-1"),
+      debug_blob: "unexpected",
+    };
+
+    expect(() => parseIngestPayload(JSON.stringify(payload))).toThrow("invalid ingest payload");
+  });
+
   it("stores gzipped v2 payloads and sends root batch metadata to the processor", async () => {
     const saves: Array<{ path: string; payload: Buffer; options: unknown }> = [];
     const processIngestBatch = vi.fn(async (request) => ({

@@ -10,13 +10,14 @@ import {
   recordRegistrationToken,
   markSessionRedeemed,
 } from "../services/devicePairing.js";
-import { canonicalRequestUrl, coarsenIpForDisplay, deriveNetworkHint, extractClientIp } from "../lib/http.js";
+import { buildCanonicalEndpointUrl, coarsenIpForDisplay, deriveNetworkHint, extractClientIp } from "../lib/http.js";
 import { verifyDpopProof } from "../lib/dpop.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
 import { registerDevice, getDevice } from "../services/deviceRegistry.js";
 import { httpError } from "../lib/httpError.js";
 import { app as firebaseApp } from "../lib/fire.js";
+import { getCrowdpmApiBaseUrl } from "../lib/runtimeConfig.js";
 
 const startSchema = z.object({
   pub_ke: z.string().min(10),
@@ -44,7 +45,7 @@ const deviceTokenSchema = z.object({
 });
 
 function fastifyRequestUrl(req: FastifyRequest): string {
-  return canonicalRequestUrl(req.raw.url ?? req.url, req.headers);
+  return buildCanonicalEndpointUrl(getCrowdpmApiBaseUrl(), req.raw.url ?? req.url);
 }
 
 export const pairingRoutes: FastifyPluginAsync = async (app) => {

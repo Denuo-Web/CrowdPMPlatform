@@ -217,6 +217,10 @@ describe("POST /device/token", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ registration_token: "reg-token", expires_in: 60 });
     expect(mocks.recordRegistrationToken).toHaveBeenCalledWith(deviceCode, "jti-1", expect.any(Date));
+    expect(mocks.verifyDpopProof).toHaveBeenCalledWith("proof", expect.objectContaining({
+      htu: "http://127.0.0.1:5001/crowdpm-local/us-central1/crowdpmApi/device/token",
+      expectedThumbprint: "thumb-1",
+    }));
     await app.close();
   });
 

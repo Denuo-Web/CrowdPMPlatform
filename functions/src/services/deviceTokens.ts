@@ -276,12 +276,6 @@ export async function issueDeviceAccessToken(args: {
   return { token, expiresIn: ttl, jti };
 }
 
-type TokenCacheEntry = {
-  expiresAtMs: number;
-};
-
-const tokenCache = new Map<string, TokenCacheEntry>();
-
 export async function verifyDeviceAccessToken(raw: string): Promise<VerifiedDeviceAccessToken> {
   let payload: DeviceAccessClaims & { jti?: string };
   try {
@@ -301,15 +295,13 @@ export async function verifyDeviceAccessToken(raw: string): Promise<VerifiedDevi
   if (!payload.acc_id) throw unauthorized("Device token missing account id");
   if (!payload.jti) throw unauthorized("Device token missing jti");
 
-  const cacheEntry = tokenCache.get(payload.jti);
-  const now = Date.now();
-  if (!cacheEntry || cacheEntry.expiresAtMs <= now) {
-    const doc = await db().collection("device_tokens").doc(payload.jti).get();
-    if (!doc.exists) throw unauthorized("Unknown device token");
-    const data = doc.data() as { revoked?: boolean; expiresAt?: unknown } | undefined;
-    if (data?.revoked) throw unauthorized("Device token revoked");
-    const expiresAt = toDate(data?.expiresAt) ?? new Date(now + 1000);
-    tokenCache.set(payload.jti, { expiresAtMs: expiresAt.getTime() });
+  const doc = await db().collection("device_tokens").doc(payload.jti).get();
+  if (!doc.exists) throw unauthorized("Unknown device token");
+  const data = doc.data() as { revoked?: boolean; expiresAt?: unknown } | undefined;
+  if (data?.revoked) throw unauthorized("Device token revoked");
+  const expiresAt = toDate(data?.expiresAt);
+  if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+    throw unauthorized("Device token expired");
   }
   return payload as VerifiedDeviceAccessToken;
 }
@@ -317,5 +309,4 @@ export async function verifyDeviceAccessToken(raw: string): Promise<VerifiedDevi
 export async function revokeTokensForDevice(deviceId: string): Promise<void> {
   const snap = await db().collection("device_tokens").where("deviceId", "==", deviceId).get();
   await Promise.all(snap.docs.map((doc) => doc.ref.set({ revoked: true }, { merge: true })));
-  snap.docs.forEach((doc) => tokenCache.delete(doc.id));
 }

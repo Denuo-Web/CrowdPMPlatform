@@ -211,30 +211,11 @@ NODE
 
 derive_htu() {
   local target_url="$1"
-  local base_url="$2"
 
-  node --input-type=module - "${target_url}" "${base_url}" <<'NODE'
-const [targetUrlRaw, baseUrlRaw] = process.argv.slice(2);
+  node --input-type=module - "${target_url}" <<'NODE'
+const [targetUrlRaw] = process.argv.slice(2);
 const target = new URL(targetUrlRaw);
-let basePath = "";
-try {
-  basePath = new URL(baseUrlRaw).pathname.replace(/\/$/u, "");
-}
-catch {
-  basePath = "";
-}
-const trimmedPath = target.pathname.startsWith(basePath)
-  ? (target.pathname.slice(basePath.length) || "/")
-  : target.pathname;
-process.stdout.write(`${target.protocol}//${target.host}${trimmedPath}`);
-NODE
-}
-
-url_proto() {
-  local raw_url="$1"
-  node --input-type=module - "${raw_url}" <<'NODE'
-const [rawUrl] = process.argv.slice(2);
-process.stdout.write(new URL(rawUrl).protocol.replace(":", ""));
+process.stdout.write(`${target.origin}${target.pathname}${target.search}`);
 NODE
 }
 
@@ -494,8 +475,7 @@ else
 fi
 
 TOKEN_URL="$(endpoint_url "/device/token")"
-TOKEN_HTU="$(derive_htu "${TOKEN_URL}" "${API_BASE}")"
-TOKEN_PROTO="$(url_proto "${TOKEN_URL}")"
+TOKEN_HTU="$(derive_htu "${TOKEN_URL}")"
 TOKEN_OUT="${TMP_DIR}/token.json"
 
 POLL_SECONDS="${CROWDPM_POLL_INTERVAL_SECONDS:-${POLL_INTERVAL}}"
@@ -512,7 +492,6 @@ while :; do
   TOKEN_BODY="$(build_token_body)"
   TOKEN_STATUS="$(http_request "POST" "${TOKEN_URL}" "${TOKEN_BODY}" "${TOKEN_OUT}" \
     "content-type: application/json" \
-    "x-forwarded-proto: ${TOKEN_PROTO}" \
     "DPoP: $(make_dpop "${TOKEN_HTU}" "POST" "${KEY_FILE}")")"
 
   if [[ "${TOKEN_STATUS}" == "200" ]]; then
@@ -555,8 +534,7 @@ while :; do
 done
 
 REGISTER_URL="$(endpoint_url "/device/register")"
-REGISTER_HTU="$(derive_htu "${REGISTER_URL}" "${API_BASE}")"
-REGISTER_PROTO="$(url_proto "${REGISTER_URL}")"
+REGISTER_HTU="$(derive_htu "${REGISTER_URL}")"
 REGISTER_OUT="${TMP_DIR}/register.json"
 REGISTER_BODY="$(printf '{"jwk_pub_kl":%s}' "${PUB_KL_JSON}")"
 
@@ -564,7 +542,6 @@ print_section "Register Device"
 REGISTER_STATUS="$(http_request "POST" "${REGISTER_URL}" "${REGISTER_BODY}" "${REGISTER_OUT}" \
   "Authorization: Bearer ${REGISTRATION_TOKEN}" \
   "content-type: application/json" \
-  "x-forwarded-proto: ${REGISTER_PROTO}" \
   "DPoP: $(make_dpop "${REGISTER_HTU}" "POST" "${KEY_FILE}")")"
 
 if [[ "${REGISTER_STATUS}" != "200" ]]; then
@@ -579,15 +556,13 @@ echo "device_id: ${DEVICE_ID}"
 echo "saved: ${DEVICE_ID_FILE}"
 
 ACCESS_URL="$(endpoint_url "/device/access-token")"
-ACCESS_HTU="$(derive_htu "${ACCESS_URL}" "${API_BASE}")"
-ACCESS_PROTO="$(url_proto "${ACCESS_URL}")"
+ACCESS_HTU="$(derive_htu "${ACCESS_URL}")"
 ACCESS_OUT="${TMP_DIR}/access.json"
 ACCESS_BODY="$(build_access_body)"
 
 print_section "Mint Access Token"
 ACCESS_STATUS="$(http_request "POST" "${ACCESS_URL}" "${ACCESS_BODY}" "${ACCESS_OUT}" \
   "content-type: application/json" \
-  "x-forwarded-proto: ${ACCESS_PROTO}" \
   "DPoP: $(make_dpop "${ACCESS_HTU}" "POST" "${KEY_FILE}")")"
 
 if [[ "${ACCESS_STATUS}" != "200" ]]; then
@@ -603,8 +578,7 @@ echo "access_token saved: ${ACCESS_TOKEN_FILE}"
 echo "access_token expires_in: ${ACCESS_TOKEN_TTL}s"
 
 if [[ "${SEND_INGEST}" == "1" ]]; then
-  INGEST_PROTO="$(url_proto "${INGEST_URL}")"
-  INGEST_HTU="$(derive_htu "${INGEST_URL}" "${INGEST_URL}")"
+  INGEST_HTU="$(derive_htu "${INGEST_URL}")"
   INGEST_OUT="${TMP_DIR}/ingest.json"
   INGEST_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   INGEST_BODY="$(build_ingest_body)"
@@ -613,7 +587,6 @@ if [[ "${SEND_INGEST}" == "1" ]]; then
   INGEST_STATUS="$(http_request "POST" "${INGEST_URL}" "${INGEST_BODY}" "${INGEST_OUT}" \
     "Authorization: Bearer ${ACCESS_TOKEN}" \
     "content-type: application/json" \
-    "x-forwarded-proto: ${INGEST_PROTO}" \
     "DPoP: $(make_dpop "${INGEST_HTU}" "POST" "${KEY_FILE}")")"
 
   if [[ "${INGEST_STATUS}" != "202" ]]; then
