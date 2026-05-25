@@ -16,7 +16,7 @@ type LegalDocumentLinkProps = {
   onOpen: (documentId: LegalDocumentId) => void;
 };
 
-const LAST_UPDATED = "May 14, 2026";
+const LAST_UPDATED = "May 25, 2026";
 const COMPANY_NAME = "Denuo Web LLC";
 const COMPANY_CONTACT_EMAIL = "info@denuoweb.com";
 const COMPANY_LICENSE_EMAIL = "license@denuoweb.com";
@@ -126,7 +126,8 @@ function TermsOfService() {
       <P>
         These Terms of Service govern your access to and use of CrowdPM, a crowd-sourced PM2.5 air
         quality monitoring platform operated by {COMPANY_NAME}. By creating an account, using the
-        hosted service, or purchasing CrowdPM node hardware, you agree to these terms.
+        hosted service, reserving CrowdPM node hardware, or making a certification support
+        contribution, you agree to these terms.
       </P>
 
       <Section title="1. Service">
@@ -155,23 +156,31 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="3. Paid Products and Digital Expansions">
+      <Section title="3. Paid Products, Reservations, and Support">
         <P>
-          CrowdPM node hardware is sold by {COMPANY_NAME}. Node purchases are one-time hardware
-          purchases processed through Stripe Checkout. The base node price is $375 with standard US
-          shipping included, before applicable sales tax. Applicable sales tax is calculated during
-          checkout from the shipping address.
+          CrowdPM founding node reservations and certification support contributions are processed
+          through Stripe Checkout for {COMPANY_NAME}. A founding node reservation is a conditional
+          preorder for planned physical CrowdPM node hardware. It is not immediate delivery and no
+          node will be shipped, delivered, transferred, or released to an end user before required
+          FCC equipment authorization is complete.
         </P>
         <P>
-          You are purchasing physical CrowdPM node hardware and any expressly listed related services
-          from {COMPANY_NAME}. Power source and USB-A-to-micro-USB cable are not included. CrowdPM
-          Platform software is open-source software maintained by {COMPANY_NAME} and contributors.
-          Purchase of hardware does not restrict your rights under the applicable open-source
-          software license.
+          The founding node reservation price is $375 per reserved node with standard US shipping
+          included after authorization, before applicable sales tax. Applicable tax is calculated
+          during checkout. We currently accept node reservations only for shipping addresses in the
+          United States. Power source and USB-A-to-micro-USB cable are not included.
         </P>
         <P>
-          Purchase of a node does not transfer ownership of {COMPANY_NAME} trademarks, branding,
-          hosted infrastructure, customer accounts, or proprietary business materials.
+          The current reservation refund checkpoint is December 31, 2026. If required FCC
+          authorization is not complete by that date, reservation holders may request cancellation
+          and refund of the unshipped reservation or choose to continue waiting. We may also cancel
+          and refund reservations if authorization, production, supply, compliance, safety, or
+          fulfillment issues make shipment impractical.
+        </P>
+        <P>
+          Certification support is a support-only contribution toward FCC testing and launch costs.
+          It does not reserve hardware, include shipment, create equity or debt, grant a service
+          entitlement, or qualify as a charitable tax-deductible donation.
         </P>
         <P>
           CrowdPM may also offer one-time digital expansion purchases processed through Stripe
@@ -181,29 +190,24 @@ function TermsOfService() {
           checkout from the billing location.
         </P>
         <P>
-          We currently accept node orders only for shipping addresses in the United States. You are
-          responsible for providing accurate contact, billing, and shipping information and for any
-          local requirements that apply to deploying, powering, mounting, or operating the hardware.
+          You are responsible for providing accurate contact, billing, and shipping information and
+          for any local requirements that apply to deploying, powering, mounting, or operating the
+          hardware. After authorized shipment and delivery, contact us within 30 days if a node
+          arrives damaged, defective, or materially different from what you ordered. We may ask for
+          reasonable troubleshooting details, photographs, diagnostic information, or return of the
+          hardware before issuing a replacement, repair, or refund.
         </P>
         <P>
-          Unless a different shipping estimate is stated at checkout or in an order confirmation, we
-          expect to ship node hardware within 30 days after completed payment. If we cannot ship
-          within the stated time or, if no time was stated, within 30 days, we will contact you with
-          a revised shipping date and the option to cancel the unshipped order for a prompt refund.
+          CrowdPM Platform software is open-source software maintained by {COMPANY_NAME} and
+          contributors. Purchase, reservation, or support does not restrict your rights under the
+          applicable open-source software license and does not transfer ownership of {COMPANY_NAME}
+          trademarks, branding, hosted infrastructure, customer accounts, or proprietary business
+          materials.
         </P>
         <P>
-          Contact us within 30 days after delivery if a node arrives damaged, defective, or
-          materially different from what you ordered. We may ask for reasonable troubleshooting
-          details, photographs, diagnostic information, or return of the hardware before issuing a
-          replacement, repair, or refund. Shipping charges included in the node price are not
-          separately refundable except where required by law or where the entire unshipped order is
-          cancelled. This policy does not limit rights that cannot be waived under applicable law.
-        </P>
-        <P>
-          Node hardware, firmware, sensors, GPS, wireless networking, and environmental
-          measurements are provided for community, research, and educational use. They are not
-          certified safety, medical, emergency, industrial hygiene, or regulatory monitoring
-          equipment.
+          Node hardware, firmware, sensors, GPS, wireless networking, and environmental measurements
+          are provided for community, research, and educational use. They are not certified safety,
+          medical, emergency, industrial hygiene, or regulatory monitoring equipment.
         </P>
       </Section>
 
@@ -328,7 +332,7 @@ function PrivacyPolicy() {
           <Bullet>User settings, including default batch visibility, map/rendering preferences, and theme preferences.</Bullet>
           <Bullet>Device records, including device IDs, optional device names, owner IDs, model/version, status, fingerprints, public key material, pairing codes, token records, and last-seen timestamps.</Bullet>
           <Bullet>Measurement and batch data, including PM2.5 readings, pollutant/unit, latitude, longitude, altitude, precision, timestamp, flags, batch IDs, visibility, moderation state, storage paths, and related metadata.</Bullet>
-          <Bullet>Paid product records, including Stripe Checkout session IDs, payment status, customer contact details, billing and shipping addresses where applicable, order totals, tax amounts, shipping details for hardware, receipts, refunds, support messages, and related fulfillment or entitlement records.</Bullet>
+          <Bullet>Paid product records, including Stripe Checkout session IDs, payment status, campaign tier, reservation or support quantity, customer contact details, billing and shipping addresses where applicable, order totals, tax amounts, shipping details for hardware reservations, receipts, refunds, support messages, and related fulfillment or entitlement records.</Bullet>
           <Bullet>Moderation and administration records, including moderator user IDs, role changes, disabled account status, moderation reasons, and audit records.</Bullet>
           <Bullet>Technical and security data, including IP address or network hints, request headers, logs, rate-limit keys, browser/device information available to the service, and error diagnostics.</Bullet>
           <Bullet>Local browser storage, including recent map zoom, timeline position, and selected batch data used to keep the interface responsive.</Bullet>
@@ -346,7 +350,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>Provide authentication, device pairing, ingest, map display, dashboards, moderation, and administration features.</Bullet>
           <Bullet>Store and process sensor measurements, enforce visibility choices, and show public batches on the map and public API.</Bullet>
-          <Bullet>Process paid product purchases, calculate tax, ship hardware orders, grant digital entitlements, send receipts, handle refunds or replacements, and respond to order support requests.</Bullet>
+          <Bullet>Process paid product purchases, node reservations, certification support contributions, tax calculation, authorized hardware shipments, digital entitlements, receipts, refunds or replacements, and order support requests.</Bullet>
           <Bullet>Protect the service through rate limiting, abuse detection, access controls, logging, audits, token revocation, and troubleshooting.</Bullet>
           <Bullet>Save preferences and improve reliability, usability, and performance.</Bullet>
           <Bullet>Respond to support, licensing, security, or legal requests.</Bullet>
@@ -376,7 +380,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>With Google Firebase and Google Cloud services used for authentication, hosting, functions, Firestore, storage, and operational logs.</Bullet>
           <Bullet>With Stripe for payment processing, sales tax calculation, checkout, receipts, fraud prevention, refunds, and related payment operations.</Bullet>
-          <Bullet>With shipping, fulfillment, repair, or customer-support providers where needed to deliver or support node hardware orders.</Bullet>
+          <Bullet>With shipping, fulfillment, repair, or customer-support providers where needed to deliver or support authorized node hardware reservations.</Bullet>
           <Bullet>With the public, when you or a device under your account submits public approved batch data.</Bullet>
           <Bullet>With authorized moderators and administrators who need access to operate, secure, moderate, or support CrowdPM.</Bullet>
           <Bullet>When required to comply with law, protect rights and safety, investigate abuse, or enforce terms.</Bullet>
@@ -534,12 +538,12 @@ function LicenseTerms() {
 
       <Section title="4. Hardware and Embedded Software">
         <P>
-          Buying CrowdPM node hardware transfers ownership of the physical device only. Purchase of
-          hardware does not restrict your rights under the applicable open-source software license,
-          and it does not transfer ownership of CrowdPM source code, firmware, {COMPANY_NAME}
-          trademarks or branding, hosted infrastructure, customer accounts, proprietary business
-          materials, datasets, hosted service features, or third-party software included with or used
-          by the device.
+          Reserving or buying CrowdPM node hardware transfers ownership of the physical device only
+          after authorized fulfillment. Reservation, purchase, or support does not restrict your
+          rights under the applicable open-source software license, and it does not transfer
+          ownership of CrowdPM source code, firmware, {COMPANY_NAME} trademarks or branding, hosted
+          infrastructure, customer accounts, proprietary business materials, datasets, hosted service
+          features, or third-party software included with or used by the device.
         </P>
         <P>
           Any CrowdPM firmware, setup scripts, examples, or application code included with a node are

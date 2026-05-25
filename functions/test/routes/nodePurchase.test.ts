@@ -172,8 +172,8 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     });
 
     expect(mocks.productsCreate).toHaveBeenCalledWith({
-      name: "CrowdPM Node Hardware",
-      description: "Physical node hardware purchase with US shipping included.",
+      name: "CrowdPM Founding Node Reservation",
+      description: "Conditional CrowdPM node preorder; ships only after FCC equipment authorization.",
       tax_code: "txcd_99999999",
       default_price_data: {
         currency: "usd",
@@ -198,22 +198,27 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       },
       custom_text: {
         shipping_address: {
-          message: "We currently ship CrowdPM nodes only to addresses in the United States.",
+          message: "Shipping is available only to US addresses and will occur only after FCC equipment authorization is complete.",
         },
         submit: {
-          message: "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Power source and USB-A-to-micro-USB cable are not included. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.",
+          message: "Conditional preorder: no CrowdPM node will be shipped or delivered until FCC equipment authorization is complete. If authorization is not complete by the stated refund checkpoint, you may request a refund or continue waiting. Price includes US shipping after authorization; applicable sales tax is calculated at checkout.",
         },
       },
       metadata: {
         purchaseType: "node_hardware",
+        tierId: "founding_node_reservation",
+        tierLabel: "Founding node reservation",
         variantId: "standard",
-        variantLabel: "PM2.5 standard node",
+        variantLabel: "Founding node reservation",
         quantity: "1",
+        fccAuthorizationRequired: "true",
+        noDeliveryBeforeAuthorization: "true",
+        refundCheckpointDate: "2026-12-31",
       },
       success_url: "https://crowdpmplatform.web.app/node?checkout=success",
       cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
     });
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeReservation")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -235,8 +240,13 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       amountSubtotal: 37500,
       amountTotal: 37500,
       purchaseType: "node_hardware",
+      tierId: "founding_node_reservation",
+      tierLabel: "Founding node reservation",
       variantId: "standard",
-      variantLabel: "PM2.5 standard node",
+      variantLabel: "Founding node reservation",
+      fccAuthorizationRequired: true,
+      noDeliveryBeforeAuthorization: true,
+      refundCheckpointDate: "2026-12-31",
     });
     await app.close();
   });
@@ -278,16 +288,23 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       metadata: {
         purchaseType: "node_hardware",
         userId: "user-123",
+        tierId: "founding_node_reservation",
+        tierLabel: "Founding node reservation",
         variantId: "standard",
-        variantLabel: "PM2.5 standard node",
+        variantLabel: "Founding node reservation",
         quantity: "2",
+        fccAuthorizationRequired: "true",
+        noDeliveryBeforeAuthorization: "true",
+        refundCheckpointDate: "2026-12-31",
       },
     }));
     expect(dbStore.get("nodePurchaseSessions/cs_node_qty_123")).toMatchObject({
       userId: "user-123",
       customerEmail: "buyer@example.com",
+      tierId: "founding_node_reservation",
+      tierLabel: "Founding node reservation",
       variantId: "standard",
-      variantLabel: "PM2.5 standard node",
+      variantLabel: "Founding node reservation",
       unitAmount: 37_500,
       quantity: 2,
       amountSubtotal: 75_000,
@@ -296,8 +313,102 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     await app.close();
   });
 
+  it("creates a support-only certification contribution without shipping collection", async () => {
+    mocks.productsCreate.mockResolvedValueOnce({
+      id: "prod_support_123",
+      default_price: "price_support_123",
+    });
+    mocks.checkoutSessionsCreate.mockResolvedValueOnce({
+      id: "cs_support_123",
+      url: "https://checkout.stripe.com/c/pay/cs_support_123",
+      mode: "payment",
+      currency: "usd",
+      amount_subtotal: 7_500,
+      amount_total: 7_500,
+    });
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-purchase/checkout-session",
+      payload: {
+        tierId: "certification_support",
+        quantity: 3,
+      },
+      headers: {
+        authorization: "Bearer ok",
+        "content-type": "application/json",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.productsCreate).toHaveBeenCalledWith({
+      name: "CrowdPM Certification Support",
+      description: "Support-only contribution toward FCC testing and launch costs. No hardware reward.",
+      tax_code: "txcd_99999999",
+      default_price_data: {
+        currency: "usd",
+        unit_amount: 2500,
+        tax_behavior: "exclusive",
+      },
+    });
+    expect(mocks.checkoutSessionsCreate).toHaveBeenCalledWith({
+      line_items: [
+        {
+          price: "price_support_123",
+          quantity: 3,
+        },
+      ],
+      mode: "payment",
+      automatic_tax: {
+        enabled: true,
+      },
+      billing_address_collection: "required",
+      custom_text: {
+        submit: {
+          message: "Support-only contribution toward FCC testing and launch costs. No hardware, service entitlement, equity, or charitable tax deduction is provided. Applicable tax, if any, is calculated at checkout.",
+        },
+      },
+      customer_email: "buyer@example.com",
+      client_reference_id: "user-123",
+      metadata: {
+        purchaseType: "certification_support",
+        userId: "user-123",
+        tierId: "certification_support",
+        tierLabel: "Certification support",
+        quantity: "3",
+        hardwareReward: "false",
+        charitableDonation: "false",
+      },
+      success_url: "https://crowdpmplatform.web.app/node?checkout=success",
+      cancel_url: "https://crowdpmplatform.web.app/node?checkout=cancelled",
+    });
+    expect(dbStore.get("paymentCatalog/certificationSupport")).toMatchObject({
+      productId: "prod_support_123",
+      defaultPriceId: "price_support_123",
+      currency: "usd",
+      unitAmount: 2500,
+      taxCode: "txcd_99999999",
+      taxBehavior: "exclusive",
+    });
+    expect(dbStore.get("nodePurchaseSessions/cs_support_123")).toMatchObject({
+      sessionId: "cs_support_123",
+      status: "created",
+      purchaseType: "certification_support",
+      userId: "user-123",
+      customerEmail: "buyer@example.com",
+      tierId: "certification_support",
+      tierLabel: "Certification support",
+      unitAmount: 2_500,
+      quantity: 3,
+      hardwareReward: false,
+      charitableDonation: false,
+    });
+    await app.close();
+  });
+
   it("reuses the stored catalog without creating a second product", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeReservation", {
       productId: "prod_existing",
       defaultPriceId: "price_existing",
       currency: "usd",
@@ -326,7 +437,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored price no longer matches the expected node price", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeReservation", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -351,7 +462,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
         },
       ],
     }));
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeReservation")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -363,7 +474,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
   });
 
   it("recreates the Stripe catalog when the stored tax configuration is missing", async () => {
-    dbStore.set("paymentCatalog/nodeHardware", {
+    dbStore.set("paymentCatalog/nodeReservation", {
       productId: "prod_old",
       defaultPriceId: "price_old",
       currency: "usd",
@@ -378,7 +489,7 @@ describe("POST /v1/node-purchase/checkout-session", () => {
 
     expect(res.statusCode).toBe(200);
     expect(mocks.productsCreate).toHaveBeenCalledTimes(1);
-    expect(dbStore.get("paymentCatalog/nodeHardware")).toMatchObject({
+    expect(dbStore.get("paymentCatalog/nodeReservation")).toMatchObject({
       productId: "prod_node_123",
       defaultPriceId: "price_node_123",
       currency: "usd",
@@ -443,8 +554,10 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       purchaseType: "node_hardware",
       userId: "user-123",
       paymentStatus: "paid",
+      tierId: "founding_node_reservation",
+      tierLabel: "Founding node reservation",
       variantId: "standard",
-      variantLabel: "PM2.5 standard node",
+      variantLabel: "Founding node reservation",
       quantity: 1,
       currency: "usd",
       unitAmount: 37_500,
@@ -473,8 +586,10 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       purchaseType: "node_hardware",
       userId: "user-123",
       paymentStatus: "paid",
+      tierId: "founding_node_reservation",
+      tierLabel: "Founding node reservation",
       variantId: "standard",
-      variantLabel: "PM2.5 standard node",
+      variantLabel: "Founding node reservation",
       quantity: 3,
       currency: "usd",
       unitAmount: 37_500,
@@ -484,6 +599,25 @@ describe("POST /v1/node-purchase/checkout-session", () => {
       amountDiscount: 0,
       amountTotal: 122_625,
       completedAt: "2026-02-01T00:00:00.000Z",
+      customerEmail: "buyer@example.com",
+    });
+    dbStore.set("nodePurchaseSessions/cs_support", {
+      sessionId: "cs_support",
+      status: "completed",
+      purchaseType: "certification_support",
+      userId: "user-123",
+      paymentStatus: "paid",
+      tierId: "certification_support",
+      tierLabel: "Certification support",
+      quantity: 2,
+      currency: "usd",
+      unitAmount: 2_500,
+      amountSubtotal: 5_000,
+      amountTax: 0,
+      amountShipping: 0,
+      amountDiscount: 0,
+      amountTotal: 5_000,
+      completedAt: "2026-03-01T00:00:00.000Z",
       customerEmail: "buyer@example.com",
     });
     dbStore.set("nodePurchaseSessions/cs_pending", {
@@ -511,8 +645,16 @@ describe("POST /v1/node-purchase/checkout-session", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([
       expect.objectContaining({
+        sessionId: "cs_support",
+        purchaseType: "certification_support",
+        tierId: "certification_support",
+        quantity: 2,
+        amountTotal: 5_000,
+      }),
+      expect.objectContaining({
         sessionId: "cs_new",
         status: "completed",
+        tierId: "founding_node_reservation",
         variantId: "standard",
         quantity: 3,
         amountTotal: 122_625,
@@ -806,8 +948,10 @@ describe("POST /v1/payments/stripe/webhook", () => {
           id: "cs_test_123",
           metadata: {
             purchaseType: "node_hardware",
+            tierId: "founding_node_reservation",
+            tierLabel: "Founding node reservation",
             variantId: "standard",
-            variantLabel: "PM2.5 standard node",
+            variantLabel: "Founding node reservation",
           },
           mode: "payment",
           payment_status: "paid",
@@ -878,9 +1022,14 @@ describe("POST /v1/payments/stripe/webhook", () => {
       amountSubtotal: 37500,
       amountTotal: 40875,
       purchaseType: "node_hardware",
+      tierId: "founding_node_reservation",
+      tierLabel: "Founding node reservation",
       variantId: "standard",
-      variantLabel: "PM2.5 standard node",
+      variantLabel: "Founding node reservation",
       quantity: 1,
+      fccAuthorizationRequired: true,
+      noDeliveryBeforeAuthorization: true,
+      refundCheckpointDate: "2026-12-31",
       amountDiscount: 0,
       amountShipping: 0,
       amountTax: 3375,

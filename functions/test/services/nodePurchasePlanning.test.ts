@@ -99,7 +99,8 @@ describe("buildCheckoutSessionPlan", () => {
 describe("listStripeCatalogSeedConfigs", () => {
   it("returns all live Stripe-backed catalog definitions", () => {
     expect(listStripeCatalogSeedConfigs().map((config) => config.catalogDocId)).toEqual([
-      "nodeHardware",
+      "nodeReservation",
+      "certificationSupport",
       "themeSaveUnlock",
       "subscriptionProMonthly",
       "subscriptionProYearly",

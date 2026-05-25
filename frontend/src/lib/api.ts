@@ -16,6 +16,7 @@ import type {
   FirestoreTimestampLike,
   MeasurementRecord,
   ModerationState,
+  NodeCampaignTierId,
   NodePurchaseReceipt,
   NodePurchaseVariantId,
   PublicBatchDetail,
@@ -121,6 +122,7 @@ export type {
   FirestoreTimestampLike,
   MeasurementRecord,
   ModerationState,
+  NodeCampaignTierId,
   NodePurchaseReceipt,
   NodePurchaseVariantId,
   PublicBatchDetail,
@@ -150,6 +152,19 @@ export async function createNodePurchaseCheckoutSession(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ variantId, quantity }),
+  });
+}
+
+export async function createNodeCampaignCheckoutSession(
+  tierId: NodeCampaignTierId,
+  quantity = 1,
+): Promise<CheckoutRedirectSession> {
+  return requestJson<CheckoutRedirectSession>("/v1/node-purchase/checkout-session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tierId, quantity }),
   });
 }
 
