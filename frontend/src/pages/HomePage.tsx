@@ -18,8 +18,8 @@ const HIGHLIGHTS = [
     description: "Browse shared PM2.5 measurements from the dedicated live map experience.",
   },
   {
-    title: "Node pairing",
-    description: "Register hardware securely with short-lived activation codes and account-scoped device authorization.",
+    title: "Conditional node launch",
+    description: "Reserve first-run hardware or support FCC testing without implying immediate shipment.",
   },
   {
     title: "Batch exports",
@@ -81,11 +81,12 @@ export default function HomePage({
               Community air quality intelligence
             </Text>
             <Heading as="h1" size="8" style={{ lineHeight: 1.02, maxWidth: 720 }}>
-              Hyper-local PM2.5 mapping for public and account-scoped air quality data.
+              Hyper-local PM2.5 mapping, now funding the first authorized node run.
             </Heading>
             <Text size="3" color="gray" as="p" style={{ maxWidth: 680 }}>
-              CrowdPM combines open hardware, account-scoped device activation, public measurement publishing,
-              and a 3D map for exploring community air quality data.
+              CrowdPM combines open hardware, account-scoped activation, public measurement publishing,
+              and a 3D map for community air quality data. Expo payments are structured as certification
+              support or conditional reservations that ship only after FCC authorization.
             </Text>
           </Flex>
 
@@ -116,7 +117,7 @@ export default function HomePage({
 
           <Flex gap="3" wrap="wrap">
             <Button variant="ghost" onClick={onOpenProducts}>
-              Browse hardware
+              Reserve or support
             </Button>
             <Button variant="ghost" onClick={onOpenAbout}>
               Learn about the project

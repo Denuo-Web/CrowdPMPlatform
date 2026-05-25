@@ -15,13 +15,16 @@ const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_TAX_CODE = "txcd_99999999";
 
 const NODE_HARDWARE_ALLOWED_SHIPPING_COUNTRIES: Array<"US"> = ["US"];
-const NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE = "You are purchasing physical CrowdPM node hardware and any expressly listed related services from Denuo Web LLC. Power source and USB-A-to-micro-USB cable are not included. Purchase does not transfer proprietary rights in CrowdPM Platform software or restrict rights under applicable open-source licenses. Price includes US shipping. Applicable sales tax is calculated at checkout.";
-const NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE = "We currently ship CrowdPM nodes only to addresses in the United States.";
+const NODE_RESERVATION_CHECKOUT_SUBMIT_MESSAGE = "Conditional preorder: no CrowdPM node will be shipped or delivered until FCC equipment authorization is complete. If authorization is not complete by the stated refund checkpoint, you may request a refund or continue waiting. Price includes US shipping after authorization; applicable sales tax is calculated at checkout.";
+const NODE_RESERVATION_SHIPPING_ADDRESS_MESSAGE = "Shipping is available only to US addresses and will occur only after FCC equipment authorization is complete.";
+const CERTIFICATION_SUPPORT_CHECKOUT_SUBMIT_MESSAGE = "Support-only contribution toward FCC testing and launch costs. No hardware, service entitlement, equity, or charitable tax deduction is provided. Applicable tax, if any, is calculated at checkout.";
 const THEME_SAVE_UNLOCK_CHECKOUT_SUBMIT_MESSAGE = "One-time digital expansion purchase that permanently unlocks theme preference saving for the purchasing account. Applicable sales tax is calculated at checkout.";
 const SUBSCRIPTION_CHECKOUT_SUBMIT_MESSAGE = "Recurring CrowdPM account subscription. Applicable taxes are calculated in Stripe Checkout. Cancel any time from the billing portal.";
 const DEFAULT_NODE_HARDWARE_VARIANT_ID = "standard";
+const DEFAULT_NODE_CAMPAIGN_TIER_ID = "founding_node_reservation";
 const DEFAULT_NODE_HARDWARE_QUANTITY = 1;
 const MAX_NODE_HARDWARE_QUANTITY = 10;
+const FCC_REFUND_CHECKPOINT_DATE = "2026-12-31";
 const SUBSCRIPTION_SESSION_COLLECTION = "subscriptionCheckoutSessions";
 
 export type PaymentCatalog = {
@@ -34,7 +37,7 @@ export type PaymentCatalog = {
   recurringInterval?: Stripe.Price.Recurring.Interval | null;
 };
 
-type PurchaseType = "node_hardware" | "theme_save_unlock" | "subscription";
+type PurchaseType = "node_hardware" | "certification_support" | "theme_save_unlock" | "subscription";
 type CheckoutSessionCreateParams = NonNullable<Parameters<Stripe["checkout"]["sessions"]["create"]>[0]>;
 
 export type CheckoutProductConfig = {
@@ -78,12 +81,15 @@ export type ConfirmSubscriptionCheckoutSessionResult = {
 };
 
 export type NodePurchaseVariantId = "standard";
+export type NodeCampaignTierId = "founding_node_reservation" | "certification_support";
 
 export type NodePurchaseReceipt = {
   sessionId: string;
-  purchaseType: "node_hardware";
+  purchaseType: "node_hardware" | "certification_support";
   status: "completed";
   paymentStatus: string | null;
+  tierId: NodeCampaignTierId | null;
+  tierLabel: string | null;
   variantId: NodePurchaseVariantId | null;
   variantLabel: string | null;
   quantity: number;
@@ -116,10 +122,10 @@ const NODE_HARDWARE_BASE_CONFIG: Omit<CheckoutProductConfig, "catalogDocId" | "p
   cancelQueryParam: "checkout=cancelled",
   customText: {
     shipping_address: {
-      message: NODE_HARDWARE_SHIPPING_ADDRESS_MESSAGE,
+      message: NODE_RESERVATION_SHIPPING_ADDRESS_MESSAGE,
     },
     submit: {
-      message: NODE_HARDWARE_CHECKOUT_SUBMIT_MESSAGE,
+      message: NODE_RESERVATION_CHECKOUT_SUBMIT_MESSAGE,
     },
   },
   shippingAddressCollection: {
@@ -129,10 +135,10 @@ const NODE_HARDWARE_BASE_CONFIG: Omit<CheckoutProductConfig, "catalogDocId" | "p
 
 const NODE_HARDWARE_VARIANTS: Record<NodePurchaseVariantId, NodeHardwareVariantConfig> = {
   standard: {
-    catalogDocId: "nodeHardware",
-    label: "PM2.5 standard node",
-    productName: "CrowdPM Node Hardware",
-    description: "Physical node hardware purchase with US shipping included.",
+    catalogDocId: "nodeReservation",
+    label: "Founding node reservation",
+    productName: "CrowdPM Founding Node Reservation",
+    description: "Conditional CrowdPM node preorder; ships only after FCC equipment authorization.",
     unitAmount: 37_500,
   },
 };
@@ -143,6 +149,27 @@ function nodeHardwareConfigForVariant(variantId: NodePurchaseVariantId): Checkou
     ...NODE_HARDWARE_VARIANTS[variantId],
   };
 }
+
+const CERTIFICATION_SUPPORT_CONFIG: CheckoutProductConfig = {
+  catalogDocId: "certificationSupport",
+  sessionCollection: NODE_HARDWARE_BASE_CONFIG.sessionCollection,
+  purchaseType: "certification_support",
+  productName: "CrowdPM Certification Support",
+  description: "Support-only contribution toward FCC testing and launch costs. No hardware reward.",
+  currency: "usd",
+  unitAmount: 2_500,
+  taxCode: DEFAULT_PRODUCT_TAX_CODE,
+  taxBehavior: "exclusive",
+  billingAddressCollection: "required",
+  successPath: "/node",
+  successQueryParam: "checkout=success",
+  cancelQueryParam: "checkout=cancelled",
+  customText: {
+    submit: {
+      message: CERTIFICATION_SUPPORT_CHECKOUT_SUBMIT_MESSAGE,
+    },
+  },
+};
 
 const THEME_SAVE_UNLOCK_CONFIG: CheckoutProductConfig = {
   catalogDocId: "themeSaveUnlock",
@@ -189,6 +216,13 @@ function readNonEmptyString(value: unknown): string | null {
 
 function readNodeVariantId(value: unknown): NodePurchaseVariantId | null {
   if (value === "standard") {
+    return value;
+  }
+  return null;
+}
+
+function readNodeCampaignTierId(value: unknown): NodeCampaignTierId | null {
+  if (value === "founding_node_reservation" || value === "certification_support") {
     return value;
   }
   return null;
@@ -542,18 +576,44 @@ function subscriptionConfigForOffer(offerId: "pro_monthly" | "pro_yearly"): Chec
 export function listStripeCatalogSeedConfigs(): CheckoutProductConfig[] {
   return [
     nodeHardwareConfigForVariant("standard"),
+    CERTIFICATION_SUPPORT_CONFIG,
     THEME_SAVE_UNLOCK_CONFIG,
     subscriptionConfigForOffer("pro_monthly"),
     subscriptionConfigForOffer("pro_yearly"),
   ];
 }
 
-export async function createNodePurchaseCheckoutSession(args: {
+export async function createNodeCampaignCheckoutSession(args: {
+  tierId?: NodeCampaignTierId;
   variantId?: NodePurchaseVariantId;
   quantity?: number;
   userId?: string;
   customerEmail?: string | null;
 } = {}): Promise<NodePurchaseCheckoutSession> {
+  const tierId = args.tierId ?? DEFAULT_NODE_CAMPAIGN_TIER_ID;
+  if (tierId === "certification_support") {
+    const quantity = args.quantity ?? DEFAULT_NODE_HARDWARE_QUANTITY;
+    return createCheckoutSession(CERTIFICATION_SUPPORT_CONFIG, {
+      userId: args.userId,
+      customerEmail: args.customerEmail,
+      quantity,
+      metadata: {
+        tierId,
+        tierLabel: "Certification support",
+        quantity: String(quantity),
+        hardwareReward: "false",
+        charitableDonation: "false",
+      },
+      sessionData: {
+        tierId,
+        tierLabel: "Certification support",
+        quantity,
+        hardwareReward: false,
+        charitableDonation: false,
+      },
+    });
+  }
+
   const variantId = args.variantId ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
   const quantity = args.quantity ?? DEFAULT_NODE_HARDWARE_QUANTITY;
   const variant = NODE_HARDWARE_VARIANTS[variantId];
@@ -562,15 +622,40 @@ export async function createNodePurchaseCheckoutSession(args: {
     customerEmail: args.customerEmail,
     quantity,
     metadata: {
+      tierId,
+      tierLabel: "Founding node reservation",
       variantId,
       variantLabel: variant.label,
       quantity: String(quantity),
+      fccAuthorizationRequired: "true",
+      noDeliveryBeforeAuthorization: "true",
+      refundCheckpointDate: FCC_REFUND_CHECKPOINT_DATE,
     },
     sessionData: {
+      tierId,
+      tierLabel: "Founding node reservation",
       variantId,
       variantLabel: variant.label,
       quantity,
+      fccAuthorizationRequired: true,
+      noDeliveryBeforeAuthorization: true,
+      refundCheckpointDate: FCC_REFUND_CHECKPOINT_DATE,
     },
+  });
+}
+
+export async function createNodePurchaseCheckoutSession(args: {
+  variantId?: NodePurchaseVariantId;
+  quantity?: number;
+  userId?: string;
+  customerEmail?: string | null;
+} = {}): Promise<NodePurchaseCheckoutSession> {
+  return createNodeCampaignCheckoutSession({
+    tierId: "founding_node_reservation",
+    variantId: args.variantId,
+    quantity: args.quantity,
+    userId: args.userId,
+    customerEmail: args.customerEmail,
   });
 }
 
@@ -847,6 +932,14 @@ async function resolvePurchase(session: Stripe.Checkout.Session): Promise<Resolv
 
   const nodeSnap = await db().collection(NODE_HARDWARE_BASE_CONFIG.sessionCollection).doc(session.id).get();
   const storedSession = nodeSnap.exists ? (nodeSnap.data() as Record<string, unknown>) : null;
+  const storedPurchaseType = readNonEmptyString(storedSession?.purchaseType);
+  if (metadataPurchaseType === CERTIFICATION_SUPPORT_CONFIG.purchaseType || storedPurchaseType === CERTIFICATION_SUPPORT_CONFIG.purchaseType) {
+    return {
+      config: CERTIFICATION_SUPPORT_CONFIG,
+      storedSession,
+    };
+  }
+
   const variantId = readNodeVariantId(session.metadata?.variantId)
     ?? readNodeVariantId(storedSession?.variantId)
     ?? DEFAULT_NODE_HARDWARE_VARIANT_ID;
@@ -945,12 +1038,20 @@ async function recordCompletedSession(
     return;
   }
 
+  const tierId = readNodeCampaignTierId(session.metadata?.tierId) ?? readNodeCampaignTierId(storedSession?.tierId);
+  const tierLabel = readNonEmptyString(session.metadata?.tierLabel) ?? readNonEmptyString(storedSession?.tierLabel);
   const variantId = readNodeVariantId(session.metadata?.variantId) ?? readNodeVariantId(storedSession?.variantId);
   const variantLabel = readNonEmptyString(session.metadata?.variantLabel) ?? readNonEmptyString(storedSession?.variantLabel);
   const quantity = readNodeQuantity(session.metadata?.quantity)
     ?? readNodeQuantity(storedSession?.quantity)
     ?? DEFAULT_NODE_HARDWARE_QUANTITY;
   const userId = resolveNodePurchaseUserId(session, storedSession);
+  if (tierId) {
+    payload.tierId = tierId;
+  }
+  if (tierLabel) {
+    payload.tierLabel = tierLabel;
+  }
   if (variantId) {
     payload.variantId = variantId;
   }
@@ -958,6 +1059,15 @@ async function recordCompletedSession(
     payload.variantLabel = variantLabel;
   }
   payload.quantity = quantity;
+  if (config.purchaseType === NODE_HARDWARE_BASE_CONFIG.purchaseType) {
+    payload.fccAuthorizationRequired = true;
+    payload.noDeliveryBeforeAuthorization = true;
+    payload.refundCheckpointDate = FCC_REFUND_CHECKPOINT_DATE;
+  }
+  if (config.purchaseType === CERTIFICATION_SUPPORT_CONFIG.purchaseType) {
+    payload.hardwareReward = false;
+    payload.charitableDonation = false;
+  }
   if (userId) {
     payload.userId = userId;
   }
@@ -966,7 +1076,10 @@ async function recordCompletedSession(
 }
 
 function receiptFromSession(data: Record<string, unknown>): NodePurchaseReceipt | null {
-  if (data.purchaseType !== NODE_HARDWARE_BASE_CONFIG.purchaseType || data.status !== "completed") {
+  if (
+    (data.purchaseType !== NODE_HARDWARE_BASE_CONFIG.purchaseType && data.purchaseType !== CERTIFICATION_SUPPORT_CONFIG.purchaseType)
+    || data.status !== "completed"
+  ) {
     return null;
   }
   const sessionId = readNonEmptyString(data.sessionId);
@@ -982,9 +1095,11 @@ function receiptFromSession(data: Record<string, unknown>): NodePurchaseReceipt 
 
   return {
     sessionId,
-    purchaseType: "node_hardware",
+    purchaseType: data.purchaseType === CERTIFICATION_SUPPORT_CONFIG.purchaseType ? "certification_support" : "node_hardware",
     status: "completed",
     paymentStatus: readNonEmptyString(data.paymentStatus),
+    tierId: readNodeCampaignTierId(data.tierId),
+    tierLabel: readNonEmptyString(data.tierLabel),
     variantId: readNodeVariantId(data.variantId),
     variantLabel: readNonEmptyString(data.variantLabel),
     quantity: readNodeQuantity(data.quantity) ?? DEFAULT_NODE_HARDWARE_QUANTITY,

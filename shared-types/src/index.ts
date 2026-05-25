@@ -38,12 +38,16 @@ export type DeviceSummary = {
 } & Record<string, unknown>;
 
 export type NodePurchaseVariantId = "standard";
+export type NodeCampaignTierId = "founding_node_reservation" | "certification_support";
+export type NodeCampaignPurchaseType = "node_hardware" | "certification_support";
 
 export type NodePurchaseReceipt = {
   sessionId: string;
-  purchaseType: "node_hardware";
+  purchaseType: NodeCampaignPurchaseType;
   status: "completed";
   paymentStatus: string | null;
+  tierId: NodeCampaignTierId | null;
+  tierLabel: string | null;
   variantId: NodePurchaseVariantId | null;
   variantLabel: string | null;
   quantity: number;

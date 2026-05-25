@@ -69,11 +69,20 @@ function formatReceiptDate(value: string | null): string {
 }
 
 function formatShippingLocation(receipt: NodePurchaseReceipt): string {
+  if (receipt.purchaseType === "certification_support") {
+    return "No shipment";
+  }
   const address = receipt.shippingAddress;
   const city = address?.city?.trim();
   const state = address?.state?.trim();
   if (city && state) return `${city}, ${state}`;
-  return city || state || "—";
+  return city || state || "Pending authorization";
+}
+
+function formatReceiptTier(receipt: NodePurchaseReceipt): string {
+  return receipt.tierLabel ?? receipt.variantLabel ?? (
+    receipt.purchaseType === "certification_support" ? "Certification support" : "Founding node reservation"
+  );
 }
 
 export default function UserDashboard({
@@ -613,7 +622,7 @@ export default function UserDashboard({
               <Heading size="6">{activeCount}</Heading>
             </Flex>
             <Flex direction="column" gap="1">
-              <Text size="2" color="gray">Hardware orders</Text>
+              <Text size="2" color="gray">Campaign payments</Text>
               <Heading size="6">{completedReceiptCount}</Heading>
             </Flex>
           </Flex>
@@ -634,8 +643,8 @@ export default function UserDashboard({
         <Flex direction="column" gap="3">
           <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
             <Box>
-              <Heading as="h3" size="4">Hardware receipts</Heading>
-              <Text color="gray">Completed node purchases tied to this signed-in account.</Text>
+              <Heading as="h3" size="4">Campaign receipts</Heading>
+              <Text color="gray">Completed node reservations and certification support tied to this signed-in account.</Text>
             </Box>
             <Button variant="soft" onClick={refreshReceipts} disabled={isLoadingReceipts}>
               <ReloadIcon /> {isLoadingReceipts ? "Refreshing" : "Refresh"}
@@ -649,17 +658,17 @@ export default function UserDashboard({
           ) : null}
           {receipts.length === 0 ? (
             <Text color="gray" style={{ fontStyle: "italic" }}>
-              {isLoadingReceipts ? "Loading receipts…" : "No completed hardware purchases for this account."}
+              {isLoadingReceipts ? "Loading receipts…" : "No completed campaign payments for this account."}
             </Text>
           ) : (
             <Table.Root>
               <Table.Header>
                 <Table.Row>
                   <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Configuration</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Qty</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Tier</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Units</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>Total</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Ship to</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Fulfillment</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>Payment</Table.ColumnHeaderCell>
                 </Table.Row>
               </Table.Header>
@@ -674,7 +683,14 @@ export default function UserDashboard({
                         </Text>
                       </Flex>
                     </Table.Cell>
-                    <Table.Cell>{receipt.variantLabel ?? "CrowdPM Node Hardware"}</Table.Cell>
+                    <Table.Cell>
+                      <Flex direction="column" gap="1">
+                        <Text>{formatReceiptTier(receipt)}</Text>
+                        <Badge color={receipt.purchaseType === "certification_support" ? "blue" : "amber"} variant="soft">
+                          {receipt.purchaseType === "certification_support" ? "Support only" : "Conditional reservation"}
+                        </Badge>
+                      </Flex>
+                    </Table.Cell>
                     <Table.Cell>{receipt.quantity}</Table.Cell>
                     <Table.Cell>
                       <Flex direction="column" gap="1">

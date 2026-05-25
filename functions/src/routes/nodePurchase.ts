@@ -14,7 +14,7 @@ import {
   confirmSubscriptionCheckoutSession,
   confirmThemeSaveCheckoutSession,
   createBillingPortalSession,
-  createNodePurchaseCheckoutSession,
+  createNodeCampaignCheckoutSession,
   createSubscriptionCheckoutSession,
   createThemeSaveCheckoutSession,
   handleStripeWebhook,
@@ -26,6 +26,7 @@ type RequestWithRawBody = {
 };
 
 const nodeCheckoutBodySchema = z.object({
+  tierId: z.enum(["founding_node_reservation", "certification_support"]).optional(),
   variantId: z.enum(["standard"]).optional(),
   quantity: z.number().int().min(1).max(10).optional(),
 }).strict();
@@ -66,7 +67,8 @@ export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
       throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
     }
     const user = getOptionalRequestUser(req);
-    return createNodePurchaseCheckoutSession({
+    return createNodeCampaignCheckoutSession({
+      tierId: parsed.data.tierId,
       variantId: parsed.data.variantId,
       quantity: parsed.data.quantity,
       userId: user?.uid,

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   Box,
+  Badge,
   Button,
   Callout,
   Card,
@@ -19,7 +20,7 @@ import {
   type LegalDocumentId,
 } from "../components/LegalDocumentDialog";
 import { APP_ROUTES } from "../lib/appRoutes";
-import { createNodePurchaseCheckoutSession } from "../lib/api";
+import { createNodeCampaignCheckoutSession, type NodeCampaignTierId } from "../lib/api";
 import { useBrowserLocation } from "../lib/locationStore";
 
 type SectionProps = {
@@ -33,7 +34,10 @@ type TableProps = {
 };
 
 const BASE_NODE_PRICE_CENTS = 37_500;
+const CERTIFICATION_SUPPORT_UNIT_CENTS = 2_500;
 const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
+const SUPPORT_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
+const FCC_REFUND_CHECKPOINT_LABEL = "December 31, 2026";
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
@@ -43,8 +47,8 @@ const SD_CARD_URL = "https://www.amazon.com/SanDisk-Ultra-microSDHC-Memory-Adapt
 const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=5e49b7bc297b33e721e671312e45f1a1&language=en_US&ref_=as_li_ss_tl";
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
-const NODE_PRODUCT_LABEL = "PM2.5 standard node";
-const NODE_PRODUCT_SUMMARY = "Current shipped build with PMS5003, GPS, temperature/humidity, local storage, and USB micro power input.";
+const NODE_PRODUCT_LABEL = "Founding node reservation";
+const NODE_PRODUCT_SUMMARY = "Conditional reservation for the standard PM2.5 node with PMS5003, GPS, temperature/humidity, local storage, and USB micro power input.";
 
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -290,18 +294,21 @@ function readCheckoutNotice(search: string): CheckoutNotice {
 
 export default function NodePage() {
   const location = useBrowserLocation();
-  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [activeCheckoutTier, setActiveCheckoutTier] = useState<NodeCampaignTierId | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const checkoutNotice = readCheckoutNotice(location.search);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const orderSubtotalCents = BASE_NODE_PRICE_CENTS * quantity;
+  const [reservationQuantity, setReservationQuantity] = useState(1);
+  const [supportUnits, setSupportUnits] = useState(1);
+  const reservationSubtotalCents = BASE_NODE_PRICE_CENTS * reservationQuantity;
+  const supportSubtotalCents = CERTIFICATION_SUPPORT_UNIT_CENTS * supportUnits;
 
-  const handlePurchaseNode = async () => {
+  const handleCampaignCheckout = async (tierId: NodeCampaignTierId) => {
     setCheckoutError("");
-    setIsStartingCheckout(true);
+    setActiveCheckoutTier(tierId);
     try {
-      const session = await createNodePurchaseCheckoutSession("standard", quantity);
+      const quantity = tierId === "certification_support" ? supportUnits : reservationQuantity;
+      const session = await createNodeCampaignCheckoutSession(tierId, quantity);
       window.location.assign(session.url);
       return;
     }
@@ -310,7 +317,7 @@ export default function NodePage() {
         ? err.message
         : "Unable to open checkout right now.";
       setCheckoutError(message);
-      setIsStartingCheckout(false);
+      setActiveCheckoutTier(null);
     }
   };
 
@@ -320,148 +327,215 @@ export default function NodePage() {
       <Box>
         <Flex direction={{ initial: "column", md: "row" }} align="start" gap="5">
           <Box style={{ flex: "1 1 34rem", minWidth: 0 }}>
-            <Heading as="h1" size="5">
-              Products - CrowdPM Node Hardware
-            </Heading>
-            <Text size="3" color="gray" mt="2" as="p">
-              A CrowdPM node is a small air-quality computer that measures PM2.5,
-              records where and when the measurement happened, stores the reading
-              locally, and uploads the data to CrowdPM when internet is available.
-            </Text>
-            <Text size="2" mt="3" as="p">
-              The base model is the only current production configuration. US
-              shipping is included; sales tax is calculated at checkout.
-            </Text>
+            <Flex direction="column" gap="3">
+              <Badge color="amber" variant="soft" style={{ alignSelf: "start" }}>
+                FCC authorization pending
+              </Badge>
+              <Heading as="h1" size="6">
+                Reserve a founding CrowdPM node, shipping only after authorization.
+              </Heading>
+              <Text size="3" color="gray" as="p">
+                CrowdPM is collecting conditional reservations and certification support for the expo launch.
+                Node hardware is not available for immediate delivery; reservations convert to shipment only after
+                FCC equipment authorization is complete.
+              </Text>
+              <Text size="2" color="gray" as="p">
+                The base model is the only planned first-run configuration. It measures PM2.5, GPS,
+                temperature/humidity, and local storage telemetry, then uploads to CrowdPM when internet is available.
+              </Text>
+            </Flex>
             <Box mt="4">
               <ProductGallery />
             </Box>
           </Box>
 
-          <Card
-            style={{
-              width: "100%",
-              maxWidth: "28rem",
-              minWidth: 0,
-            }}
-          >
-            <Flex direction="column" gap="4">
-              <Box>
-                <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
-                  Standard configuration
-                </Text>
-                <Heading as="h2" size="4" mt="1">
-                  CrowdPM Node
-                </Heading>
-                <Flex align="baseline" gap="2" mt="2" wrap="wrap">
-                  <Text as="div" size="6" weight="bold">
-                    {formatUsd(BASE_NODE_PRICE_CENTS)}
-                  </Text>
-                  <Text size="2" color="gray">per device</Text>
-                </Flex>
-                <Text size="2" color="gray" as="p" mt="2">
-                  {NODE_PRODUCT_SUMMARY}
-                </Text>
-              </Box>
-
-              <Separator size="4" />
-
-              <Box>
-                <Text size="2" weight="bold" as="div" mb="2">
-                  Included
-                </Text>
-                <BulletList>
-                  <ListItem>PM2.5 sensing, GPS, temperature/humidity, local storage, and USB micro power input.</ListItem>
-                  <ListItem>Power source and USB-A-to-micro-USB cable are supplied by the customer.</ListItem>
-                  <ListItem>US shipping and first-time setup documentation.</ListItem>
-                </BulletList>
-              </Box>
-
-              <Flex align="center" justify="between" gap="3">
+          <Flex direction="column" gap="4" style={{ width: "100%", maxWidth: "30rem", minWidth: 0 }}>
+            <Card>
+              <Flex direction="column" gap="4">
                 <Box>
-                  <Text size="2" weight="bold" as="div">
-                    Quantity
+                  <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                    Conditional preorder
                   </Text>
-                  <Text size="1" color="gray">Up to 10 devices per checkout</Text>
+                  <Heading as="h2" size="4" mt="1">
+                    Founding node reservation
+                  </Heading>
+                  <Flex align="baseline" gap="2" mt="2" wrap="wrap">
+                    <Text as="div" size="6" weight="bold">
+                      {formatUsd(BASE_NODE_PRICE_CENTS)}
+                    </Text>
+                    <Text size="2" color="gray">per reserved device</Text>
+                  </Flex>
+                  <Text size="2" color="gray" as="p" mt="2">
+                    {NODE_PRODUCT_SUMMARY}
+                  </Text>
                 </Box>
-                <Box style={{ width: "7rem" }}>
-                  <Select.Root
-                    value={String(quantity)}
-                    onValueChange={(value) => setQuantity(Number(value))}
-                  >
-                    <Select.Trigger aria-label="Quantity" />
-                    <Select.Content>
-                      {NODE_QUANTITY_OPTIONS.map((option) => (
-                        <Select.Item key={option} value={String(option)}>
-                          {option}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
+
+                <Callout.Root color="amber" variant="surface">
+                  <Callout.Text>
+                    No node will be shipped, delivered, or released to an end user before FCC equipment authorization is complete.
+                  </Callout.Text>
+                </Callout.Root>
+
+                <Box>
+                  <Text size="2" weight="bold" as="div" mb="2">
+                    Reservation terms
+                  </Text>
+                  <BulletList>
+                    <ListItem>US shipping is included after authorization; sales tax is calculated at checkout.</ListItem>
+                    <ListItem>Power source and USB-A-to-micro-USB cable are supplied by the customer.</ListItem>
+                    <ListItem>If authorization is not complete by {FCC_REFUND_CHECKPOINT_LABEL}, reservation holders can request a refund or continue waiting.</ListItem>
+                  </BulletList>
                 </Box>
+
+                <Flex align="center" justify="between" gap="3">
+                  <Box>
+                    <Text size="2" weight="bold" as="div">
+                      Reserved quantity
+                    </Text>
+                    <Text size="1" color="gray">Up to 10 devices per checkout</Text>
+                  </Box>
+                  <Box style={{ width: "7rem" }}>
+                    <Select.Root
+                      value={String(reservationQuantity)}
+                      onValueChange={(value) => setReservationQuantity(Number(value))}
+                    >
+                      <Select.Trigger aria-label="Reserved quantity" />
+                      <Select.Content>
+                        {NODE_QUANTITY_OPTIONS.map((option) => (
+                          <Select.Item key={option} value={String(option)}>
+                            {option}
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Root>
+                  </Box>
+                </Flex>
+
+                <Box
+                  style={{
+                    borderTop: "1px solid var(--gray-a5)",
+                    paddingTop: "var(--space-3)",
+                  }}
+                >
+                  <Flex justify="between" gap="3">
+                    <Text size="2" color="gray">Reservation</Text>
+                    <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
+                  </Flex>
+                  <Flex justify="between" gap="3" mt="1">
+                    <Text size="2" color="gray">Tier</Text>
+                    <Text size="2">{NODE_PRODUCT_LABEL}</Text>
+                  </Flex>
+                  <Flex justify="between" gap="3" mt="1">
+                    <Text size="2" color="gray">Quantity</Text>
+                    <Text size="2">x {reservationQuantity}</Text>
+                  </Flex>
+                  <Separator size="4" my="3" />
+                  <Flex justify="between" align="center" gap="3">
+                    <Text size="3" weight="bold">Subtotal</Text>
+                    <Text as="div" size="5" weight="bold">{formatUsd(reservationSubtotalCents)}</Text>
+                  </Flex>
+                  <Text size="1" color="gray" as="p" mt="1">
+                    Applicable tax is calculated in Stripe Checkout.
+                  </Text>
+                </Box>
+
+                <Button
+                  size="3"
+                  onClick={() => { void handleCampaignCheckout("founding_node_reservation"); }}
+                  disabled={Boolean(activeCheckoutTier)}
+                >
+                  {activeCheckoutTier === "founding_node_reservation"
+                    ? "Opening Checkout..."
+                    : `Reserve - ${formatUsd(reservationSubtotalCents)}`}
+                </Button>
               </Flex>
+            </Card>
 
-              <Box
-                style={{
-                  borderTop: "1px solid var(--gray-a5)",
-                  paddingTop: "var(--space-3)",
-                }}
-              >
-                <Flex justify="between" gap="3">
-                  <Text size="2" color="gray">Base node</Text>
-                  <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
+            <Card>
+              <Flex direction="column" gap="4">
+                <Box>
+                  <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                    No hardware reward
+                  </Text>
+                  <Heading as="h2" size="4" mt="1">
+                    Certification support
+                  </Heading>
+                  <Flex align="baseline" gap="2" mt="2" wrap="wrap">
+                    <Text as="div" size="6" weight="bold">
+                      {formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)}
+                    </Text>
+                    <Text size="2" color="gray">per support unit</Text>
+                  </Flex>
+                  <Text size="2" color="gray" as="p" mt="2">
+                    Helps fund FCC testing and launch costs. This tier does not reserve hardware, equity,
+                    charitable tax treatment, or service access.
+                  </Text>
+                </Box>
+
+                <Flex align="center" justify="between" gap="3">
+                  <Box>
+                    <Text size="2" weight="bold" as="div">
+                      Support units
+                    </Text>
+                    <Text size="1" color="gray">Choose 1 to 10 units</Text>
+                  </Box>
+                  <Box style={{ width: "7rem" }}>
+                    <Select.Root
+                      value={String(supportUnits)}
+                      onValueChange={(value) => setSupportUnits(Number(value))}
+                    >
+                      <Select.Trigger aria-label="Support units" />
+                      <Select.Content>
+                        {SUPPORT_QUANTITY_OPTIONS.map((option) => (
+                          <Select.Item key={option} value={String(option)}>
+                            {option}
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Root>
+                  </Box>
                 </Flex>
-                <Flex justify="between" gap="3" mt="1">
-                  <Text size="2" color="gray">Configuration</Text>
-                  <Text size="2">{NODE_PRODUCT_LABEL}</Text>
-                </Flex>
-                <Flex justify="between" gap="3" mt="1">
-                  <Text size="2" color="gray">Quantity</Text>
-                  <Text size="2">x {quantity}</Text>
-                </Flex>
-                <Separator size="4" my="3" />
+
                 <Flex justify="between" align="center" gap="3">
-                  <Text size="3" weight="bold">Subtotal</Text>
-                  <Text as="div" size="5" weight="bold">{formatUsd(orderSubtotalCents)}</Text>
+                  <Text size="3" weight="bold">Support total</Text>
+                  <Text as="div" size="5" weight="bold">{formatUsd(supportSubtotalCents)}</Text>
                 </Flex>
-                <Text size="1" color="gray" as="p" mt="1">
-                  Sales tax is calculated in Stripe Checkout.
-                </Text>
-              </Box>
 
-              <Button
-                size="3"
-                onClick={() => { void handlePurchaseNode(); }}
-                disabled={isStartingCheckout}
-              >
-                {isStartingCheckout
-                  ? "Opening Checkout..."
-                  : `Checkout - ${formatUsd(orderSubtotalCents)}`}
-              </Button>
+                <Button
+                  size="3"
+                  variant="soft"
+                  onClick={() => { void handleCampaignCheckout("certification_support"); }}
+                  disabled={Boolean(activeCheckoutTier)}
+                >
+                  {activeCheckoutTier === "certification_support"
+                    ? "Opening Checkout..."
+                    : `Support certification - ${formatUsd(supportSubtotalCents)}`}
+                </Button>
+              </Flex>
+            </Card>
 
-              <Text size="1" color="gray" as="p">
-                Sold by Denuo Web LLC as a one-time hardware purchase. Orders are
-                subject to the{" "}
-                <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
-                  Terms
-                </LegalDocumentLink>
-                ,{" "}
-                <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
-                  License
-                </LegalDocumentLink>
-                , and{" "}
-                <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
-                  Privacy Policy
-                </LegalDocumentLink>
-                .
-              </Text>
-            </Flex>
-          </Card>
+            <Text size="1" color="gray" as="p">
+              Campaign payments are processed by Stripe for Denuo Web LLC and are subject to the{" "}
+              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                Terms
+              </LegalDocumentLink>
+              ,{" "}
+              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                License
+              </LegalDocumentLink>
+              , and{" "}
+              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                Privacy Policy
+              </LegalDocumentLink>
+              .
+            </Text>
+          </Flex>
         </Flex>
 
         {checkoutNotice === "success" ? (
           <Callout.Root color="green" variant="surface" mt="4">
             <Callout.Text>
-              Checkout completed. Stripe will email a receipt. Signed-in purchases also appear in the dashboard.
+              Checkout completed. Stripe will email a receipt. Signed-in campaign payments also appear in the dashboard.
             </Callout.Text>
           </Callout.Root>
         ) : null}
@@ -483,17 +557,18 @@ export default function NodePage() {
 
       <Separator size="4" />
 
-      <Section title="Configuration Options">
+      <Section title="Campaign Options">
         <Text size="2" color="gray" as="p">
-          Each order is for the standard PM2.5 node. The selected quantity
-          applies to identical base-model devices.
+          Expo payments are either conditional reservations for the first standard node build
+          or support-only contributions toward certification costs.
         </Text>
 
         <InfoTable
-          headers={["Configuration", "What it adds", "Price"]}
+          headers={["Option", "What it includes", "Price"]}
           rows={[
-            [NODE_PRODUCT_LABEL, "PM2.5 sensing, GPS, temperature/humidity, local storage, and USB micro power input", formatUsd(BASE_NODE_PRICE_CENTS)],
-            ["Quantity", "1 to 10 devices per checkout", "Applied at checkout"],
+            [NODE_PRODUCT_LABEL, "Conditional reservation for PM2.5 sensing, GPS, temperature/humidity, local storage, USB micro power input, US shipping after authorization, and setup documentation", formatUsd(BASE_NODE_PRICE_CENTS)],
+            ["Certification support", "Support-only contribution toward FCC testing and launch costs; no hardware reward or service entitlement", `${formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)} units`],
+            ["Refund checkpoint", `Reservation holders may request a refund or keep waiting if FCC authorization is not complete by ${FCC_REFUND_CHECKPOINT_LABEL}`, "Applies to reservations"],
           ]}
         />
       </Section>
@@ -508,7 +583,7 @@ export default function NodePage() {
           <Flex direction="column" gap="5" style={{ paddingTop: "var(--space-4)" }}>
             <Section title="Setup Your Node">
               <Text size="2" color="gray" as="p">
-                These are the first-time setup steps for a shipped CrowdPM node.
+                These are the first-time setup steps for an authorized shipped node or compatible self-built node.
                 Start near the Wi-Fi network you want the node to use most often.
                 Once setup is complete, the node should reconnect to that saved
                 network automatically on future startups.

@@ -11,7 +11,7 @@ Repository - GitHub Repo: https://github.com/Denuo-Web/CrowdPMPlatform/
 Website - CrowdPM Platform: https://crowdpmplatform.web.app/
 
 Testing Scope and Needs
-This sprint focuses on the highest-risk CrowdPM features: map/public pages, sign in and sign out, device activation and pairing, the user dashboard, admin moderation, node purchase, and the ingest pipeline.
+This sprint focuses on the highest-risk CrowdPM features: map/public pages, sign in and sign out, device activation and pairing, the user dashboard, admin moderation, node campaign checkout, and the ingest pipeline.
 
 - Public map and data visibility: public batches should appear, while private and quarantined data stays hidden.
 - Authentication and access: protected routes should only work for the correct users.
@@ -32,7 +32,7 @@ The Kanban board includes testing tasks for the areas above and assigns them as 
 
 - Mark: device end-to-end ingest flow from pair to visibility
 - Skylar: frontend smoke and regression testing
-- Jaron: node purchase and Stripe testing
+- Jaron: node campaign checkout and Stripe testing
 - Jack: role, access, and moderation testing
 
 Evidence

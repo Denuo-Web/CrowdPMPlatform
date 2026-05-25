@@ -30,18 +30,22 @@ paths:
   /v1/node-purchase/checkout-session:
     post:
       operationId: createNodePurchaseCheckoutSession
-      summary: Create a Stripe Checkout session for node hardware
+      summary: Create a Stripe Checkout session for the node campaign
       description: >
-        Creates a Stripe Checkout session for the one-time CrowdPM node hardware
-        purchase. Checkout collects a US shipping address, applies Stripe Tax
-        based on that destination, and charges the standard PM2.5 hardware
-        product. The standard PM2.5 node is $375 with shipping included before
-        tax. Power source and USB-A-to-micro-USB cable are not included. The
-        selected quantity can be 1 through 10 devices. If a valid bearer token is
-        supplied, the completed hardware receipt is tied to that account. The
-        backing live Stripe product + price must be seeded in Firestore
-        `paymentCatalog` before public checkout is enabled; local and test
-        environments may opt into automatic catalog creation.
+        Creates a Stripe Checkout session for a CrowdPM founding node
+        reservation or a support-only certification contribution. A founding
+        node reservation is a conditional preorder: checkout collects a US
+        shipping address, applies Stripe Tax, and no node is shipped or
+        delivered before FCC equipment authorization is complete. The founding
+        node reservation is $375 with shipping included after authorization,
+        before tax. The certification support tier is $25 per support unit and
+        does not reserve hardware, grant service access, create equity, or
+        qualify as a charitable tax-deductible donation. The selected quantity
+        can be 1 through 10 units. If a valid bearer token is supplied, the
+        completed campaign receipt is tied to that account. The backing live
+        Stripe product + price must be seeded in Firestore `paymentCatalog`
+        before public checkout is enabled; local and test environments may opt
+        into automatic catalog creation.
       security: []
       requestBody:
         required: false
@@ -67,13 +71,13 @@ paths:
   /v1/node-purchase/receipts:
     get:
       operationId: listNodePurchaseReceipts
-      summary: List signed-in user's node hardware receipts
-      description: Returns completed CrowdPM node hardware purchase receipts tied to the signed-in account.
+      summary: List signed-in user's node campaign receipts
+      description: Returns completed CrowdPM node reservations and certification support receipts tied to the signed-in account.
       security:
         - BearerAuth: []
       responses:
         '200':
-          description: Completed node hardware receipts.
+          description: Completed node campaign receipts.
           content:
             application/json:
               schema:
@@ -258,7 +262,7 @@ paths:
       operationId: handleStripeWebhook
       summary: Receive Stripe webhook events
       description: >
-        Accepts Stripe webhook callbacks and records successful node hardware,
+        Accepts Stripe webhook callbacks and records successful node campaign,
         theme save unlock, and recurring subscription events, including shipping
         details where applicable, calculated tax, and account entitlements after
         verifying the
@@ -1229,17 +1233,24 @@ components:
       type: object
       additionalProperties: false
       properties:
+        tierId:
+          type: string
+          enum:
+            - founding_node_reservation
+            - certification_support
+          default: founding_node_reservation
+          description: Campaign tier to check out.
         variantId:
           type: string
           enum:
             - standard
-          description: Selected CrowdPM hardware product variant.
+          description: Backward-compatible hardware variant field for founding node reservations.
         quantity:
           type: integer
           minimum: 1
           maximum: 10
           default: 1
-          description: Number of devices to purchase in this checkout.
+          description: Number of reserved nodes or support units to check out.
     NodePurchaseReceipt:
       type: object
       required:
@@ -1254,11 +1265,19 @@ components:
           description: Stripe Checkout session identifier.
         purchaseType:
           type: string
-          enum: [node_hardware]
+          enum: [node_hardware, certification_support]
         status:
           type: string
           enum: [completed]
         paymentStatus:
+          type: [string, 'null']
+        tierId:
+          type: [string, 'null']
+          enum:
+            - founding_node_reservation
+            - certification_support
+            - null
+        tierLabel:
           type: [string, 'null']
         variantId:
           type: [string, 'null']
@@ -1276,7 +1295,7 @@ components:
           example: usd
         unitAmount:
           type: [integer, 'null']
-          description: Per-device pre-tax price in the smallest currency unit.
+          description: Per-unit pre-tax price in the smallest currency unit.
         amountSubtotal:
           type: [integer, 'null']
         amountTax:
