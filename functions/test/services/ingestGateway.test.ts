@@ -141,6 +141,8 @@ describe("ingestGatewayHandler", () => {
     expect(deps.verifyDeviceAccessToken).toHaveBeenCalledWith("test-token");
     expect(deps.verifyDpopProof).toHaveBeenCalledWith("proof-token", expect.objectContaining({
       htu: "http://127.0.0.1:5001/crowdpm-local/us-central1/ingestGateway",
+      acceptableHtu: ["http://127.0.0.1:5001/"],
+      allowMissingAthOnHtu: ["http://127.0.0.1:5001/"],
       expectedAth: expect.any(String),
       expectedThumbprint: "jkt-1",
     }));

@@ -10,7 +10,13 @@ import {
   recordRegistrationToken,
   markSessionRedeemed,
 } from "../services/devicePairing.js";
-import { buildCanonicalEndpointUrl, coarsenIpForDisplay, deriveNetworkHint, extractClientIp } from "../lib/http.js";
+import {
+  buildCanonicalEndpointUrl,
+  buildFunctionRelativeEndpointUrl,
+  coarsenIpForDisplay,
+  deriveNetworkHint,
+  extractClientIp,
+} from "../lib/http.js";
 import { verifyDpopProof } from "../lib/dpop.js";
 import { rateLimitOrThrow } from "../lib/rateLimiter.js";
 import { issueRegistrationToken, verifyRegistrationToken, issueDeviceAccessToken } from "../services/deviceTokens.js";
@@ -46,6 +52,10 @@ const deviceTokenSchema = z.object({
 
 function fastifyRequestUrl(req: FastifyRequest): string {
   return buildCanonicalEndpointUrl(getCrowdpmApiBaseUrl(), req.raw.url ?? req.url);
+}
+
+function legacyFastifyRequestUrl(req: FastifyRequest): string {
+  return buildFunctionRelativeEndpointUrl(getCrowdpmApiBaseUrl(), req.raw.url ?? req.url);
 }
 
 export const pairingRoutes: FastifyPluginAsync = async (app) => {
@@ -104,6 +114,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
       await verifyDpopProof(typeof proof === "string" ? proof : Array.isArray(proof) ? proof[0] : undefined, {
         method: req.method.toUpperCase(),
         htu,
+        acceptableHtu: [legacyFastifyRequestUrl(req)],
         expectedThumbprint: session.pubKeThumbprint,
       });
     }
@@ -175,6 +186,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     await verifyDpopProof(proofValue, {
       method: req.method.toUpperCase(),
       htu,
+      acceptableHtu: [legacyFastifyRequestUrl(req)],
       expectedThumbprint: verifiedToken.cnf.jkt,
     });
 
@@ -247,6 +259,7 @@ export const pairingRoutes: FastifyPluginAsync = async (app) => {
     const verifiedProof = await verifyDpopProof(typeof proof === "string" ? proof : Array.isArray(proof) ? proof[0] : undefined, {
       method: req.method.toUpperCase(),
       htu,
+      acceptableHtu: [legacyFastifyRequestUrl(req)],
       expectedThumbprint: device.pubKlThumbprint,
     });
 

@@ -3,7 +3,7 @@ import type { Request } from "firebase-functions/v2/https";
 import { normalizeBatchVisibility } from "../lib/batchVisibility.js";
 import { verifyDeviceAccessToken } from "./deviceTokens.js";
 import { calculateDpopAth, checkDpopReplay, verifyDpopProof } from "../lib/dpop.js";
-import { buildCanonicalEndpointUrl } from "../lib/http.js";
+import { buildCanonicalEndpointUrl, buildFunctionRelativeEndpointUrl } from "../lib/http.js";
 import { applyCorsHeaders } from "../lib/corsPolicy.js";
 import { ingestGatewayRuntimeOptions } from "../lib/functionOptions.js";
 import { ingestService, type IngestBody } from "./ingestService.js";
@@ -86,10 +86,13 @@ export async function ingestGatewayHandler(
 
     const accessToken = await dependencies.verifyDeviceAccessToken(token);
     const htu = buildCanonicalEndpointUrl(getIngestGatewayBaseUrl(), req.url);
+    const legacyHtu = buildFunctionRelativeEndpointUrl(getIngestGatewayBaseUrl(), req.url);
     const dpopProof = requestHeader(req, "dpop");
     const verifiedProof = await dependencies.verifyDpopProof(dpopProof, {
       method: req.method.toUpperCase(),
       htu,
+      acceptableHtu: [legacyHtu],
+      allowMissingAthOnHtu: [legacyHtu],
       expectedThumbprint: accessToken.cnf.jkt,
       expectedAth: calculateDpopAth(token),
     });
