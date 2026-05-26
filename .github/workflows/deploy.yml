@@ -10,35 +10,6 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     environment: deployed
-    env:
-      FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
-      FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL || vars.FUNCTIONS_HEALTH_URL }}
-      PUBLIC_APP_BASE_URL: ${{ secrets.PUBLIC_APP_BASE_URL || vars.PUBLIC_APP_BASE_URL }}
-      DEVICE_ACTIVATION_URL: ${{ secrets.DEVICE_ACTIVATION_URL || vars.DEVICE_ACTIVATION_URL }}
-      DEVICE_VERIFICATION_URI: ${{ secrets.DEVICE_VERIFICATION_URI || vars.DEVICE_VERIFICATION_URI }}
-      DEVICE_TOKEN_ISSUER: ${{ secrets.DEVICE_TOKEN_ISSUER || vars.DEVICE_TOKEN_ISSUER }}
-      DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE }}
-      DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS }}
-      DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
-      CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || vars.CORS_ALLOWED_ORIGINS }}
-      FIRST_SUPER_ADMIN_EMAIL: ${{ secrets.FIRST_SUPER_ADMIN_EMAIL || vars.FIRST_SUPER_ADMIN_EMAIL }}
-      FIRST_SUPER_ADMIN_PASSWORD: ${{ secrets.FIRST_SUPER_ADMIN_PASSWORD }}
-      FIRST_SUPER_ADMIN_DISPLAY_NAME: ${{ secrets.FIRST_SUPER_ADMIN_DISPLAY_NAME || vars.FIRST_SUPER_ADMIN_DISPLAY_NAME }}
-      DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
-      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-      VITE_API_BASE: ${{ secrets.VITE_API_BASE || vars.VITE_API_BASE }}
-      VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY }}
-      VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
-      VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-      VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-      VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-      FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
-      FIREBASE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
     permissions:
       contents: read
       id-token: write
@@ -72,17 +43,20 @@ jobs:
           fi
           test -n "$project_id" || { echo "Set FIREBASE_PROJECT_ID in repository/environment secrets or variables, or define a deployed alias in .firebaserc."; exit 1; }
           echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
-          echo "FIREBASE_PROJECT_ID=$project_id" >> "$GITHUB_ENV"
 
       - name: Validate deployment authentication
         id: auth_config
+        env:
+          HAS_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+          HAS_FIREBASE_SERVICE_ACCOUNT_EMAIL: ${{ (secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL) != '' }}
+          HAS_FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ (secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER) != '' }}
         run: |
-          if [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+          if [ "$HAS_FIREBASE_SERVICE_ACCOUNT_JSON" = "true" ]; then
             echo "method=credentials_json" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ -n "$FIREBASE_WORKLOAD_IDENTITY_PROVIDER" ]; then
-            test -n "$FIREBASE_SERVICE_ACCOUNT_EMAIL" || { echo "Set FIREBASE_SERVICE_ACCOUNT_EMAIL in repository/environment secrets or variables when using Workload Identity Federation."; exit 1; }
+          if [ "$HAS_FIREBASE_WORKLOAD_IDENTITY_PROVIDER" = "true" ]; then
+            test "$HAS_FIREBASE_SERVICE_ACCOUNT_EMAIL" = "true" || { echo "Set FIREBASE_SERVICE_ACCOUNT_EMAIL in repository/environment secrets or variables when using Workload Identity Federation."; exit 1; }
             echo "method=workload_identity" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -93,39 +67,55 @@ jobs:
         if: ${{ steps.auth_config.outputs.method == 'credentials_json' }}
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ env.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           project_id: ${{ steps.deploy_config.outputs.project_id }}
 
       - name: Authenticate to Google Cloud with Workload Identity Federation
         if: ${{ steps.auth_config.outputs.method == 'workload_identity' }}
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ env.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ secrets.FIREBASE_WORKLOAD_IDENTITY_PROVIDER || vars.FIREBASE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_EMAIL || vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
           project_id: ${{ steps.deploy_config.outputs.project_id }}
 
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Validate configuration
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+          HAS_DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY != '' }}
+          HAS_FRONTEND_URL: ${{ (secrets.FRONTEND_URL || vars.FRONTEND_URL) != '' }}
+          HAS_STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY != '' }}
+          HAS_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET != '' }}
+          HAS_VITE_FIREBASE_API_KEY: ${{ (secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY) != '' }}
+          HAS_VITE_FIREBASE_APP_ID: ${{ (secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID) != '' }}
+          HAS_VITE_FIREBASE_AUTH_DOMAIN: ${{ (secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN) != '' }}
+          HAS_VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ (secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID) != '' }}
+          HAS_VITE_FIREBASE_PROJECT_ID: ${{ (secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID) != '' }}
+          HAS_VITE_FIREBASE_STORAGE_BUCKET: ${{ (secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET) != '' }}
+          HAS_VITE_GOOGLE_MAPS_API_KEY: ${{ (secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY) != '' }}
+          HAS_VITE_GOOGLE_MAP_ID: ${{ (secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID) != '' }}
         run: |
           gcloud config set project "$FIREBASE_PROJECT_ID"
           required_keys=(
-            FRONTEND_URL
-            VITE_GOOGLE_MAPS_API_KEY
-            VITE_GOOGLE_MAP_ID
-            VITE_FIREBASE_API_KEY
-            VITE_FIREBASE_AUTH_DOMAIN
-            VITE_FIREBASE_PROJECT_ID
-            VITE_FIREBASE_STORAGE_BUCKET
-            VITE_FIREBASE_MESSAGING_SENDER_ID
-            VITE_FIREBASE_APP_ID
-            DEVICE_TOKEN_PRIVATE_KEY
-            STRIPE_SECRET_KEY
-            STRIPE_WEBHOOK_SECRET
+            DEVICE_TOKEN_PRIVATE_KEY:HAS_DEVICE_TOKEN_PRIVATE_KEY
+            FRONTEND_URL:HAS_FRONTEND_URL
+            STRIPE_SECRET_KEY:HAS_STRIPE_SECRET_KEY
+            STRIPE_WEBHOOK_SECRET:HAS_STRIPE_WEBHOOK_SECRET
+            VITE_FIREBASE_API_KEY:HAS_VITE_FIREBASE_API_KEY
+            VITE_FIREBASE_APP_ID:HAS_VITE_FIREBASE_APP_ID
+            VITE_FIREBASE_AUTH_DOMAIN:HAS_VITE_FIREBASE_AUTH_DOMAIN
+            VITE_FIREBASE_MESSAGING_SENDER_ID:HAS_VITE_FIREBASE_MESSAGING_SENDER_ID
+            VITE_FIREBASE_PROJECT_ID:HAS_VITE_FIREBASE_PROJECT_ID
+            VITE_FIREBASE_STORAGE_BUCKET:HAS_VITE_FIREBASE_STORAGE_BUCKET
+            VITE_GOOGLE_MAPS_API_KEY:HAS_VITE_GOOGLE_MAPS_API_KEY
+            VITE_GOOGLE_MAP_ID:HAS_VITE_GOOGLE_MAP_ID
           )
-          for key in "${required_keys[@]}"; do
-            if [ -z "${!key}" ]; then
+          for required in "${required_keys[@]}"; do
+            key="${required%%:*}"
+            flag="${required#*:}"
+            if [ "${!flag}" != "true" ]; then
               echo "Set $key in GitHub secrets or variables before deploying." >&2
               exit 1
             fi
@@ -135,15 +125,33 @@ jobs:
         run: npm install -g firebase-tools@15.17.0
 
       - name: Confirm Firebase target project
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: firebase projects:list | grep "$FIREBASE_PROJECT_ID"
 
       - name: Sync Firebase Functions secrets
+        env:
+          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
           printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
           printf '%s' "$STRIPE_WEBHOOK_SECRET" | firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project "$FIREBASE_PROJECT_ID" --data-file=-
 
       - name: Write functions deploy env file
+        env:
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || vars.CORS_ALLOWED_ORIGINS }}
+          DEVICE_ACCESS_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_ACCESS_TOKEN_TTL_SECONDS || vars.DEVICE_ACCESS_TOKEN_TTL_SECONDS }}
+          DEVICE_ACTIVATION_URL: ${{ secrets.DEVICE_ACTIVATION_URL || vars.DEVICE_ACTIVATION_URL }}
+          DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
+          DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE }}
+          DEVICE_TOKEN_ISSUER: ${{ secrets.DEVICE_TOKEN_ISSUER || vars.DEVICE_TOKEN_ISSUER }}
+          DEVICE_VERIFICATION_URI: ${{ secrets.DEVICE_VERIFICATION_URI || vars.DEVICE_VERIFICATION_URI }}
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
+          PUBLIC_APP_BASE_URL: ${{ secrets.PUBLIC_APP_BASE_URL || vars.PUBLIC_APP_BASE_URL }}
         run: |
           public_app_base_url="${PUBLIC_APP_BASE_URL%/}"
           if [ -z "$public_app_base_url" ]; then
@@ -173,6 +181,16 @@ jobs:
         run: corepack pnpm --filter crowdpm-functions test
 
       - name: Build frontend
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE || vars.VITE_API_BASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
         run: corepack pnpm --filter crowdpm-frontend build
 
       - name: Build functions
@@ -222,12 +240,17 @@ jobs:
 
       - name: Deploy Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --force
 
       - name: Verify Firestore field overrides
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: |
           firebase firestore:indexes --project "$FIREBASE_PROJECT_ID" > /tmp/remote-indexes.json
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("fs");
             const local = JSON.parse(fs.readFileSync("firestore.indexes.json", "utf8"));
@@ -259,6 +282,8 @@ jobs:
 
       - name: Wait for Firestore indexes
         if: ${{ steps.firestore_indexes.outputs.changed == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: |
           echo "Waiting for Firestore indexes to finish building..."
           end=$((SECONDS + 900))
@@ -280,28 +305,62 @@ jobs:
           fi
 
       - name: Deploy hosting and functions
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE || vars.VITE_API_BASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
         run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
 
       - name: Bootstrap first super admin
-        if: ${{ env.FIRST_SUPER_ADMIN_EMAIL }}
-        run: corepack pnpm --filter crowdpm-functions admin:bootstrap-super-admin
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+          FIRST_SUPER_ADMIN_DISPLAY_NAME: ${{ secrets.FIRST_SUPER_ADMIN_DISPLAY_NAME || vars.FIRST_SUPER_ADMIN_DISPLAY_NAME }}
+          FIRST_SUPER_ADMIN_EMAIL: ${{ secrets.FIRST_SUPER_ADMIN_EMAIL || vars.FIRST_SUPER_ADMIN_EMAIL }}
+          FIRST_SUPER_ADMIN_PASSWORD: ${{ secrets.FIRST_SUPER_ADMIN_PASSWORD }}
+        run: |
+          if [ -z "$FIRST_SUPER_ADMIN_EMAIL" ]; then
+            echo "FIRST_SUPER_ADMIN_EMAIL not set; skipping super admin bootstrap."
+            exit 0
+          fi
+          corepack pnpm --filter crowdpm-functions admin:bootstrap-super-admin
 
       - name: Deploy Firestore rules
         if: ${{ steps.firestore.outputs.changed == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID"
 
       - name: Deploy Storage rules
         if: ${{ steps.storage.outputs.changed == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: firebase deploy --only storage --project "$FIREBASE_PROJECT_ID"
 
       - name: Frontend availability check
-        if: ${{ env.FRONTEND_URL }}
+        env:
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
         run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "FRONTEND_URL not set; skipping frontend availability check."
+            exit 0
+          fi
           curl --fail --silent --show-error "$FRONTEND_URL" >/dev/null
 
       - name: Frontend asset MIME check
-        if: ${{ env.FRONTEND_URL }}
+        env:
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
         run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "FRONTEND_URL not set; skipping frontend asset MIME check."
+            exit 0
+          fi
           html="$(curl --fail --silent --show-error "$FRONTEND_URL")"
           asset_path="$(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | head -n1)"
           test -n "$asset_path" || { echo "Unable to find a built JS asset in the deployed HTML."; exit 1; }
@@ -315,11 +374,21 @@ jobs:
             || { echo "Unexpected asset content type for $asset_path: ${content_type:-missing}"; exit 1; }
 
       - name: Frontend API rewrite check
-        if: ${{ env.FRONTEND_URL }}
+        env:
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
         run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "FRONTEND_URL not set; skipping frontend API rewrite check."
+            exit 0
+          fi
           curl --fail --silent --show-error "${FRONTEND_URL%/}/api/health"
 
       - name: API health check
-        if: ${{ env.FUNCTIONS_HEALTH_URL }}
+        env:
+          FUNCTIONS_HEALTH_URL: ${{ secrets.FUNCTIONS_HEALTH_URL || vars.FUNCTIONS_HEALTH_URL }}
         run: |
+          if [ -z "$FUNCTIONS_HEALTH_URL" ]; then
+            echo "FUNCTIONS_HEALTH_URL not set; skipping API health check."
+            exit 0
+          fi
           curl --fail --silent --show-error "$FUNCTIONS_HEALTH_URL"
