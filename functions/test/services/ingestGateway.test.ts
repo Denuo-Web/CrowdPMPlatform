@@ -140,11 +140,12 @@ describe("ingestGatewayHandler", () => {
     expect(res.payload).toMatchObject({ accepted: true, batchId: "batch-1", deviceId: "device-123" });
     expect(deps.verifyDeviceAccessToken).toHaveBeenCalledWith("test-token");
     expect(deps.verifyDpopProof).toHaveBeenCalledWith("proof-token", expect.objectContaining({
-      htu: "http://127.0.0.1:5001/crowdpm-local/us-central1/ingestGateway",
+      htu: expect.stringMatching(/^http:\/\/127\.0\.0\.1:5001\/[^/]+\/us-central1\/ingestGateway$/),
       acceptableHtu: ["http://127.0.0.1:5001/"],
       allowMissingAthOnHtu: ["http://127.0.0.1:5001/"],
       expectedAth: expect.any(String),
       expectedThumbprint: "jkt-1",
+      method: "POST",
     }));
     expect(deps.checkDpopReplay).toHaveBeenCalledWith(expect.objectContaining({
       accessTokenJti: "token-jti-1",
