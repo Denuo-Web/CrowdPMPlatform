@@ -6,6 +6,8 @@ import { httpError } from "./httpError.js";
 type VerifyOptions = {
   method: string;
   htu: string;
+  acceptableHtu?: string[];
+  allowMissingAthOnHtu?: string[];
   maxAgeSeconds?: number;
   clockSkewSeconds?: number;
   expectedThumbprint?: string;
@@ -70,7 +72,7 @@ export async function verifyDpopProof(proof: string | undefined, options: Verify
     throw unauthorized("DPoP htm mismatch");
   }
 
-  if (htu !== options.htu) {
+  if (htu !== options.htu && !(options.acceptableHtu ?? []).includes(htu)) {
     throw unauthorized("DPoP htu mismatch");
   }
 
@@ -81,8 +83,12 @@ export async function verifyDpopProof(proof: string | undefined, options: Verify
     throw unauthorized("DPoP iat outside acceptable window");
   }
 
-  if (options.expectedAth && (!ath || typeof ath !== "string" || ath !== options.expectedAth)) {
-    throw unauthorized("DPoP ath mismatch");
+  if (options.expectedAth) {
+    const allowMissingAth = !ath
+      && (options.allowMissingAthOnHtu ?? []).includes(htu);
+    if (!allowMissingAth && (typeof ath !== "string" || ath !== options.expectedAth)) {
+      throw unauthorized("DPoP ath mismatch");
+    }
   }
 
   if (!protectedJwk) {

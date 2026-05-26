@@ -65,6 +65,21 @@ export function buildCanonicalEndpointUrl(baseUrl: string, requestUrl: string | 
   return new URL(relativePath, joinableBaseUrl).toString();
 }
 
+export function buildFunctionRelativeEndpointUrl(baseUrl: string, requestUrl: string | undefined): string {
+  const origin = normalizeBaseUrl(baseUrl).origin;
+  const cleaned = (requestUrl ?? "/").split("#", 1)[0] || "/";
+  if (cleaned === "/" || cleaned.length === 0) {
+    return `${origin}/`;
+  }
+  if (cleaned.startsWith("?")) {
+    return `${origin}/${cleaned}`;
+  }
+  if (cleaned.startsWith("/?")) {
+    return `${origin}${cleaned}`;
+  }
+  return `${origin}${cleaned.startsWith("/") ? cleaned : `/${cleaned}`}`;
+}
+
 export function extractClientIp(headers: IncomingHttpHeaders): string | null {
   const appEngineIp = firstHeaderValue(headers["x-appengine-user-ip"]);
   if (appEngineIp) return appEngineIp;

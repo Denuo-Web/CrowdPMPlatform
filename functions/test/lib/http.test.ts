@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCanonicalEndpointUrl,
+  buildFunctionRelativeEndpointUrl,
   deriveNetworkHint,
   extractClientIp,
   stripApiEntryPrefix,
@@ -77,6 +78,29 @@ describe("buildCanonicalEndpointUrl", () => {
       "http://127.0.0.1:5001/crowdpm-local/us-central1/ingestGateway",
       "?visibility=public"
     )).toBe("http://127.0.0.1:5001/crowdpm-local/us-central1/ingestGateway?visibility=public");
+  });
+});
+
+describe("buildFunctionRelativeEndpointUrl", () => {
+  it("builds the legacy function-relative URL for crowdpmApi routes", () => {
+    expect(buildFunctionRelativeEndpointUrl(
+      "https://us-central1-crowdpmplatform.cloudfunctions.net/crowdpmApi",
+      "/device/access-token"
+    )).toBe("https://us-central1-crowdpmplatform.cloudfunctions.net/device/access-token");
+  });
+
+  it("builds the legacy function-relative URL for ingest root requests", () => {
+    expect(buildFunctionRelativeEndpointUrl(
+      "https://us-central1-crowdpmplatform.cloudfunctions.net/ingestGateway",
+      "/"
+    )).toBe("https://us-central1-crowdpmplatform.cloudfunctions.net/");
+  });
+
+  it("preserves root query strings for legacy ingest URLs", () => {
+    expect(buildFunctionRelativeEndpointUrl(
+      "https://us-central1-crowdpmplatform.cloudfunctions.net/ingestGateway",
+      "?visibility=public"
+    )).toBe("https://us-central1-crowdpmplatform.cloudfunctions.net/?visibility=public");
   });
 });
 
