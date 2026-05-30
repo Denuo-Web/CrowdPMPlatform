@@ -41,6 +41,20 @@ export type NodePurchaseVariantId = "standard";
 export type NodeCampaignTierId = "founding_node_reservation" | "certification_support";
 export type NodeCampaignPurchaseType = "node_hardware" | "certification_support";
 
+export type NodeReservationPledgeRequest = {
+  name: string;
+  email: string;
+  intendedQuantity: number;
+  consentToEmail: true;
+};
+
+export type NodeReservationPledgeResponse = {
+  pledgeId: string;
+  status: "recorded";
+  created: boolean;
+  intendedQuantity: number;
+};
+
 export type NodePurchaseReceipt = {
   sessionId: string;
   purchaseType: NodeCampaignPurchaseType;

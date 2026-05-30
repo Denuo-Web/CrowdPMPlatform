@@ -18,8 +18,8 @@ const HIGHLIGHTS = [
     description: "Browse shared PM2.5 measurements from the dedicated live map experience.",
   },
   {
-    title: "Conditional node launch",
-    description: "Reserve first-run hardware or support FCC testing without implying immediate shipment.",
+    title: "Node launch waitlist",
+    description: "Join the first-run interest list while paid reservations and certification support payments are paused.",
   },
   {
     title: "Batch exports",
@@ -85,8 +85,8 @@ export default function HomePage({
             </Heading>
             <Text size="3" color="gray" as="p" style={{ maxWidth: 680 }}>
               CrowdPM combines open hardware, account-scoped activation, public measurement publishing,
-              and a 3D map for community air quality data. Expo payments are structured as certification
-              support or conditional reservations that ship only after FCC authorization.
+              and a 3D map for community air quality data. Expo interest is collected through a
+              non-binding waitlist before paid reservations open.
             </Text>
           </Flex>
 
@@ -117,7 +117,7 @@ export default function HomePage({
 
           <Flex gap="3" wrap="wrap">
             <Button variant="ghost" onClick={onOpenProducts}>
-              Reserve or support
+              Join node waitlist
             </Button>
             <Button variant="ghost" onClick={onOpenAbout}>
               Learn about the project

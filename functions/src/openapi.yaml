@@ -68,6 +68,35 @@ paths:
           description: Stripe or application configuration is missing.
         '502':
           description: Stripe returned an upstream error.
+  /v1/node-reservation-pledges:
+    post:
+      operationId: submitNodeReservationPledge
+      summary: Join the node reservation waitlist
+      description: >
+        Records non-binding interest in future CrowdPM node reservations while
+        paid reservation checkout is paused. This endpoint does not create a
+        preorder, collect payment, reserve hardware, or guarantee availability.
+        Submissions are deduplicated by normalized email address and update the
+        existing waitlist record with the latest name, intended quantity, source,
+        consent, and submission metadata.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeReservationPledgeRequest'
+      responses:
+        '200':
+          description: Waitlist pledge recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeReservationPledgeResponse'
+        '400':
+          description: Invalid waitlist payload or missing consent.
+        '429':
+          description: Rate limited.
   /v1/node-purchase/receipts:
     get:
       operationId: listNodePurchaseReceipts
@@ -1229,6 +1258,52 @@ components:
         unlockGranted:
           type: boolean
           example: true
+    NodeReservationPledgeRequest:
+      type: object
+      required:
+        - name
+        - email
+        - intendedQuantity
+        - consentToEmail
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        intendedQuantity:
+          type: integer
+          minimum: 1
+          maximum: 10
+        consentToEmail:
+          type: boolean
+          const: true
+          description: Confirms the submitter understands the waitlist is non-binding and permits CrowdPM to email reservation availability updates.
+    NodeReservationPledgeResponse:
+      type: object
+      required:
+        - pledgeId
+        - status
+        - created
+        - intendedQuantity
+      properties:
+        pledgeId:
+          type: string
+          description: Stable waitlist record identifier derived from normalized email.
+        status:
+          type: string
+          enum: [recorded]
+        created:
+          type: boolean
+          description: True when this email created a new waitlist record.
+        intendedQuantity:
+          type: integer
+          minimum: 1
+          maximum: 10
     NodePurchaseCheckoutRequest:
       type: object
       additionalProperties: false

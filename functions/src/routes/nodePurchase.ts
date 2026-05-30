@@ -19,6 +19,7 @@ import {
   createThemeSaveCheckoutSession,
   handleStripeWebhook,
   listNodePurchaseReceipts,
+  submitNodeReservationPledge,
 } from "../services/nodePurchase.js";
 
 type RequestWithRawBody = {
@@ -29,6 +30,13 @@ const nodeCheckoutBodySchema = z.object({
   tierId: z.enum(["founding_node_reservation", "certification_support"]).optional(),
   variantId: z.enum(["standard"]).optional(),
   quantity: z.number().int().min(1).max(10).optional(),
+}).strict();
+
+const nodeReservationPledgeBodySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(254),
+  intendedQuantity: z.number().int().min(1).max(10),
+  consentToEmail: z.literal(true),
 }).strict();
 
 const confirmThemeCheckoutBodySchema = z.object({
@@ -55,6 +63,20 @@ function rawBodyAsString(req: FastifyRequest): string {
 }
 
 export const nodePurchaseRoutes: FastifyPluginAsync = async (app) => {
+  app.post("/v1/node-reservation-pledges", {
+    preHandler: [
+      rateLimitGuard((req) => `node-reservation-pledge:ip:${requestIp(req)}`, 10, 60_000),
+      rateLimitGuard("node-reservation-pledge:global", 500, 60_000),
+    ],
+  }, async (req) => {
+    const parsed = nodeReservationPledgeBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw httpError(400, "invalid_request", "invalid request", { details: parsed.error.flatten() });
+    }
+
+    return submitNodeReservationPledge(parsed.data);
+  });
+
   app.post("/v1/node-purchase/checkout-session", {
     preHandler: [
       optionalUserGuard(),

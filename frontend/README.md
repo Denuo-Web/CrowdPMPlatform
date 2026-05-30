@@ -19,7 +19,7 @@ pnpm --filter crowdpm-frontend preview
 
 ## Testing
 
-The frontend uses Playwright for a small smoke/regression suite. The tests cover public routing, protected-route gating, mocked dashboard data, admin access, sign-out, and the node checkout redirect contract.
+The frontend uses Playwright for a small smoke/regression suite. The tests cover public routing, protected-route gating, mocked dashboard data, admin access, sign-out, and the node waitlist submission contract.
 
 Run from the repository root:
 

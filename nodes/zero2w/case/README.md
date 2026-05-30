@@ -9,6 +9,7 @@ Two-piece 3D-printable enclosure for a node with a clear inside cavity of
 - `node_case_lid.stl`: Vented snap-detent lid with a GPS antenna opening, GPS mounting bosses, and etched outside E-face product/GPS/site markings. The lid STL has the lip pointing upward so it can print without supports.
 - `node_case_combined.scad`: Self-contained OpenSCAD wrapper that imports `node_case_combined.stl` so the model opens cleanly even though the original parametric `node_case.scad` source is not included in this directory.
 - `node_case_combined.stl`: Base and lid on one build plate with a 10 mm gap. This combined-only export adds two long thin slots through the base bottom.
+- `node_case_assembled_display.scad`: Presentation-only render assembly that imports the print-ready base/lid STLs, flips the lid into its installed orientation on top of the case body, and overlays dark-blue lid markings. Use this for product visuals, not as the manufacturing source.
 
 ## Current Defaults
 

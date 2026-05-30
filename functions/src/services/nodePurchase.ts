@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { db } from "../lib/fire.js";
 import { httpError } from "../lib/httpError.js";
@@ -10,6 +11,8 @@ import {
 } from "./accountEntitlements.js";
 
 const CATALOG_COLLECTION = "paymentCatalog";
+const NODE_RESERVATION_PLEDGE_COLLECTION = "nodeReservationPledges";
+const NODE_RESERVATION_PLEDGE_SOURCE = "node_page_waitlist";
 const USER_SETTINGS_COLLECTION = "userSettings";
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_TAX_CODE = "txcd_99999999";
@@ -78,6 +81,20 @@ export type ConfirmSubscriptionCheckoutSessionResult = {
   confirmed: true;
   sessionId: string;
   subscriptionSynchronized: true;
+};
+
+export type NodeReservationPledgeInput = {
+  name: string;
+  email: string;
+  intendedQuantity: number;
+  consentToEmail: true;
+};
+
+export type NodeReservationPledgeResult = {
+  pledgeId: string;
+  status: "recorded";
+  created: boolean;
+  intendedQuantity: number;
 };
 
 export type NodePurchaseVariantId = "standard";
@@ -238,6 +255,14 @@ function readNodeQuantity(value: unknown): number | null {
     return null;
   }
   return parsed;
+}
+
+function normalizeEmailAddress(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function pledgeDocIdForEmail(normalizedEmail: string): string {
+  return createHash("sha256").update(normalizedEmail).digest("hex");
 }
 
 function extractExpandableId(value: string | { id: string } | null | undefined): string | null {
@@ -581,6 +606,44 @@ export function listStripeCatalogSeedConfigs(): CheckoutProductConfig[] {
     subscriptionConfigForOffer("pro_monthly"),
     subscriptionConfigForOffer("pro_yearly"),
   ];
+}
+
+export async function submitNodeReservationPledge(args: NodeReservationPledgeInput): Promise<NodeReservationPledgeResult> {
+  const normalizedEmail = normalizeEmailAddress(args.email);
+  const pledgeId = pledgeDocIdForEmail(normalizedEmail);
+  const ref = db().collection(NODE_RESERVATION_PLEDGE_COLLECTION).doc(pledgeId);
+  const existing = await ref.get();
+  const existingData = existing.data?.() as Record<string, unknown> | undefined;
+  const now = new Date().toISOString();
+  const previousSubmissionCount = readFiniteNumber(existingData?.submissionCount) ?? 0;
+  const payload: Record<string, unknown> = {
+    name: args.name.trim(),
+    email: args.email.trim(),
+    normalizedEmail,
+    intendedQuantity: args.intendedQuantity,
+    consentToEmail: true,
+    noPaymentAcknowledged: true,
+    nonBindingInterestAcknowledged: true,
+    status: "active",
+    source: NODE_RESERVATION_PLEDGE_SOURCE,
+    lastSource: NODE_RESERVATION_PLEDGE_SOURCE,
+    lastSubmittedAt: now,
+    updatedAt: now,
+    submissionCount: previousSubmissionCount + 1,
+  };
+
+  if (!existing.exists) {
+    payload.createdAt = now;
+  }
+
+  await ref.set(payload, { merge: true });
+
+  return {
+    pledgeId,
+    status: "recorded",
+    created: !existing.exists,
+    intendedQuantity: args.intendedQuantity,
+  };
 }
 
 export async function createNodeCampaignCheckoutSession(args: {

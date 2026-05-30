@@ -56,11 +56,14 @@ test("admin route is role-gated and renders admin workflows for super admins", a
   await expect(adminPage.getByText("admin.e2e@example.com")).toBeVisible();
 });
 
-test("node checkout flow uses the API redirect contract", async ({ page }) => {
+test("node waitlist flow records a non-binding pledge", async ({ page }) => {
   await page.goto("/node");
-  await expect(page.getByRole("heading", { name: "Products - CrowdPM Node Hardware" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Join the CrowdPM node waitlist before paid reservations open." })).toBeVisible();
 
-  await page.getByRole("button", { name: "Checkout - $375.00" }).click();
-  await expect(page).toHaveURL(/\/node\?checkout=success$/);
-  await expect(page.getByText("Checkout completed. Stripe will email a receipt.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Paid Reservations Paused" })).toBeDisabled();
+  await page.getByPlaceholder("Name").fill("Expo Visitor");
+  await page.getByPlaceholder("Email").fill("visitor@example.com");
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Join Reservation Waitlist" }).click();
+  await expect(page.getByText("You are on the reservation waitlist.")).toBeVisible();
 });
