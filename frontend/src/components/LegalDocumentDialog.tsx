@@ -156,13 +156,20 @@ function TermsOfService() {
         </P>
       </Section>
 
-      <Section title="3. Paid Products, Reservations, and Support">
+      <Section title="3. Waitlists, Paid Products, Reservations, and Support">
         <P>
-          CrowdPM founding node reservations and certification support contributions are processed
-          through Stripe Checkout for {COMPANY_NAME}. A founding node reservation is a conditional
-          preorder for planned physical CrowdPM node hardware. It is not immediate delivery and no
-          node will be shipped, delivered, transferred, or released to an end user before required
-          FCC equipment authorization is complete.
+          CrowdPM may collect non-binding node reservation waitlist submissions before paid
+          reservations are available. A waitlist submission is not a preorder, purchase,
+          reservation, deposit, or guarantee that hardware will be available. No payment is collected
+          for joining the waitlist. If paid reservations open later, CrowdPM may email waitlist
+          contacts with release details.
+        </P>
+        <P>
+          When enabled, CrowdPM founding node reservations and certification support contributions
+          are processed through Stripe Checkout for {COMPANY_NAME}. A founding node reservation is
+          a conditional preorder for planned physical CrowdPM node hardware. It is not immediate
+          delivery and no node will be shipped, delivered, transferred, or released to an end user
+          before required FCC equipment authorization is complete.
         </P>
         <P>
           The founding node reservation price is $375 per reserved node with standard US shipping
@@ -178,9 +185,9 @@ function TermsOfService() {
           fulfillment issues make shipment impractical.
         </P>
         <P>
-          Certification support is a support-only contribution toward FCC testing and launch costs.
-          It does not reserve hardware, include shipment, create equity or debt, grant a service
-          entitlement, or qualify as a charitable tax-deductible donation.
+          When enabled, certification support is a support-only contribution toward FCC testing and
+          launch costs. It does not reserve hardware, include shipment, create equity or debt, grant
+          a service entitlement, or qualify as a charitable tax-deductible donation.
         </P>
         <P>
           CrowdPM may also offer one-time digital expansion purchases processed through Stripe
@@ -332,6 +339,7 @@ function PrivacyPolicy() {
           <Bullet>User settings, including default batch visibility, map/rendering preferences, and theme preferences.</Bullet>
           <Bullet>Device records, including device IDs, optional device names, owner IDs, model/version, status, fingerprints, public key material, pairing codes, token records, and last-seen timestamps.</Bullet>
           <Bullet>Measurement and batch data, including PM2.5 readings, pollutant/unit, latitude, longitude, altitude, precision, timestamp, flags, batch IDs, visibility, moderation state, storage paths, and related metadata.</Bullet>
+          <Bullet>Node reservation waitlist records, including name, email address, intended quantity, consent status, submission source, submission timestamps, and deduplication metadata.</Bullet>
           <Bullet>Paid product records, including Stripe Checkout session IDs, payment status, campaign tier, reservation or support quantity, customer contact details, billing and shipping addresses where applicable, order totals, tax amounts, shipping details for hardware reservations, receipts, refunds, support messages, and related fulfillment or entitlement records.</Bullet>
           <Bullet>Moderation and administration records, including moderator user IDs, role changes, disabled account status, moderation reasons, and audit records.</Bullet>
           <Bullet>Technical and security data, including IP address or network hints, request headers, logs, rate-limit keys, browser/device information available to the service, and error diagnostics.</Bullet>
@@ -350,6 +358,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>Provide authentication, device pairing, ingest, map display, dashboards, moderation, and administration features.</Bullet>
           <Bullet>Store and process sensor measurements, enforce visibility choices, and show public batches on the map and public API.</Bullet>
+          <Bullet>Maintain node reservation waitlists, estimate first-run demand, deduplicate submissions, and email waitlist contacts when paid reservations are ready to open.</Bullet>
           <Bullet>Process paid product purchases, node reservations, certification support contributions, tax calculation, authorized hardware shipments, digital entitlements, receipts, refunds or replacements, and order support requests.</Bullet>
           <Bullet>Protect the service through rate limiting, abuse detection, access controls, logging, audits, token revocation, and troubleshooting.</Bullet>
           <Bullet>Save preferences and improve reliability, usability, and performance.</Bullet>
@@ -380,6 +389,7 @@ function PrivacyPolicy() {
         <BulletList>
           <Bullet>With Google Firebase and Google Cloud services used for authentication, hosting, functions, Firestore, storage, and operational logs.</Bullet>
           <Bullet>With Stripe for payment processing, sales tax calculation, checkout, receipts, fraud prevention, refunds, and related payment operations.</Bullet>
+          <Bullet>With email or customer-communication providers if needed to send reservation availability or waitlist-related messages.</Bullet>
           <Bullet>With shipping, fulfillment, repair, or customer-support providers where needed to deliver or support authorized node hardware reservations.</Bullet>
           <Bullet>With the public, when you or a device under your account submits public approved batch data.</Bullet>
           <Bullet>With authorized moderators and administrators who need access to operate, secure, moderate, or support CrowdPM.</Bullet>

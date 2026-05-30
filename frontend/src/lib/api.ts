@@ -19,6 +19,8 @@ import type {
   NodeCampaignTierId,
   NodePurchaseReceipt,
   NodePurchaseVariantId,
+  NodeReservationPledgeRequest,
+  NodeReservationPledgeResponse,
   PublicBatchDetail,
   PublicBatchMapResponse,
   PublicBatchSummary,
@@ -125,6 +127,8 @@ export type {
   NodeCampaignTierId,
   NodePurchaseReceipt,
   NodePurchaseVariantId,
+  NodeReservationPledgeRequest,
+  NodeReservationPledgeResponse,
   PublicBatchDetail,
   PublicBatchMapResponse,
   PublicBatchSummary,
@@ -170,6 +174,18 @@ export async function createNodeCampaignCheckoutSession(
 
 export async function listNodePurchaseReceipts(): Promise<NodePurchaseReceipt[]> {
   return requestJson<NodePurchaseReceipt[]>("/v1/node-purchase/receipts");
+}
+
+export async function submitNodeReservationPledge(
+  payload: NodeReservationPledgeRequest,
+): Promise<NodeReservationPledgeResponse> {
+  return requestJson<NodeReservationPledgeResponse>("/v1/node-reservation-pledges", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createThemeSaveCheckoutSession(): Promise<CheckoutRedirectSession> {

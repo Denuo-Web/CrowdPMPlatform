@@ -36,7 +36,9 @@ Important values:
 
 The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` are expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
 
-The node purchase flow now relies on Stripe Checkout shipping-address collection plus Stripe Tax. Configure Stripe Tax in the Stripe Dashboard so the physical-goods product can add US sales tax on top of the `$375` base node price after the buyer enters a US shipping address. Power source and USB-A-to-micro-USB cable are not included with node hardware.
+The public node page currently uses `POST /v1/node-reservation-pledges` to collect non-binding waitlist interest without payment. Submissions are stored in Firestore `nodeReservationPledges` records deduplicated by normalized email.
+
+The retained node purchase flow relies on Stripe Checkout shipping-address collection plus Stripe Tax. Configure Stripe Tax in the Stripe Dashboard so the physical-goods product can add US sales tax on top of the `$375` base node price after the buyer enters a US shipping address before re-enabling paid checkout. Power source and USB-A-to-micro-USB cable are not included with node hardware.
 
 Stripe Checkout can still show `$0.00` tax for a valid US address when the Stripe account is not registered to collect tax in that jurisdiction. In Stripe's tax breakdown, that appears as `taxability_reason=not_collecting`. This is expected account configuration behavior, not a missing `automatic_tax` integration parameter.
 

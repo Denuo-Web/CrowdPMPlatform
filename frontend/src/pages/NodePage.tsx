@@ -1,16 +1,18 @@
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   Box,
   Badge,
   Button,
   Callout,
   Card,
+  Checkbox,
   Flex,
   Heading,
   Select,
   Separator,
   Tabs,
   Text,
+  TextField,
 } from "@radix-ui/themes";
 import { ExternalLink } from "../components/ExternalLink";
 import { InternalNewTabAnchor } from "../components/InternalLink";
@@ -20,7 +22,7 @@ import {
   type LegalDocumentId,
 } from "../components/LegalDocumentDialog";
 import { APP_ROUTES } from "../lib/appRoutes";
-import { createNodeCampaignCheckoutSession, type NodeCampaignTierId } from "../lib/api";
+import { submitNodeReservationPledge } from "../lib/api";
 import { useBrowserLocation } from "../lib/locationStore";
 
 type SectionProps = {
@@ -36,8 +38,6 @@ type TableProps = {
 const BASE_NODE_PRICE_CENTS = 37_500;
 const CERTIFICATION_SUPPORT_UNIT_CENTS = 2_500;
 const NODE_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
-const SUPPORT_QUANTITY_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
-const FCC_REFUND_CHECKPOINT_LABEL = "December 31, 2026";
 
 const ZERO_2_W_URL = "https://www.amazon.com/Raspberry-Heatsink-Adapter-Quad-core-Bluetooth/dp/B0DRRDJKDV?crid=3VRASN6F43J3I&dib=eyJ2IjoiMSJ9.t-BTW30Tluhki6lWlHIi2rulYzLQMAGFk2OvRz-XBQTYgqnJ_G_aL00we8CvIVnKwG2Qc75itVV_M0bpyBUc5YG3r7ovACXMTrtlMTUUnZBffQIiEHNn3Yqk-Chei1tyWsoAB2tTea-NTY83Z_QJUq5-3JfgkUiz0PjutePcLmnkuMuu_IWzavyrhKUNrUjTEI8BgTUNhwVf1epqDu2ahFmxjLDI5xaFLi5SgdjHoeg.dYFNm35Nc1V43vvTuZ8pC5dQ-abvmafEYOYXJh8E5Ss&dib_tag=se&keywords=raspberry%2Bpi%2Bzero%2B2%2Bw&qid=1778398787&sprefix=Raspberry%2BPi%2BZero%2B2%2BW%2Caps%2C178&sr=8-2-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&th=1&linkCode=ll2&tag=lipbalm01-20&linkId=35363b709757db3d01baa6b973c52a01&language=en_US&ref_=as_li_ss_tl";
 const PMS5003_URL = "https://www.amazon.com/BestParts-Digital-Particle-Concentration-PMS5003/dp/B0B1DQKV4N?crid=2CSK1VIYBL9LN&dib=eyJ2IjoiMSJ9.98U0BdlWh4vmYk-feCR0PmZpSTwOza-Io1F0J5aEYxt-Atifz_ulAtN2MSfswsFSwZAY5G94uyuiJwZQ1pJEgEFX1HBloSTDsFit2N07xKk13LTq4uwQ5LAGvFMMuUeWH2nLcVwe2SqFNb96Kn75VRFoIWku34vnGX3ryzbO4xgpcNSnNDH7QmqgRqu-KYCsnv1gNizUAnlnmoc22RpGTvxNFB4H45LOk2Hf_kqlcO8.l0Rt1mD9IbbwGvgp5ZFUzZgF46xGdPN76S6jbwz8CLE&dib_tag=se&keywords=Plantower+PMS5003&qid=1778398886&sprefix=plantower+pms5003%2Caps%2C225&sr=8-4&linkCode=ll2&tag=lipbalm01-20&linkId=7eb62de9f07d2cf0f66b47bb7349e0db&language=en_US&ref_=as_li_ss_tl";
@@ -48,7 +48,7 @@ const USB_TO_TTL_URL = "https://www.amazon.com/dp/B0G61569JG?th=1&linkCode=ll2&t
 const OTG_ADAPTER_URL = "https://www.amazon.com/dp/B015GZLG8I?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=d31fc458d54c90c0e3a7ef69edccad08&language=en_US&ref_=as_li_ss_tl";
 const LINE_CABLES_URL = "https://www.amazon.com/dp/B08YRGVYPV?th=1&linkCode=ll2&tag=lipbalm01-20&linkId=0e64e274f6524982c4806f74982744e0&language=en_US&ref_=as_li_ss_tl";
 const NODE_PRODUCT_LABEL = "Founding node reservation";
-const NODE_PRODUCT_SUMMARY = "Conditional reservation for the standard PM2.5 node with PMS5003, GPS, temperature/humidity, local storage, and USB micro power input.";
+const NODE_PRODUCT_SUMMARY = "Non-binding interest list for the standard PM2.5 node with PMS5003, GPS, temperature/humidity, local storage, and USB micro power input.";
 
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -294,30 +294,45 @@ function readCheckoutNotice(search: string): CheckoutNotice {
 
 export default function NodePage() {
   const location = useBrowserLocation();
-  const [activeCheckoutTier, setActiveCheckoutTier] = useState<NodeCampaignTierId | null>(null);
-  const [checkoutError, setCheckoutError] = useState("");
   const checkoutNotice = readCheckoutNotice(location.search);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentId | null>(null);
   const [reservationQuantity, setReservationQuantity] = useState(1);
-  const [supportUnits, setSupportUnits] = useState(1);
+  const [pledgeName, setPledgeName] = useState("");
+  const [pledgeEmail, setPledgeEmail] = useState("");
+  const [pledgeConsent, setPledgeConsent] = useState(false);
+  const [pledgeSubmitting, setPledgeSubmitting] = useState(false);
+  const [pledgeSubmitted, setPledgeSubmitted] = useState(false);
+  const [pledgeError, setPledgeError] = useState("");
   const reservationSubtotalCents = BASE_NODE_PRICE_CENTS * reservationQuantity;
-  const supportSubtotalCents = CERTIFICATION_SUPPORT_UNIT_CENTS * supportUnits;
 
-  const handleCampaignCheckout = async (tierId: NodeCampaignTierId) => {
-    setCheckoutError("");
-    setActiveCheckoutTier(tierId);
-    try {
-      const quantity = tierId === "certification_support" ? supportUnits : reservationQuantity;
-      const session = await createNodeCampaignCheckoutSession(tierId, quantity);
-      window.location.assign(session.url);
+  const handlePledgeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPledgeError("");
+    setPledgeSubmitted(false);
+
+    if (!pledgeConsent) {
+      setPledgeError("Please confirm that this is a non-binding waitlist request with no payment today.");
       return;
+    }
+
+    setPledgeSubmitting(true);
+    try {
+      await submitNodeReservationPledge({
+        name: pledgeName,
+        email: pledgeEmail,
+        intendedQuantity: reservationQuantity,
+        consentToEmail: true,
+      });
+      setPledgeSubmitted(true);
     }
     catch (err) {
       const message = err instanceof Error && err.message.trim().length > 0
         ? err.message
-        : "Unable to open checkout right now.";
-      setCheckoutError(message);
-      setActiveCheckoutTier(null);
+        : "Unable to join the waitlist right now.";
+      setPledgeError(message);
+    }
+    finally {
+      setPledgeSubmitting(false);
     }
   };
 
@@ -332,12 +347,12 @@ export default function NodePage() {
                 FCC authorization pending
               </Badge>
               <Heading as="h1" size="6">
-                Reserve a founding CrowdPM node, shipping only after authorization.
+                Join the CrowdPM node waitlist before paid reservations open.
               </Heading>
               <Text size="3" color="gray" as="p">
-                CrowdPM is collecting conditional reservations and certification support for the expo launch.
-                Node hardware is not available for immediate delivery; reservations convert to shipment only after
-                FCC equipment authorization is complete.
+                CrowdPM is collecting non-binding interest for the expo launch while paid reservations are paused.
+                Node hardware is not available for purchase, reservation, shipment, or delivery until CrowdPM is ready
+                to proceed with FCC equipment authorization.
               </Text>
               <Text size="2" color="gray" as="p">
                 The base model is the only planned first-run configuration. It measures PM2.5, GPS,
@@ -354,16 +369,16 @@ export default function NodePage() {
               <Flex direction="column" gap="4">
                 <Box>
                   <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
-                    Conditional preorder
+                    Waitlist open
                   </Text>
                   <Heading as="h2" size="4" mt="1">
-                    Founding node reservation
+                    Paid reservations paused
                   </Heading>
                   <Flex align="baseline" gap="2" mt="2" wrap="wrap">
                     <Text as="div" size="6" weight="bold">
                       {formatUsd(BASE_NODE_PRICE_CENTS)}
                     </Text>
-                    <Text size="2" color="gray">per reserved device</Text>
+                    <Text size="2" color="gray">expected reservation price</Text>
                   </Flex>
                   <Text size="2" color="gray" as="p" mt="2">
                     {NODE_PRODUCT_SUMMARY}
@@ -372,34 +387,34 @@ export default function NodePage() {
 
                 <Callout.Root color="amber" variant="surface">
                   <Callout.Text>
-                    No node will be shipped, delivered, or released to an end user before FCC equipment authorization is complete.
+                    No payment is collected today. Joining the waitlist is not a preorder, purchase, reservation, or guarantee of availability.
                   </Callout.Text>
                 </Callout.Root>
 
                 <Box>
                   <Text size="2" weight="bold" as="div" mb="2">
-                    Reservation terms
+                    Waitlist terms
                   </Text>
                   <BulletList>
-                    <ListItem>US shipping is included after authorization; sales tax is calculated at checkout.</ListItem>
-                    <ListItem>Power source and USB-A-to-micro-USB cable are supplied by the customer.</ListItem>
-                    <ListItem>If authorization is not complete by {FCC_REFUND_CHECKPOINT_LABEL}, reservation holders can request a refund or continue waiting.</ListItem>
+                    <ListItem>No money is collected and no unit is reserved by this form.</ListItem>
+                    <ListItem>CrowdPM will email the list when paid reservations are ready to open.</ListItem>
+                    <ListItem>Any future paid reservation will include its own checkout terms, taxes, and FCC authorization disclosures.</ListItem>
                   </BulletList>
                 </Box>
 
                 <Flex align="center" justify="between" gap="3">
                   <Box>
                     <Text size="2" weight="bold" as="div">
-                      Reserved quantity
+                      Intended quantity
                     </Text>
-                    <Text size="1" color="gray">Up to 10 devices per checkout</Text>
+                    <Text size="1" color="gray">Helps estimate first-run demand</Text>
                   </Box>
                   <Box style={{ width: "7rem" }}>
                     <Select.Root
                       value={String(reservationQuantity)}
                       onValueChange={(value) => setReservationQuantity(Number(value))}
                     >
-                      <Select.Trigger aria-label="Reserved quantity" />
+                      <Select.Trigger aria-label="Intended quantity" />
                       <Select.Content>
                         {NODE_QUANTITY_OPTIONS.map((option) => (
                           <Select.Item key={option} value={String(option)}>
@@ -418,7 +433,7 @@ export default function NodePage() {
                   }}
                 >
                   <Flex justify="between" gap="3">
-                    <Text size="2" color="gray">Reservation</Text>
+                    <Text size="2" color="gray">Expected reservation</Text>
                     <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
                   </Flex>
                   <Flex justify="between" gap="3" mt="1">
@@ -426,28 +441,69 @@ export default function NodePage() {
                     <Text size="2">{NODE_PRODUCT_LABEL}</Text>
                   </Flex>
                   <Flex justify="between" gap="3" mt="1">
-                    <Text size="2" color="gray">Quantity</Text>
+                    <Text size="2" color="gray">Intended quantity</Text>
                     <Text size="2">x {reservationQuantity}</Text>
                   </Flex>
                   <Separator size="4" my="3" />
                   <Flex justify="between" align="center" gap="3">
-                    <Text size="3" weight="bold">Subtotal</Text>
+                    <Text size="3" weight="bold">Estimated subtotal</Text>
                     <Text as="div" size="5" weight="bold">{formatUsd(reservationSubtotalCents)}</Text>
                   </Flex>
                   <Text size="1" color="gray" as="p" mt="1">
-                    Applicable tax is calculated in Stripe Checkout.
+                    Estimate only. No payment, tax, shipping, or checkout is collected from the waitlist form.
                   </Text>
                 </Box>
 
                 <Button
                   size="3"
-                  onClick={() => { void handleCampaignCheckout("founding_node_reservation"); }}
-                  disabled={Boolean(activeCheckoutTier)}
+                  disabled
                 >
-                  {activeCheckoutTier === "founding_node_reservation"
-                    ? "Opening Checkout..."
-                    : `Reserve - ${formatUsd(reservationSubtotalCents)}`}
+                  Paid Reservations Paused
                 </Button>
+
+                <Box asChild>
+                  <form onSubmit={handlePledgeSubmit}>
+                    <Flex direction="column" gap="3">
+                      <Text size="2" weight="bold" as="div">
+                        Join reservation waitlist
+                      </Text>
+                      <TextField.Root
+                        value={pledgeName}
+                        onChange={(event) => setPledgeName(event.target.value)}
+                        placeholder="Name"
+                        required
+                        maxLength={120}
+                        autoComplete="name"
+                      />
+                      <TextField.Root
+                        value={pledgeEmail}
+                        onChange={(event) => setPledgeEmail(event.target.value)}
+                        placeholder="Email"
+                        required
+                        maxLength={254}
+                        type="email"
+                        autoComplete="email"
+                      />
+                      <Text as="label" size="2" color="gray">
+                        <Flex gap="2" align="start">
+                          <Checkbox
+                            checked={pledgeConsent}
+                            onCheckedChange={(checked) => setPledgeConsent(checked === true)}
+                            required
+                            mt="1"
+                          />
+                          <span>
+                            I understand this is a non-binding waitlist request, no payment is collected today,
+                            and CrowdPM may email me when paid reservations are ready to open.
+                          </span>
+                        </Flex>
+                      </Text>
+                      <Button type="submit" size="3" disabled={pledgeSubmitting}>
+                        {pledgeSubmitting ? "Joining Waitlist..." : "Join Reservation Waitlist"}
+                      </Button>
+                    </Flex>
+                  </form>
+                </Box>
               </Flex>
             </Card>
 
@@ -455,7 +511,7 @@ export default function NodePage() {
               <Flex direction="column" gap="4">
                 <Box>
                   <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
-                    No hardware reward
+                    Payment paused
                   </Text>
                   <Heading as="h2" size="4" mt="1">
                     Certification support
@@ -467,55 +523,30 @@ export default function NodePage() {
                     <Text size="2" color="gray">per support unit</Text>
                   </Flex>
                   <Text size="2" color="gray" as="p" mt="2">
-                    Helps fund FCC testing and launch costs. This tier does not reserve hardware, equity,
-                    charitable tax treatment, or service access.
+                    Certification support payments are paused for the expo so the campaign collects only
+                    non-binding interest before paid reservations reopen.
                   </Text>
                 </Box>
 
-                <Flex align="center" justify="between" gap="3">
-                  <Box>
-                    <Text size="2" weight="bold" as="div">
-                      Support units
-                    </Text>
-                    <Text size="1" color="gray">Choose 1 to 10 units</Text>
-                  </Box>
-                  <Box style={{ width: "7rem" }}>
-                    <Select.Root
-                      value={String(supportUnits)}
-                      onValueChange={(value) => setSupportUnits(Number(value))}
-                    >
-                      <Select.Trigger aria-label="Support units" />
-                      <Select.Content>
-                        {SUPPORT_QUANTITY_OPTIONS.map((option) => (
-                          <Select.Item key={option} value={String(option)}>
-                            {option}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                </Flex>
-
-                <Flex justify="between" align="center" gap="3">
-                  <Text size="3" weight="bold">Support total</Text>
-                  <Text as="div" size="5" weight="bold">{formatUsd(supportSubtotalCents)}</Text>
-                </Flex>
+                <Callout.Root color="gray" variant="surface">
+                  <Callout.Text>
+                    No certification support payment is collected on this page right now.
+                  </Callout.Text>
+                </Callout.Root>
 
                 <Button
                   size="3"
                   variant="soft"
-                  onClick={() => { void handleCampaignCheckout("certification_support"); }}
-                  disabled={Boolean(activeCheckoutTier)}
+                  disabled
                 >
-                  {activeCheckoutTier === "certification_support"
-                    ? "Opening Checkout..."
-                    : `Support certification - ${formatUsd(supportSubtotalCents)}`}
+                  Certification Support Paused
                 </Button>
               </Flex>
             </Card>
 
             <Text size="1" color="gray" as="p">
-              Campaign payments are processed by Stripe for Denuo Web LLC and are subject to the{" "}
+              Waitlist submissions are not payments or reservations. Future paid reservations or support
+              payments will be subject to the{" "}
               <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
                 Terms
               </LegalDocumentLink>
@@ -548,9 +579,17 @@ export default function NodePage() {
           </Callout.Root>
         ) : null}
 
-        {checkoutError ? (
+        {pledgeSubmitted ? (
+          <Callout.Root color="green" variant="surface" mt="4">
+            <Callout.Text>
+              You are on the reservation waitlist. CrowdPM will email you when paid reservations are ready to open.
+            </Callout.Text>
+          </Callout.Root>
+        ) : null}
+
+        {pledgeError ? (
           <Callout.Root color="tomato" variant="surface" mt="4">
-            <Callout.Text>{checkoutError}</Callout.Text>
+            <Callout.Text>{pledgeError}</Callout.Text>
           </Callout.Root>
         ) : null}
       </Box>
@@ -559,16 +598,17 @@ export default function NodePage() {
 
       <Section title="Campaign Options">
         <Text size="2" color="gray" as="p">
-          Expo payments are either conditional reservations for the first standard node build
-          or support-only contributions toward certification costs.
+          Expo payments are paused. The active option is a non-binding waitlist for people who want
+          to hear when paid reservations are ready to open.
         </Text>
 
         <InfoTable
-          headers={["Option", "What it includes", "Price"]}
+          headers={["Option", "What it includes", "Current status"]}
           rows={[
-            [NODE_PRODUCT_LABEL, "Conditional reservation for PM2.5 sensing, GPS, temperature/humidity, local storage, USB micro power input, US shipping after authorization, and setup documentation", formatUsd(BASE_NODE_PRICE_CENTS)],
-            ["Certification support", "Support-only contribution toward FCC testing and launch costs; no hardware reward or service entitlement", `${formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)} units`],
-            ["Refund checkpoint", `Reservation holders may request a refund or keep waiting if FCC authorization is not complete by ${FCC_REFUND_CHECKPOINT_LABEL}`, "Applies to reservations"],
+            ["Reservation waitlist", "Non-binding interest for PM2.5 sensing, GPS, temperature/humidity, local storage, USB micro power input, and setup documentation", "Open, no payment collected"],
+            [NODE_PRODUCT_LABEL, `Expected future reservation price is ${formatUsd(BASE_NODE_PRICE_CENTS)} before applicable tax`, "Paid checkout paused"],
+            ["Certification support", `Support-only contribution tier previously planned at ${formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)} per unit`, "Paid checkout paused"],
+            ["FCC authorization", "No node will be shipped, delivered, or released to an end user before required authorization is complete", "Required before delivery"],
           ]}
         />
       </Section>

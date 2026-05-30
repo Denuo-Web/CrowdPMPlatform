@@ -153,6 +153,111 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("POST /v1/node-reservation-pledges", () => {
+  it("records a non-binding node reservation pledge", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-reservation-pledges",
+      headers: {
+        "x-forwarded-for": "203.0.113.8",
+      },
+      payload: {
+        name: "Expo Visitor",
+        email: "Visitor@Example.COM",
+        intendedQuantity: 3,
+        consentToEmail: true,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { pledgeId: string; status: string; created: boolean; intendedQuantity: number };
+    expect(body).toEqual({
+      pledgeId: expect.any(String),
+      status: "recorded",
+      created: true,
+      intendedQuantity: 3,
+    });
+
+    expect(dbStore.get(`nodeReservationPledges/${body.pledgeId}`)).toMatchObject({
+      name: "Expo Visitor",
+      email: "Visitor@Example.COM",
+      normalizedEmail: "visitor@example.com",
+      intendedQuantity: 3,
+      consentToEmail: true,
+      noPaymentAcknowledged: true,
+      nonBindingInterestAcknowledged: true,
+      status: "active",
+      source: "node_page_waitlist",
+      lastSource: "node_page_waitlist",
+      submissionCount: 1,
+    });
+    expect(mocks.checkoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates pledges by normalized email and updates the existing record", async () => {
+    const app = await buildApp();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/node-reservation-pledges",
+      payload: {
+        name: "First Name",
+        email: "Buyer@Example.com",
+        intendedQuantity: 1,
+        consentToEmail: true,
+      },
+    });
+    const firstBody = first.json() as { pledgeId: string };
+    const createdAt = dbStore.get(`nodeReservationPledges/${firstBody.pledgeId}`)?.createdAt;
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/node-reservation-pledges",
+      payload: {
+        name: "Updated Name",
+        email: " buyer@example.COM ",
+        intendedQuantity: 5,
+        consentToEmail: true,
+      },
+    });
+
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toMatchObject({
+      pledgeId: firstBody.pledgeId,
+      created: false,
+      intendedQuantity: 5,
+    });
+    expect(dbStore.get(`nodeReservationPledges/${firstBody.pledgeId}`)).toMatchObject({
+      name: "Updated Name",
+      email: "buyer@example.COM",
+      normalizedEmail: "buyer@example.com",
+      intendedQuantity: 5,
+      submissionCount: 2,
+      createdAt,
+    });
+  });
+
+  it("requires explicit email consent", async () => {
+    const app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/node-reservation-pledges",
+      payload: {
+        name: "Expo Visitor",
+        email: "visitor@example.com",
+        intendedQuantity: 1,
+        consentToEmail: false,
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(dbStore.size).toBe(0);
+  });
+});
+
 describe("POST /v1/node-purchase/checkout-session", () => {
   it("creates the product once, then creates a Checkout session for the node purchase", async () => {
     const app = await buildApp();

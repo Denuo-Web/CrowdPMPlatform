@@ -170,6 +170,14 @@ export async function mockCrowdPmApi(page: Page) {
     if (method === "GET" && path === "/v1/admin/submissions") return json(route, { submissions: batches });
     if (method === "GET" && path === "/v1/admin/users") return json(route, adminUsers);
     if (method === "GET" && path === "/v1/admin/demo-batch") return json(route, { deviceId: "device-e2e-1", batchId: "batch-e2e-1", summary: batches[0] });
+    if (method === "POST" && path === "/v1/node-reservation-pledges") {
+      return json(route, {
+        pledgeId: "pledge_e2e_node",
+        status: "recorded",
+        created: true,
+        intendedQuantity: 1,
+      });
+    }
     if (method === "POST" && path === "/v1/node-purchase/checkout-session") {
       return json(route, {
         sessionId: "cs_e2e_node",
