@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { timestampToMillis, type UserThemeAppearance } from "@crowdpm/types";
+import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import { Button, Dialog, Flex, Select, Switch, Text } from "@radix-ui/themes";
 import {
   fetchBatchDetail,
@@ -75,18 +76,20 @@ import {
   type VideoExportQuality,
   type VideoExportSettings,
 } from "./mapVideoExport";
+import "./MapPage.css";
 
 const NO_BATCH_SELECTED_KEY = "__no_batch_selected__";
 const SEE_ALL_BATCHES_KEY = "__see_all_batches__";
-const MAP_PANEL_BACKGROUND = "color-mix(in srgb, var(--color-panel-solid) 88%, transparent)";
-const MAP_PANEL_BORDER = "1px solid var(--gray-a6)";
-const MAP_PANEL_BLUR = "blur(12px)";
+const MAP_MOBILE_CONTROLS_MEDIA_QUERY = "(max-width: 767px)";
+const MAP_MOBILE_VISIBLE_TOP_OFFSET = 76;
+const MAP_MOBILE_SELECTION_CLEARANCE = 24;
+const MAP_MOBILE_MIN_VISIBLE_MAP_HEIGHT = 140;
 const MAP_PANEL_SECTION_BORDER = "1px solid var(--gray-a5)";
-const MAP_FLOATING_PANEL_TOP = "max(calc(env(safe-area-inset-top, 0px) + 72px), var(--space-4))";
 const MAP_VIEWPORT_BACKGROUND =
   "radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--accent-8) 20%, transparent), transparent 55%), "
   + "radial-gradient(100% 100% at 100% 0%, color-mix(in srgb, var(--gray-7) 14%, transparent), transparent 60%), "
   + "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 82%, var(--gray-1)), var(--color-surface))";
+const ZERO_CAMERA_OFFSET = { x: 0, y: 0 } as const;
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -153,9 +156,13 @@ export default function MapPage({
   const [batchBrowserTimeRange, setBatchBrowserTimeRange] = useState<BatchBrowserTimeRange>("all");
   const [showPublicBatchBrowser, setShowPublicBatchBrowser] = useState(true);
   const [showPrivateBatchBrowser, setShowPrivateBatchBrowser] = useState(true);
+  const mapRootRef = useRef<HTMLDivElement | null>(null);
   const map3DRef = useRef<Map3DHandle | null>(null);
+  const controlsPanelRef = useRef<HTMLDivElement | null>(null);
   const hasHandledDemoBatchRequestRef = useRef(false);
   const exportAbortRef = useRef<AbortController | null>(null);
+  const [isMobileControlsExpanded, setMobileControlsExpanded] = useState(false);
+  const [selectionCameraOffset, setSelectionCameraOffset] = useState<{ x: number; y: number }>(ZERO_CAMERA_OFFSET);
   const [captureAvailableState, setCaptureAvailableState] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -634,6 +641,65 @@ export default function MapPage({
   ]);
   const canStartExport = isExportSectionVisible && !isExporting && !exportDisabledReason;
   const shouldShowMeasurementSection = rows.length > 0 || Boolean(selectedBatchKey && isLoadingBatch);
+  const hasSecondaryControls = Boolean((selectedPoint && !isShowingAllPublic24h) || isExportSectionVisible);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateSelectionCameraOffset = () => {
+      const mapRect = mapRootRef.current?.getBoundingClientRect() ?? null;
+      const controlsRect = controlsPanelRef.current?.getBoundingClientRect() ?? null;
+      if (!mapRect || !controlsRect || !window.matchMedia(MAP_MOBILE_CONTROLS_MEDIA_QUERY).matches) {
+        setSelectionCameraOffset((prev) => (prev.x === 0 && prev.y === 0 ? prev : ZERO_CAMERA_OFFSET));
+        return;
+      }
+
+      const visibleTop = mapRect.top + MAP_MOBILE_VISIBLE_TOP_OFFSET;
+      const controlsTop = Math.min(Math.max(controlsRect.top, mapRect.top), mapRect.bottom);
+      const visibleBottom = Math.max(
+        visibleTop + MAP_MOBILE_MIN_VISIBLE_MAP_HEIGHT,
+        controlsTop - MAP_MOBILE_SELECTION_CLEARANCE
+      );
+      const viewportCenterY = mapRect.top + (mapRect.height / 2);
+      const desiredSelectedY = visibleTop + ((visibleBottom - visibleTop) / 2);
+      const nextOffsetY = Math.round(Math.max(0, Math.min(
+        mapRect.height * 0.3,
+        viewportCenterY - desiredSelectedY
+      )));
+
+      setSelectionCameraOffset((prev) => (
+        prev.x === 0 && prev.y === nextOffsetY
+          ? prev
+          : { x: 0, y: nextOffsetY }
+      ));
+    };
+
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateSelectionCameraOffset);
+    if (mapRootRef.current) resizeObserver?.observe(mapRootRef.current);
+    if (controlsPanelRef.current) resizeObserver?.observe(controlsPanelRef.current);
+
+    const mobileControlsQuery = window.matchMedia(MAP_MOBILE_CONTROLS_MEDIA_QUERY);
+    mobileControlsQuery.addEventListener("change", updateSelectionCameraOffset);
+    window.addEventListener("resize", updateSelectionCameraOffset);
+    const animationFrameId = window.requestAnimationFrame(updateSelectionCameraOffset);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      resizeObserver?.disconnect();
+      mobileControlsQuery.removeEventListener("change", updateSelectionCameraOffset);
+      window.removeEventListener("resize", updateSelectionCameraOffset);
+    };
+  }, [
+    exportError,
+    exportStatus,
+    hasSecondaryControls,
+    isExporting,
+    isMobileControlsExpanded,
+    renderedVideoUrl,
+    shouldShowMeasurementSection,
+  ]);
 
   useEffect(() => {
     if (!isExportSectionVisible) return;
@@ -878,7 +944,7 @@ export default function MapPage({
   ]);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div ref={mapRootRef} className="map-page-root">
       <div
         aria-hidden
         style={{
@@ -902,26 +968,15 @@ export default function MapPage({
           showAllMode={effectiveShowAllMode}
           defaultZoom={persistedMapZoom ?? undefined}
           forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
+          selectionCameraOffset={selectionCameraOffset}
         />
       </Suspense>
 
-      {/* ---- Floating controls panel (top-right) ---- */}
+      {/* ---- Map controls panel ---- */}
       <div
-        style={{
-          position: "absolute",
-          top: MAP_FLOATING_PANEL_TOP,
-          right: "var(--space-4)",
-          zIndex: 110,
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-2)",
-          maxWidth: 360,
-          width: "calc(100% - var(--space-8))",
-          maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 88px)",
-          overflowY: "auto",
-          paddingBottom: "var(--space-2)",
-          scrollbarWidth: "thin",
-        }}
+        ref={controlsPanelRef}
+        className="map-controls-stack"
+        data-testid="map-controls-panel"
       >
         {/* Error banner */}
         {queryError ? (
@@ -942,27 +997,14 @@ export default function MapPage({
 
         {/* Batch selector */}
         <div
-          style={{
-            padding: "var(--space-3)",
-            borderRadius: "var(--radius-3)",
-            background: MAP_PANEL_BACKGROUND,
-            backdropFilter: MAP_PANEL_BLUR,
-            WebkitBackdropFilter: MAP_PANEL_BLUR,
-            border: MAP_PANEL_BORDER,
-            boxShadow: "var(--shadow-3)",
-            color: "var(--gray-12)",
-          }}
+          className="map-controls-card"
+          data-expanded={isMobileControlsExpanded ? "true" : "false"}
+          data-testid="map-controls-card"
         >
           <label style={{ display: "block", marginBottom: 6, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
             Measurement batch
           </label>
-          <div
-            style={{
-              width: "fit-content",
-              minWidth: "min(420px, 100%)",
-              maxWidth: "min(760px, 100%)",
-            }}
-          >
+          <div className="map-controls-batch-select">
             <Select.Root
               value={batchSelectValue}
               onValueChange={handleBatchSelectValueChange}
@@ -1025,16 +1067,7 @@ export default function MapPage({
             </Select.Root>
           </div>
           {shouldShowMeasurementSection || isExportSectionVisible ? (
-            <div
-              style={{
-                marginTop: "var(--space-3)",
-                paddingTop: "var(--space-3)",
-                borderTop: MAP_PANEL_SECTION_BORDER,
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-3)",
-              }}
-            >
+            <div className="map-controls-measurement-section">
               {rows.length ? (
                 isShowingAllPublic24h ? (
                   <div>
@@ -1093,20 +1126,6 @@ export default function MapPage({
                         onCheckedChange={setTrackBall}
                       />
                     </div>
-                    {selectedPoint ? (
-                      <div style={{ marginTop: 8 }}>
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
-                          {selectedMoment ? selectedMoment.toLocaleString() : ""}
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                          PM2.5: <strong>{selectedPoint.value} {selectedPoint.unit || "µg/m³"}</strong>
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                          {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
-                          {selectedPoint.precision != null ? ` · ±${selectedPoint.precision}m` : ""}
-                        </p>
-                      </div>
-                    ) : null}
                   </div>
                 )
               ) : selectedBatchKey && isLoadingBatch ? (
@@ -1120,82 +1139,76 @@ export default function MapPage({
                 </div>
               ) : null}
 
-              {isExportSectionVisible ? (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "var(--space-2)",
-                    paddingTop: shouldShowMeasurementSection ? "var(--space-3)" : 0,
-                    borderTop: shouldShowMeasurementSection ? MAP_PANEL_SECTION_BORDER : "none",
-                  }}
-                >
-                  {isExporting ? (
-                    <>
-                      <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
-                        {exportStatus ?? "Exporting..."}
-                      </p>
+              {hasSecondaryControls ? (
+                <>
+                  <button
+                    type="button"
+                    className="map-controls-details-toggle"
+                    aria-expanded={isMobileControlsExpanded}
+                    aria-controls="map-controls-secondary-content"
+                    data-testid="map-mobile-details-toggle"
+                    onClick={() => setMobileControlsExpanded((prev) => !prev)}
+                  >
+                    <span>Details & actions</span>
+                    {isMobileControlsExpanded ? <ChevronDownIcon aria-hidden /> : <ChevronUpIcon aria-hidden />}
+                  </button>
+                  <div
+                    id="map-controls-secondary-content"
+                    className="map-controls-secondary"
+                    data-testid="map-controls-secondary"
+                  >
+                    {selectedPoint && !isShowingAllPublic24h ? (
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--font-size-2)" }}>
+                          {selectedMoment ? selectedMoment.toLocaleString() : ""}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                          PM2.5: <strong>{selectedPoint.value} {selectedPoint.unit || "µg/m³"}</strong>
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                          {selectedPoint.lat.toFixed(5)}, {selectedPoint.lon.toFixed(5)}
+                          {selectedPoint.precision != null ? ` · ±${selectedPoint.precision}m` : ""}
+                        </p>
+                      </div>
+                    ) : null}
+                    {isExportSectionVisible ? (
                       <div
                         style={{
-                          height: 4,
-                          borderRadius: 2,
-                          background: "var(--gray-a5)",
-                          overflow: "hidden",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "var(--space-2)",
+                          paddingTop: selectedPoint && !isShowingAllPublic24h ? "var(--space-3)" : 0,
+                          borderTop: selectedPoint && !isShowingAllPublic24h ? MAP_PANEL_SECTION_BORDER : "none",
                         }}
                       >
-                        <div
-                          style={{
-                            width: `${Math.round(exportProgress * 100)}%`,
-                            height: "100%",
-                            background: "var(--accent-9)",
-                            borderRadius: 2,
-                            transition: "width 0.2s ease",
-                          }}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCancelVideoExport}
-                        style={{
-                          alignSelf: "flex-start",
-                          padding: "var(--space-1) var(--space-3)",
-                          borderRadius: "var(--radius-2)",
-                          border: "1px solid var(--gray-a6)",
-                          background: "transparent",
-                          color: "var(--gray-12)",
-                          fontSize: "var(--font-size-1)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cancel Export
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
-                        {renderedVideoUrl ? (
+                        {isExporting ? (
                           <>
-                            <a
-                              href={renderedVideoUrl}
-                              download={renderedVideoName ?? "export.webm"}
+                            <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "var(--gray-11)" }}>
+                              {exportStatus ?? "Exporting..."}
+                            </p>
+                            <div
                               style={{
-                                display: "inline-block",
-                                padding: "var(--space-1) var(--space-3)",
-                                borderRadius: "var(--radius-2)",
-                                background: "var(--accent-9)",
-                                color: "var(--accent-contrast)",
-                                fontWeight: 600,
-                                fontSize: "var(--font-size-1)",
-                                textDecoration: "none",
-                                cursor: "pointer",
+                                height: 4,
+                                borderRadius: 2,
+                                background: "var(--gray-a5)",
+                                overflow: "hidden",
                               }}
                             >
-                              {isWatermarkedExport ? "Download Preview" : "Download Video"}
-                            </a>
+                              <div
+                                style={{
+                                  width: `${Math.round(exportProgress * 100)}%`,
+                                  height: "100%",
+                                  background: "var(--accent-9)",
+                                  borderRadius: 2,
+                                  transition: "width 0.2s ease",
+                                }}
+                              />
+                            </div>
                             <button
                               type="button"
-                              onClick={handleOpenVideoExportSettings}
+                              onClick={handleCancelVideoExport}
                               style={{
+                                alignSelf: "flex-start",
                                 padding: "var(--space-1) var(--space-3)",
                                 borderRadius: "var(--radius-2)",
                                 border: "1px solid var(--gray-a6)",
@@ -1205,50 +1218,91 @@ export default function MapPage({
                                 cursor: "pointer",
                               }}
                             >
-                              Regenerate Video
+                              Cancel Export
                             </button>
                           </>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={handleOpenVideoExportSettings}
-                            disabled={!canStartExport}
-                            style={{
-                              padding: "var(--space-1) var(--space-3)",
-                              borderRadius: "var(--radius-2)",
-                              border: "none",
-                              background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
-                              color: canStartExport ? "var(--accent-contrast)" : "var(--gray-11)",
-                              fontWeight: 600,
-                              fontSize: "var(--font-size-1)",
-                              cursor: canStartExport ? "pointer" : "not-allowed",
-                            }}
-                          >
-                            {isWatermarkedExport ? "Create Preview" : "Create Video Now"}
-                          </button>
+                          <>
+                            <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                              {renderedVideoUrl ? (
+                                <>
+                                  <a
+                                    href={renderedVideoUrl}
+                                    download={renderedVideoName ?? "export.webm"}
+                                    style={{
+                                      display: "inline-block",
+                                      padding: "var(--space-1) var(--space-3)",
+                                      borderRadius: "var(--radius-2)",
+                                      background: "var(--accent-9)",
+                                      color: "var(--accent-contrast)",
+                                      fontWeight: 600,
+                                      fontSize: "var(--font-size-1)",
+                                      textDecoration: "none",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {isWatermarkedExport ? "Download Preview" : "Download Video"}
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={handleOpenVideoExportSettings}
+                                    style={{
+                                      padding: "var(--space-1) var(--space-3)",
+                                      borderRadius: "var(--radius-2)",
+                                      border: "1px solid var(--gray-a6)",
+                                      background: "transparent",
+                                      color: "var(--gray-12)",
+                                      fontSize: "var(--font-size-1)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Regenerate Video
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleOpenVideoExportSettings}
+                                  disabled={!canStartExport}
+                                  style={{
+                                    padding: "var(--space-1) var(--space-3)",
+                                    borderRadius: "var(--radius-2)",
+                                    border: "none",
+                                    background: canStartExport ? "var(--accent-9)" : "var(--gray-a5)",
+                                    color: canStartExport ? "var(--accent-contrast)" : "var(--gray-11)",
+                                    fontWeight: 600,
+                                    fontSize: "var(--font-size-1)",
+                                    cursor: canStartExport ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  {isWatermarkedExport ? "Create Preview" : "Create Video Now"}
+                                </button>
+                              )}
+                            </div>
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: "var(--font-size-1)",
+                                color: renderedVideoUrl ? "var(--accent-11)" : "var(--gray-11)",
+                              }}
+                            >
+                              {renderedVideoUrl
+                                ? (exportStatus ?? "Your video is ready to download.")
+                                : (exportDisabledReason ?? (isWatermarkedExport
+                                  ? "Create a watermarked preview flythrough from the selected measurement batch."
+                                  : "Create a video flythrough from the selected measurement batch."))}
+                            </p>
+                          </>
                         )}
+                        {exportError ? (
+                          <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "#f87171" }}>
+                            {exportError}
+                          </p>
+                        ) : null}
                       </div>
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: "var(--font-size-1)",
-                          color: renderedVideoUrl ? "var(--accent-11)" : "var(--gray-11)",
-                        }}
-                      >
-                        {renderedVideoUrl
-                          ? (exportStatus ?? "Your video is ready to download.")
-                          : (exportDisabledReason ?? (isWatermarkedExport
-                            ? "Create a watermarked preview flythrough from the selected measurement batch."
-                            : "Create a video flythrough from the selected measurement batch."))}
-                      </p>
-                    </>
-                  )}
-                  {exportError ? (
-                    <p style={{ margin: 0, fontSize: "var(--font-size-1)", color: "#f87171" }}>
-                      {exportError}
-                    </p>
-                  ) : null}
-                </div>
+                    ) : null}
+                  </div>
+                </>
               ) : null}
             </div>
           ) : null}

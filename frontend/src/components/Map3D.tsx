@@ -11,6 +11,7 @@ import {
   planExportCameraBase,
   planExportCameraFrame,
   planSelectionCamera,
+  type CameraScreenOffset,
   type CameraState,
 } from "../lib/mapCamera";
 import {
@@ -71,6 +72,7 @@ type Map3DProps = {
   defaultCenter?: { lat: number; lng: number };
   defaultZoom?: number;
   forceFollowSelection?: boolean;
+  selectionCameraOffset?: CameraScreenOffset;
   playbackPathMode?: PlaybackPathMode;
 };
 
@@ -410,6 +412,7 @@ const RealMap3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
   defaultCenter,
   defaultZoom,
   forceFollowSelection = false,
+  selectionCameraOffset,
   playbackPathMode = "full",
 }: Map3DProps, ref) {
   const divRef = useRef<HTMLDivElement | null>(null);
@@ -487,12 +490,13 @@ const RealMap3D = forwardRef<Map3DHandle, Map3DProps>(function Map3D({
           currentZoom: map.getZoom() ?? undefined,
           currentTilt: map.getTilt() ?? undefined,
           forceFollowSelection,
+          screenOffset: selectionCameraOffset,
         }));
       }
     }
 
     requestOverlayRedraw(overlay);
-  }, [forceFollowSelection, playbackPathMode, showAllMode]);
+  }, [forceFollowSelection, playbackPathMode, selectionCameraOffset, showAllMode]);
 
   useEffect(() => {
     syncOverlayRef.current = syncOverlay;

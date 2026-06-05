@@ -10,6 +10,11 @@ export type CameraState = {
   heading?: number;
 };
 
+export type CameraScreenOffset = {
+  x?: number;
+  y?: number;
+};
+
 export type ExportCameraFrame = {
   fromIndex: number;
   toIndex: number;
@@ -35,18 +40,54 @@ function easeInOutCubic(t: number): number {
     : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
 }
 
+function clampLatitude(lat: number): number {
+  return Math.min(Math.max(lat, -85.05112878), 85.05112878);
+}
+
+function pointToWorldPixels(point: CameraPoint, zoom: number): { x: number; y: number } {
+  const sinLat = Math.sin((clampLatitude(point.lat) * Math.PI) / 180);
+  const scale = 256 * (2 ** zoom);
+  return {
+    x: ((point.lon + 180) / 360) * scale,
+    y: (0.5 - (Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI))) * scale,
+  };
+}
+
+function worldPixelsToCenter(point: { x: number; y: number }, zoom: number): { lat: number; lng: number } {
+  const scale = 256 * (2 ** zoom);
+  const lng = ((point.x / scale) * 360) - 180;
+  const mercatorY = 0.5 - (point.y / scale);
+  const lat = 90 - ((360 * Math.atan(Math.exp(-mercatorY * 2 * Math.PI))) / Math.PI);
+  return { lat: clampLatitude(lat), lng };
+}
+
+function offsetCameraCenter(point: CameraPoint, zoom: number, offset?: CameraScreenOffset): { lat: number; lng: number } {
+  const offsetX = offset?.x ?? 0;
+  const offsetY = offset?.y ?? 0;
+  if (!offsetX && !offsetY) {
+    return { lat: point.lat, lng: point.lon };
+  }
+
+  const worldPoint = pointToWorldPixels(point, zoom);
+  return worldPixelsToCenter({
+    x: worldPoint.x + offsetX,
+    y: worldPoint.y + offsetY,
+  }, zoom);
+}
+
 export function planSelectionCamera(args: {
   point: CameraPoint;
   currentZoom: number | undefined;
   currentTilt: number | undefined;
   forceFollowSelection: boolean;
+  screenOffset?: CameraScreenOffset;
 }): CameraState {
   const targetZoom = args.forceFollowSelection
     ? Math.max(args.currentZoom ?? 18, 18)
     : Math.max(args.currentZoom ?? 17, 16);
   const targetTilt = (args.currentTilt ?? 0) < 10 ? 67.5 : undefined;
   return {
-    center: { lat: args.point.lat, lng: args.point.lon },
+    center: offsetCameraCenter(args.point, targetZoom, args.screenOffset),
     zoom: targetZoom,
     tilt: targetTilt,
   };

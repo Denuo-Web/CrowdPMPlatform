@@ -25,6 +25,32 @@ test("guest can use public routes and protected routes stay gated", async ({ pag
   await expect(page.getByRole("heading", { name: "User Dashboard" })).toHaveCount(0);
 });
 
+test("mobile map controls keep the viewport center clear", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Explore live map" }).click();
+  await expect(page).toHaveURL(/\/map$/);
+  await expect(page.getByRole("combobox", { name: "Measurement batch" })).toContainText("E2E Mobile Node");
+
+  const controlsCard = page.getByTestId("map-controls-card");
+  await expect(controlsCard).toBeVisible();
+  const cardBox = await controlsCard.boundingBox();
+  if (!cardBox) throw new Error("Map controls card did not render.");
+  expect(cardBox.y).toBeGreaterThan(844 / 2);
+  expect(cardBox.height).toBeLessThan(240);
+
+  const isViewportCenterCovered = await page.evaluate(() => {
+    const centerElement = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    return Boolean(centerElement?.closest('[data-testid="map-controls-card"]'));
+  });
+  expect(isViewportCenterCovered).toBe(false);
+
+  await expect(page.getByTestId("map-controls-secondary")).toBeHidden();
+  await page.getByTestId("map-mobile-details-toggle").click();
+  await expect(page.getByTestId("map-controls-secondary")).toBeVisible();
+});
+
 test("signed-in user can reach dashboard data and sign out", async ({ page }) => {
   await signInAsE2eUser(page, { email: "user.e2e@example.com" });
 
