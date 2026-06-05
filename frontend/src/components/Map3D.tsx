@@ -79,7 +79,11 @@ type Map3DProps = {
 // Pacific NW default
 const FALLBACK_CENTER = { lat: 44.56, lng: -123.26 };
 const FALLBACK_ZOOM = 7;
-type PathDatum = { path: [number, number, number][] };
+const PATH_COLOR_ALPHA = 200;
+const PATH_COLOR_STEP_DISTANCE = 56;
+const PATH_COLOR_MAX_INTERPOLATED_STEPS = 8;
+type RgbaColor = [number, number, number, number];
+type PathDatum = { path: number[]; colors: RgbaColor[] };
 type GuardedOverlayView = google.maps.OverlayView & {
   getMap?: () => google.maps.Map | null;
   requestRedraw?: () => void;
@@ -188,6 +192,69 @@ function interpolateColor(value: number, min: number, max: number): [number, num
   return [Math.round(r * 255), Math.round(g * 255), 0];
 }
 
+function measurementPathColor(value: number, min: number, max: number): RgbaColor {
+  const base = interpolateColor(value, min, max);
+  return [...base, PATH_COLOR_ALPHA];
+}
+
+function mixNumber(from: number, to: number, t: number): number {
+  return from + ((to - from) * t);
+}
+
+function mixPathColor(from: RgbaColor, to: RgbaColor, t: number): RgbaColor {
+  return [
+    Math.round(mixNumber(from[0], to[0], t)),
+    Math.round(mixNumber(from[1], to[1], t)),
+    Math.round(mixNumber(from[2], to[2], t)),
+    Math.round(mixNumber(from[3], to[3], t)),
+  ];
+}
+
+function colorDistance(from: RgbaColor, to: RgbaColor): number {
+  return Math.hypot(from[0] - to[0], from[1] - to[1], from[2] - to[2]);
+}
+
+function pathColorStepCount(from: RgbaColor, to: RgbaColor): number {
+  return Math.max(
+    1,
+    Math.min(PATH_COLOR_MAX_INTERPOLATED_STEPS, Math.ceil(colorDistance(from, to) / PATH_COLOR_STEP_DISTANCE))
+  );
+}
+
+function buildColorizedPath(series: MeasurementPoint[], min: number, max: number): PathDatum[] {
+  if (series.length < 2) return [];
+
+  const path: number[] = [];
+  const colors: RgbaColor[] = [];
+  const appendPathPoint = (lon: number, lat: number, color: RgbaColor) => {
+    path.push(lon, lat, 0);
+    colors.push(color);
+  };
+
+  for (let index = 0; index < series.length - 1; index += 1) {
+    const from = series[index];
+    const to = series[index + 1];
+    const fromColor = measurementPathColor(from.value, min, max);
+    const toColor = measurementPathColor(to.value, min, max);
+    const steps = pathColorStepCount(fromColor, toColor);
+
+    if (index === 0) {
+      appendPathPoint(from.lon, from.lat, fromColor);
+    }
+
+    for (let step = 1; step <= steps; step += 1) {
+      const t = step / steps;
+      appendPathPoint(
+        mixNumber(from.lon, to.lon, t),
+        mixNumber(from.lat, to.lat, t),
+        mixPathColor(fromColor, toColor, t)
+      );
+    }
+  }
+
+  return [{ path, colors }];
+}
+
 function signature(series: MeasurementPoint[]) {
   if (!series.length) return "empty";
   const first = series[0];
@@ -256,14 +323,15 @@ function createLayers(
   const pathSeries = playbackPathMode === "progressive"
     ? series.slice(0, clampedIndex + 1)
     : series;
-  const pathPoints = pathSeries.map((point) => [point.lon, point.lat, 0]);
+  const pathData = buildColorizedPath(pathSeries, scaledMin, scaledMax);
   const selected = series[clampedIndex] ?? series[series.length - 1];
 
   const pathLayer = new PathLayer<PathDatum>({
     id: "measurement-path",
-    data: [{ path: pathPoints }],
+    data: pathData,
+    _pathType: "open",
     getPath: (d) => d.path,
-    getColor: () => [80, 160, 255, 200],
+    getColor: (d) => d.colors,
     getWidth: () => 6,
     widthUnits: "pixels",
     parameters: {

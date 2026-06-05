@@ -17,6 +17,7 @@ CrowdPM documentation is organized by audience and environment. Avoid copying th
 | `hardware-builder.md` | Hardware builders | Device pairing, DPoP, access tokens, ingest payload contract. |
 | `openapi-swagger-ui.md` | API users | View `functions/src/openapi.yaml` in hosted or local Swagger UI. |
 | `test-plan.txt` | Capstone team | Sprint test scope, methods, ownership, and Kanban evidence. |
+| `test-results-report.md` | Capstone team | Current test results, coverage notes, and validation handoff. |
 | `INSTALL-openjdk25-linux.md` | Linux contributors | JDK 25 setup notes for Firebase emulators. |
 | `INSTALL-openjdk25-mac.md` | macOS contributors | JDK 25 setup notes for Firebase emulators. |
 
