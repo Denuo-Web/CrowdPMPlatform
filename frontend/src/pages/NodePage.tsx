@@ -266,229 +266,8 @@ export default function NodePage() {
   return (
     <>
       <Flex direction="column" gap="5">
-      <Box>
-        <Flex direction={{ initial: "column", md: "row" }} align="start" gap="5">
-          <Box style={{ flex: "1 1 34rem", minWidth: 0 }}>
-            <Flex direction="column" gap="3">
-              <Badge color="amber" variant="soft" style={{ alignSelf: "start" }}>
-                FCC authorization pending
-              </Badge>
-              <Heading as="h1" size="6">
-                Join the CrowdPM node waitlist before paid reservations open.
-              </Heading>
-              <Text size="3" color="gray" as="p">
-                CrowdPM is collecting non-binding interest for the expo launch while paid reservations are paused.
-                Node hardware is not available for purchase, reservation, shipment, or delivery until CrowdPM is ready
-                to proceed with FCC equipment authorization.
-              </Text>
-              <Text size="2" color="gray" as="p">
-                The base model is the only planned first-run configuration. It measures PM2.5, GPS,
-                temperature/humidity, and local storage telemetry, then uploads to CrowdPM when internet is available.
-              </Text>
-            </Flex>
-          </Box>
-
-          <Flex direction="column" gap="4" style={{ width: "100%", maxWidth: "30rem", minWidth: 0 }}>
-            <Card>
-              <Flex direction="column" gap="4">
-                <Box>
-                  <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
-                    Waitlist open
-                  </Text>
-                  <Heading as="h2" size="4" mt="1">
-                    Paid reservations paused
-                  </Heading>
-                  <Flex align="baseline" gap="2" mt="2" wrap="wrap">
-                    <Text as="div" size="6" weight="bold">
-                      {formatUsd(BASE_NODE_PRICE_CENTS)}
-                    </Text>
-                    <Text size="2" color="gray">expected reservation price</Text>
-                  </Flex>
-                  <Text size="2" color="gray" as="p" mt="2">
-                    {NODE_PRODUCT_SUMMARY}
-                  </Text>
-                </Box>
-
-                <Callout.Root color="amber" variant="surface">
-                  <Callout.Text>
-                    No payment is collected today. Joining the waitlist is not a preorder, purchase, reservation, or guarantee of availability.
-                  </Callout.Text>
-                </Callout.Root>
-
-                <Box>
-                  <Text size="2" weight="bold" as="div" mb="2">
-                    Waitlist terms
-                  </Text>
-                  <BulletList>
-                    <ListItem>No money is collected and no unit is reserved by this form.</ListItem>
-                    <ListItem>CrowdPM will email the list when paid reservations are ready to open.</ListItem>
-                    <ListItem>Any future paid reservation will include its own checkout terms, taxes, and FCC authorization disclosures.</ListItem>
-                  </BulletList>
-                </Box>
-
-                <Flex align="center" justify="between" gap="3">
-                  <Box>
-                    <Text size="2" weight="bold" as="div">
-                      Intended quantity
-                    </Text>
-                    <Text size="1" color="gray">Helps estimate first-run demand</Text>
-                  </Box>
-                  <Box style={{ width: "7rem" }}>
-                    <Select.Root
-                      value={String(reservationQuantity)}
-                      onValueChange={(value) => setReservationQuantity(Number(value))}
-                    >
-                      <Select.Trigger aria-label="Intended quantity" />
-                      <Select.Content>
-                        {NODE_QUANTITY_OPTIONS.map((option) => (
-                          <Select.Item key={option} value={String(option)}>
-                            {option}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
-                </Flex>
-
-                <Box
-                  style={{
-                    borderTop: "1px solid var(--gray-a5)",
-                    paddingTop: "var(--space-3)",
-                  }}
-                >
-                  <Flex justify="between" gap="3">
-                    <Text size="2" color="gray">Expected reservation</Text>
-                    <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
-                  </Flex>
-                  <Flex justify="between" gap="3" mt="1">
-                    <Text size="2" color="gray">Tier</Text>
-                    <Text size="2">{NODE_PRODUCT_LABEL}</Text>
-                  </Flex>
-                  <Flex justify="between" gap="3" mt="1">
-                    <Text size="2" color="gray">Intended quantity</Text>
-                    <Text size="2">x {reservationQuantity}</Text>
-                  </Flex>
-                  <Separator size="4" my="3" />
-                  <Flex justify="between" align="center" gap="3">
-                    <Text size="3" weight="bold">Estimated subtotal</Text>
-                    <Text as="div" size="5" weight="bold">{formatUsd(reservationSubtotalCents)}</Text>
-                  </Flex>
-                  <Text size="1" color="gray" as="p" mt="1">
-                    Estimate only. No payment, tax, shipping, or checkout is collected from the waitlist form.
-                  </Text>
-                </Box>
-
-                <Button
-                  size="3"
-                  disabled
-                >
-                  Paid Reservations Paused
-                </Button>
-
-                <Box asChild>
-                  <form onSubmit={handlePledgeSubmit}>
-                    <Flex direction="column" gap="3">
-                      <Text size="2" weight="bold" as="div">
-                        Join reservation waitlist
-                      </Text>
-                      <TextField.Root
-                        value={pledgeName}
-                        onChange={(event) => setPledgeName(event.target.value)}
-                        placeholder="Name"
-                        required
-                        maxLength={120}
-                        autoComplete="name"
-                      />
-                      <TextField.Root
-                        value={pledgeEmail}
-                        onChange={(event) => setPledgeEmail(event.target.value)}
-                        placeholder="Email"
-                        required
-                        maxLength={254}
-                        type="email"
-                        autoComplete="email"
-                      />
-                      <Text as="label" size="2" color="gray">
-                        <Flex gap="2" align="start">
-                          <Checkbox
-                            checked={pledgeConsent}
-                            onCheckedChange={(checked) => setPledgeConsent(checked === true)}
-                            required
-                            mt="1"
-                          />
-                          <span>
-                            I understand this is a non-binding waitlist request, no payment is collected today,
-                            and CrowdPM may email me when paid reservations are ready to open.
-                          </span>
-                        </Flex>
-                      </Text>
-                      <Button type="submit" size="3" disabled={pledgeSubmitting}>
-                        {pledgeSubmitting ? "Joining Waitlist..." : "Join Reservation Waitlist"}
-                      </Button>
-                    </Flex>
-                  </form>
-                </Box>
-              </Flex>
-            </Card>
-
-            <Card>
-              <Flex direction="column" gap="4">
-                <Box>
-                  <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
-                    Payment paused
-                  </Text>
-                  <Heading as="h2" size="4" mt="1">
-                    Certification support
-                  </Heading>
-                  <Flex align="baseline" gap="2" mt="2" wrap="wrap">
-                    <Text as="div" size="6" weight="bold">
-                      {formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)}
-                    </Text>
-                    <Text size="2" color="gray">per support unit</Text>
-                  </Flex>
-                  <Text size="2" color="gray" as="p" mt="2">
-                    Certification support payments are paused for the expo so the campaign collects only
-                    non-binding interest before paid reservations reopen.
-                  </Text>
-                </Box>
-
-                <Callout.Root color="gray" variant="surface">
-                  <Callout.Text>
-                    No certification support payment is collected on this page right now.
-                  </Callout.Text>
-                </Callout.Root>
-
-                <Button
-                  size="3"
-                  variant="soft"
-                  disabled
-                >
-                  Certification Support Paused
-                </Button>
-              </Flex>
-            </Card>
-
-            <Text size="1" color="gray" as="p">
-              Waitlist submissions are not payments or reservations. Future paid reservations or support
-              payments will be subject to the{" "}
-              <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
-                Terms
-              </LegalDocumentLink>
-              ,{" "}
-              <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
-                License
-              </LegalDocumentLink>
-              , and{" "}
-              <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
-                Privacy Policy
-              </LegalDocumentLink>
-              .
-            </Text>
-          </Flex>
-        </Flex>
-
         {checkoutNotice === "success" ? (
-          <Callout.Root color="green" variant="surface" mt="4">
+          <Callout.Root color="green" variant="surface">
             <Callout.Text>
               Checkout completed. Stripe will email a receipt. Signed-in campaign payments also appear in the dashboard.
             </Callout.Text>
@@ -496,7 +275,7 @@ export default function NodePage() {
         ) : null}
 
         {checkoutNotice === "cancelled" ? (
-          <Callout.Root color="amber" variant="surface" mt="4">
+          <Callout.Root color="amber" variant="surface">
             <Callout.Text>
               Checkout was cancelled before payment completed.
             </Callout.Text>
@@ -504,7 +283,7 @@ export default function NodePage() {
         ) : null}
 
         {pledgeSubmitted ? (
-          <Callout.Root color="green" variant="surface" mt="4">
+          <Callout.Root color="green" variant="surface">
             <Callout.Text>
               You are on the reservation waitlist. CrowdPM will email you when paid reservations are ready to open.
             </Callout.Text>
@@ -512,11 +291,232 @@ export default function NodePage() {
         ) : null}
 
         {pledgeError ? (
-          <Callout.Root color="tomato" variant="surface" mt="4">
+          <Callout.Root color="tomato" variant="surface">
             <Callout.Text>{pledgeError}</Callout.Text>
           </Callout.Root>
         ) : null}
-      </Box>
+
+        <Box>
+          <Flex direction={{ initial: "column-reverse", md: "row" }} align="start" gap="5">
+            <Box style={{ flex: "1 1 34rem", minWidth: 0 }}>
+              <Flex direction="column" gap="3">
+                <Badge color="amber" variant="soft" style={{ alignSelf: "start" }}>
+                  FCC authorization pending
+                </Badge>
+                <Heading as="h1" size="6">
+                  Join the CrowdPM node waitlist before paid reservations open.
+                </Heading>
+                <Text size="3" color="gray" as="p">
+                  CrowdPM is collecting non-binding interest for the expo launch while paid reservations are paused.
+                  Node hardware is not available for purchase, reservation, shipment, or delivery until CrowdPM is ready
+                  to proceed with FCC equipment authorization.
+                </Text>
+                <Text size="2" color="gray" as="p">
+                  The base model is the only planned first-run configuration. It measures PM2.5, GPS,
+                  temperature/humidity, and local storage telemetry, then uploads to CrowdPM when internet is available.
+                </Text>
+              </Flex>
+            </Box>
+
+            <Flex direction="column" gap="4" style={{ width: "100%", maxWidth: "30rem", minWidth: 0 }}>
+              <Card>
+                <Flex direction="column" gap="4">
+                  <Box>
+                    <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                      Waitlist open
+                    </Text>
+                    <Heading as="h2" size="4" mt="1">
+                      Paid reservations paused
+                    </Heading>
+                    <Flex align="baseline" gap="2" mt="2" wrap="wrap">
+                      <Text as="div" size="6" weight="bold">
+                        {formatUsd(BASE_NODE_PRICE_CENTS)}
+                      </Text>
+                      <Text size="2" color="gray">expected reservation price</Text>
+                    </Flex>
+                    <Text size="2" color="gray" as="p" mt="2">
+                      {NODE_PRODUCT_SUMMARY}
+                    </Text>
+                  </Box>
+
+                  <Callout.Root color="amber" variant="surface">
+                    <Callout.Text>
+                      No payment is collected today. Joining the waitlist is not a preorder, purchase, reservation, or guarantee of availability.
+                    </Callout.Text>
+                  </Callout.Root>
+
+                  <Box>
+                    <Text size="2" weight="bold" as="div" mb="2">
+                      Waitlist terms
+                    </Text>
+                    <BulletList>
+                      <ListItem>No money is collected and no unit is reserved by this form.</ListItem>
+                      <ListItem>CrowdPM will email the list when paid reservations are ready to open.</ListItem>
+                      <ListItem>Any future paid reservation will include its own checkout terms, taxes, and FCC authorization disclosures.</ListItem>
+                    </BulletList>
+                  </Box>
+
+                  <Flex align="center" justify="between" gap="3">
+                    <Box>
+                      <Text size="2" weight="bold" as="div">
+                        Intended quantity
+                      </Text>
+                      <Text size="1" color="gray">Helps estimate first-run demand</Text>
+                    </Box>
+                    <Box style={{ width: "7rem" }}>
+                      <Select.Root
+                        value={String(reservationQuantity)}
+                        onValueChange={(value) => setReservationQuantity(Number(value))}
+                      >
+                        <Select.Trigger aria-label="Intended quantity" />
+                        <Select.Content>
+                          {NODE_QUANTITY_OPTIONS.map((option) => (
+                            <Select.Item key={option} value={String(option)}>
+                              {option}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Root>
+                    </Box>
+                  </Flex>
+
+                  <Box
+                    style={{
+                      borderTop: "1px solid var(--gray-a5)",
+                      paddingTop: "var(--space-3)",
+                    }}
+                  >
+                    <Flex justify="between" gap="3">
+                      <Text size="2" color="gray">Expected reservation</Text>
+                      <Text size="2">{formatUsd(BASE_NODE_PRICE_CENTS)}</Text>
+                    </Flex>
+                    <Flex justify="between" gap="3" mt="1">
+                      <Text size="2" color="gray">Tier</Text>
+                      <Text size="2">{NODE_PRODUCT_LABEL}</Text>
+                    </Flex>
+                    <Flex justify="between" gap="3" mt="1">
+                      <Text size="2" color="gray">Intended quantity</Text>
+                      <Text size="2">x {reservationQuantity}</Text>
+                    </Flex>
+                    <Separator size="4" my="3" />
+                    <Flex justify="between" align="center" gap="3">
+                      <Text size="3" weight="bold">Estimated subtotal</Text>
+                      <Text as="div" size="5" weight="bold">{formatUsd(reservationSubtotalCents)}</Text>
+                    </Flex>
+                    <Text size="1" color="gray" as="p" mt="1">
+                      Estimate only. No payment, tax, shipping, or checkout is collected from the waitlist form.
+                    </Text>
+                  </Box>
+
+                  <Button
+                    size="3"
+                    disabled
+                  >
+                    Paid Reservations Paused
+                  </Button>
+
+                  <Box asChild>
+                    <form onSubmit={handlePledgeSubmit}>
+                      <Flex direction="column" gap="3">
+                        <Text size="2" weight="bold" as="div">
+                          Join reservation waitlist
+                        </Text>
+                        <TextField.Root
+                          value={pledgeName}
+                          onChange={(event) => setPledgeName(event.target.value)}
+                          placeholder="Name"
+                          required
+                          maxLength={120}
+                          autoComplete="name"
+                        />
+                        <TextField.Root
+                          value={pledgeEmail}
+                          onChange={(event) => setPledgeEmail(event.target.value)}
+                          placeholder="Email"
+                          required
+                          maxLength={254}
+                          type="email"
+                          autoComplete="email"
+                        />
+                        <Text as="label" size="2" color="gray">
+                          <Flex gap="2" align="start">
+                            <Checkbox
+                              checked={pledgeConsent}
+                              onCheckedChange={(checked) => setPledgeConsent(checked === true)}
+                              required
+                              mt="1"
+                            />
+                            <span>
+                              I understand this is a non-binding waitlist request, no payment is collected today,
+                              and CrowdPM may email me when paid reservations are ready to open.
+                            </span>
+                          </Flex>
+                        </Text>
+                        <Button type="submit" size="3" disabled={pledgeSubmitting}>
+                          {pledgeSubmitting ? "Joining Waitlist..." : "Join Reservation Waitlist"}
+                        </Button>
+                      </Flex>
+                    </form>
+                  </Box>
+                </Flex>
+              </Card>
+
+              <Card>
+                <Flex direction="column" gap="4">
+                  <Box>
+                    <Text size="1" color="gray" as="div" style={{ textTransform: "uppercase", fontWeight: 600 }}>
+                      Payment paused
+                    </Text>
+                    <Heading as="h2" size="4" mt="1">
+                      Certification support
+                    </Heading>
+                    <Flex align="baseline" gap="2" mt="2" wrap="wrap">
+                      <Text as="div" size="6" weight="bold">
+                        {formatUsd(CERTIFICATION_SUPPORT_UNIT_CENTS)}
+                      </Text>
+                      <Text size="2" color="gray">per support unit</Text>
+                    </Flex>
+                    <Text size="2" color="gray" as="p" mt="2">
+                      Certification support payments are paused for the expo so the campaign collects only
+                      non-binding interest before paid reservations reopen.
+                    </Text>
+                  </Box>
+
+                  <Callout.Root color="gray" variant="surface">
+                    <Callout.Text>
+                      No certification support payment is collected on this page right now.
+                    </Callout.Text>
+                  </Callout.Root>
+
+                  <Button
+                    size="3"
+                    variant="soft"
+                    disabled
+                  >
+                    Certification Support Paused
+                  </Button>
+                </Flex>
+              </Card>
+
+              <Text size="1" color="gray" as="p">
+                Waitlist submissions are not payments or reservations. Future paid reservations or support
+                payments will be subject to the{" "}
+                <LegalDocumentLink documentId="terms" onOpen={setOpenLegalDocument}>
+                  Terms
+                </LegalDocumentLink>
+                ,{" "}
+                <LegalDocumentLink documentId="license" onOpen={setOpenLegalDocument}>
+                  License
+                </LegalDocumentLink>
+                , and{" "}
+                <LegalDocumentLink documentId="privacy" onOpen={setOpenLegalDocument}>
+                  Privacy Policy
+                </LegalDocumentLink>
+                .
+              </Text>
+            </Flex>
+          </Flex>
+        </Box>
 
       <Separator size="4" />
 
