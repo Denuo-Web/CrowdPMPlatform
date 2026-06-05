@@ -410,7 +410,7 @@ export default function AdminModerationPage() {
           <Flex direction={{ initial: "column", sm: "row" }} justify="between" align={{ initial: "start", sm: "center" }} gap="3">
             <Box>
               <Heading as="h3" size="5">Front Page Demo Data</Heading>
-              <Text size="2" color="gray">Choose the approved public batch opened by See Demo Data.</Text>
+              <Text size="2" color="gray">Choose the approved public batch opened by Explore live map.</Text>
             </Box>
             <Button onClick={() => { void refreshDemoBatchOptions(); }} disabled={demoBatchLoading || demoBatchSaving}>
               {demoBatchLoading ? "Refreshing..." : "Refresh"}

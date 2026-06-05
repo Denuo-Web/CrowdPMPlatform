@@ -11,8 +11,10 @@ test("guest can use public routes and protected routes stay gated", async ({ pag
 
   await page.getByRole("button", { name: "Explore live map" }).click();
   await expect(page).toHaveURL(/\/map$/);
-  await expect(page.getByText("Hyper-local community air quality, mapped in 3D")).toBeVisible();
   await expect(page.getByText("Measurement batch")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Measurement batch" })).toContainText("E2E Mobile Node");
+  await expect(page.getByRole("button", { name: "See Demo Data" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pair a node" })).toHaveCount(0);
 
   await page.goto("/about");
   await expect(page.getByRole("heading", { name: /About/i })).toBeVisible();

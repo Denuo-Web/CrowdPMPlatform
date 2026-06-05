@@ -26,11 +26,14 @@ type AppMainContentProps = {
   dashboardRefreshToken: number;
   subscriptionCheckoutNotice: SubscriptionCheckoutNotice;
   subscriptionCheckoutSessionId: string | null;
+  shouldLoadDemoBatch: boolean;
   onNavigate: (tab: RoutedAppTab) => void;
   onProtectedTabClick: (target: "dashboard" | "admin") => void;
+  onExploreDemoMap: () => void;
   onOpenActivation: () => void;
   onOpenThemeModal: () => void;
   onSubscriptionCheckoutHandled: () => void;
+  onDemoBatchRequestHandled: () => void;
   onOpenTeamModal: () => void;
   onOpenAuth: (mode: AuthMode) => void;
 };
@@ -56,11 +59,14 @@ export function AppMainContent({
   dashboardRefreshToken,
   subscriptionCheckoutNotice,
   subscriptionCheckoutSessionId,
+  shouldLoadDemoBatch,
   onNavigate,
   onProtectedTabClick,
+  onExploreDemoMap,
   onOpenActivation,
   onOpenThemeModal,
   onSubscriptionCheckoutHandled,
+  onDemoBatchRequestHandled,
   onOpenTeamModal,
   onOpenAuth,
 }: AppMainContentProps) {
@@ -87,7 +93,12 @@ export function AppMainContent({
           }}
         >
           <Suspense fallback={tabPanelFallback}>
-            <MapPage key={`map:${userScopedKey}`} mapAppearance={mapAppearance} />
+            <MapPage
+              key={`map:${userScopedKey}`}
+              mapAppearance={mapAppearance}
+              shouldLoadDemoBatch={shouldLoadDemoBatch}
+              onDemoBatchRequestHandled={onDemoBatchRequestHandled}
+            />
           </Suspense>
         </Box>
       ) : (
@@ -120,7 +131,7 @@ export function AppMainContent({
                 {activeTab === "home" ? (
                   <HomePage
                     isSignedIn={isSignedIn}
-                    onExploreMap={() => onNavigate("map")}
+                    onExploreMap={isSignedIn ? () => onNavigate("map") : onExploreDemoMap}
                     onOpenDashboard={() => onProtectedTabClick("dashboard")}
                     onOpenActivation={onOpenActivation}
                     onOpenAbout={() => onNavigate("about")}

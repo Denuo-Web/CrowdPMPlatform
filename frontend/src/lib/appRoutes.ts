@@ -9,6 +9,8 @@ export const APP_ROUTES = {
   node: "/node",
   apiDocs: "/api-docs",
 } as const;
+export const MAP_DEMO_BATCH_SEARCH_PARAM = "demoData";
+export const MAP_DEMO_BATCH_SEARCH_VALUE = "1";
 
 export type DeepLinkedAppTab = "pairing-info" | "about" | "node" | "api-docs";
 export type RoutedAppTab = "home" | "map" | "dashboard" | "admin" | DeepLinkedAppTab;
@@ -65,6 +67,17 @@ export function getRouteForAppTab(tab: RoutedAppTab): string {
 
 export function getRouteForDeepLinkedAppTab(tab: DeepLinkedAppTab): string {
   return ROUTED_TAB_ROUTES[tab];
+}
+
+export function getDemoMapRoute(): string {
+  const search = new URLSearchParams({
+    [MAP_DEMO_BATCH_SEARCH_PARAM]: MAP_DEMO_BATCH_SEARCH_VALUE,
+  });
+  return `${APP_ROUTES.map}?${search.toString()}`;
+}
+
+export function isDemoMapSearch(search: string): boolean {
+  return new URLSearchParams(search).get(MAP_DEMO_BATCH_SEARCH_PARAM) === MAP_DEMO_BATCH_SEARCH_VALUE;
 }
 
 export function isActivationRoute(pathname: string): boolean {
