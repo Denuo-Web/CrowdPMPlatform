@@ -212,79 +212,6 @@ function InfoTable({ headers, rows }: TableProps) {
   );
 }
 
-function ProductGallery() {
-  const photos = ["Front", "Ports", "Mounted", "Kit"];
-  return (
-    <Flex direction="column" gap="3" style={{ minWidth: 0 }}>
-      <Box
-        style={{
-          aspectRatio: "4 / 3",
-          border: "1px solid var(--gray-a6)",
-          borderRadius: "8px",
-          background:
-            "linear-gradient(135deg, var(--gray-2), var(--gray-4) 58%, var(--accent-a3))",
-          display: "grid",
-          placeItems: "center",
-          overflow: "hidden",
-        }}
-      >
-        <Box
-          style={{
-            width: "48%",
-            maxWidth: "18rem",
-            aspectRatio: "1 / 1",
-            border: "1px solid var(--gray-a7)",
-            borderRadius: "8px",
-            background: "var(--color-panel-solid)",
-            boxShadow: "0 18px 45px var(--gray-a5)",
-            position: "relative",
-          }}
-        >
-          <Box
-            style={{
-              position: "absolute",
-              inset: "18%",
-              borderRadius: "6px",
-              border: "1px solid var(--gray-a6)",
-              background: "var(--gray-2)",
-            }}
-          />
-          <Box
-            style={{
-              position: "absolute",
-              right: "14%",
-              bottom: "14%",
-              width: "22%",
-              aspectRatio: "1 / 1",
-              borderRadius: "999px",
-              background: "var(--green-9)",
-            }}
-          />
-        </Box>
-      </Box>
-      <Flex gap="2" wrap="wrap">
-        {photos.map((label, index) => (
-          <Box
-            key={label}
-            style={{
-              flex: "1 1 5.5rem",
-              minWidth: "5.5rem",
-              aspectRatio: "1 / 1",
-              border: index === 0 ? "2px solid var(--accent-8)" : "1px solid var(--gray-a6)",
-              borderRadius: "8px",
-              background: "var(--gray-3)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <Text size="1" color="gray">{label}</Text>
-          </Box>
-        ))}
-      </Flex>
-    </Flex>
-  );
-}
-
 type CheckoutNotice = "success" | "cancelled" | null;
 
 function readCheckoutNotice(search: string): CheckoutNotice {
@@ -359,9 +286,6 @@ export default function NodePage() {
                 temperature/humidity, and local storage telemetry, then uploads to CrowdPM when internet is available.
               </Text>
             </Flex>
-            <Box mt="4">
-              <ProductGallery />
-            </Box>
           </Box>
 
           <Flex direction="column" gap="4" style={{ width: "100%", maxWidth: "30rem", minWidth: 0 }}>

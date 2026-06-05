@@ -157,7 +157,7 @@ export function AppNavigation({
               style={activeTab === "node" ? { fontWeight: 600 } : undefined}
               disabled={isLoading}
             >
-              Reservations
+              Node
             </DropdownMenu.Item>
             {isSignedIn ? (
               <>
