@@ -11,7 +11,6 @@ import {
   listPublicBatches,
 } from "../lib/api";
 import { decodeBatchKey, encodeBatchKey } from "../lib/batchKeys";
-import { APP_ROUTES, openAppRouteInNewTab } from "../lib/appRoutes";
 import { logWarning } from "../lib/logger";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet, scopedStorageKey } from "../lib/storage";
 import {
@@ -88,8 +87,6 @@ const MAP_VIEWPORT_BACKGROUND =
   "radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--accent-8) 20%, transparent), transparent 55%), "
   + "radial-gradient(100% 100% at 100% 0%, color-mix(in srgb, var(--gray-7) 14%, transparent), transparent 60%), "
   + "linear-gradient(180deg, color-mix(in srgb, var(--color-panel-solid) 82%, var(--gray-1)), var(--color-surface))";
-const MAP_EMPTY_STATE_TITLE = "Hyper-local community air quality, mapped in 3D";
-const MAP_EMPTY_STATE_DESCRIPTION = "Explore public sensor data below, or pair your own node to start contributing measurements.";
 
 // React Query cache keys. Keeping them as helpers avoids typos across the file.
 const BATCHES_QUERY_KEY = (uid: string | null | undefined) => ["batches", uid ?? "guest"] as const;
@@ -98,9 +95,15 @@ const BATCH_DETAIL_QUERY_KEY = (uid: string, batchKey: string) => ["batchDetail"
 const Map3D = lazy(() => import("../components/Map3D"));
 type MapPageProps = {
   mapAppearance: UserThemeAppearance;
+  shouldLoadDemoBatch: boolean;
+  onDemoBatchRequestHandled: () => void;
 };
 
-export default function MapPage({ mapAppearance }: MapPageProps) {
+export default function MapPage({
+  mapAppearance,
+  shouldLoadDemoBatch,
+  onDemoBatchRequestHandled,
+}: MapPageProps) {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
@@ -137,7 +140,6 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
 
   // Keep track of which batch is selected plus the position in the measurement timeline.
   const [selectedBatchKeyState, setSelectedBatchKeyState] = useState<string>(initialStoredSelection.value);
-  const [isDemoBatchLoading, setDemoBatchLoading] = useState(false);
   const [persistedMapZoom, setPersistedMapZoom] = useState<number | null>(initialStoredZoom.value);
   const [storedTimelineIndexes, setStoredTimelineIndexes] = useState<StoredTimelineIndexes>(() => parseStoredTimelineIndexes(
     safeLocalStorageGet(
@@ -152,6 +154,7 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   const [showPublicBatchBrowser, setShowPublicBatchBrowser] = useState(true);
   const [showPrivateBatchBrowser, setShowPrivateBatchBrowser] = useState(true);
   const map3DRef = useRef<Map3DHandle | null>(null);
+  const hasHandledDemoBatchRequestRef = useRef(false);
   const exportAbortRef = useRef<AbortController | null>(null);
   const [captureAvailableState, setCaptureAvailableState] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -462,7 +465,6 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
   }, [queryClient, user?.uid]);
 
   const handleDemoBatchSelect = useCallback(async () => {
-    setDemoBatchLoading(true);
     try {
       const demoBatch = await fetchDemoBatch();
       if (!demoBatch) {
@@ -478,10 +480,18 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       logWarning("Unable to load demo batch", undefined, err);
       handleBatchSelect(SHOW_ALL_PUBLIC_24H_KEY);
     }
-    finally {
-      setDemoBatchLoading(false);
-    }
   }, [handleBatchSelect, upsertBatchSummary]);
+
+  useEffect(() => {
+    if (!shouldLoadDemoBatch) {
+      hasHandledDemoBatchRequestRef.current = false;
+      return;
+    }
+    if (isAuthLoading || hasHandledDemoBatchRequestRef.current) return;
+
+    hasHandledDemoBatchRequestRef.current = true;
+    void handleDemoBatchSelect().finally(onDemoBatchRequestHandled);
+  }, [handleDemoBatchSelect, isAuthLoading, onDemoBatchRequestHandled, shouldLoadDemoBatch]);
 
   const handleMapZoomChange = useCallback((zoom: number) => {
     const nextZoom = Math.min(Math.max(zoom, MIN_PERSISTED_MAP_ZOOM), MAX_PERSISTED_MAP_ZOOM);
@@ -592,10 +602,8 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
     ).size
   ), [rows]);
 
-  // Use all-public mode by default when nothing is selected, but defer the heavy 3D viewport on the anonymous hero.
+  // Use all-public map rendering when nothing is selected or the last-24-hours mode is active.
   const effectiveShowAllMode = isShowingAllPublic24h || !selectedBatchKey;
-  const isAnonymousHeroState = !user && !selectedBatchKey && !rows.length;
-  const shouldRenderMapViewport = !isAnonymousHeroState;
   const isExportSectionVisible = Boolean(selectedBatchKey) && !isShowingAllPublic24h;
   const captureAvailable = isExportSectionVisible && captureAvailableState;
   const isWatermarkedExport = settings.subscription.videoDownloadAccess === "preview_watermarked";
@@ -881,114 +889,21 @@ export default function MapPage({ mapAppearance }: MapPageProps) {
       />
       {/* ---- Always-visible map ---- */}
       <Suspense fallback={<div style={{ width: "100%", height: "100%", background: MAP_VIEWPORT_BACKGROUND }} />}>
-        {shouldRenderMapViewport ? (
-          <Map3D
-            ref={map3DRef}
-            data={data}
-            appearance={mapAppearance}
-            selectedIndex={selectedIndex}
-            onSelectIndex={effectiveShowAllMode ? undefined : handleTimelineIndexChange}
-            onSelectPoint={handleMapPointSelect}
-            onZoomChange={handleMapZoomChange}
-            autoCenterKey={autoCenterKey}
-            interleaved={settings.interleavedRendering}
-            showAllMode={effectiveShowAllMode}
-            defaultZoom={persistedMapZoom ?? undefined}
-            forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
-          />
-        ) : null}
+        <Map3D
+          ref={map3DRef}
+          data={data}
+          appearance={mapAppearance}
+          selectedIndex={selectedIndex}
+          onSelectIndex={effectiveShowAllMode ? undefined : handleTimelineIndexChange}
+          onSelectPoint={handleMapPointSelect}
+          onZoomChange={handleMapZoomChange}
+          autoCenterKey={autoCenterKey}
+          interleaved={settings.interleavedRendering}
+          showAllMode={effectiveShowAllMode}
+          defaultZoom={persistedMapZoom ?? undefined}
+          forceFollowSelection={!effectiveShowAllMode && (trackBall || isExporting)}
+        />
       </Suspense>
-
-      {/* ---- Welcome hero overlay (when no batch selected and no data) ---- */}
-      {isAnonymousHeroState ? (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "none",
-            zIndex: 2,
-          }}
-        >
-          <div
-            style={{
-              pointerEvents: "auto",
-              background: MAP_PANEL_BACKGROUND,
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: MAP_PANEL_BORDER,
-              borderRadius: "var(--radius-4)",
-              padding: "var(--space-6)",
-              maxWidth: 460,
-              textAlign: "center",
-              color: "var(--gray-12)",
-              boxShadow: "var(--shadow-5)",
-            }}
-          >
-            {/* Logo mark */}
-            <svg width="48" height="48" viewBox="0 0 28 28" fill="none" aria-hidden style={{ margin: "0 auto var(--space-3)" }}>
-              <circle cx="14" cy="14" r="13" stroke="var(--accent-9)" strokeWidth="1.5" fill="none" opacity="0.7" />
-              <path
-                d="M8 17a3.5 3.5 0 0 1 .5-6.95A5 5 0 0 1 18 10a4 4 0 0 1 2 7.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                fill="none"
-              />
-              <circle cx="12" cy="20" r="1" fill="var(--accent-9)" opacity="0.8" />
-              <circle cx="16" cy="21" r="0.7" fill="var(--accent-9)" opacity="0.6" />
-              <circle cx="14" cy="23" r="0.5" fill="var(--accent-9)" opacity="0.4" />
-            </svg>
-            <h2 style={{ margin: 0, fontSize: "var(--font-size-6)", fontWeight: 700 }}>
-              {MAP_EMPTY_STATE_TITLE}
-            </h2>
-            <p style={{ marginTop: "var(--space-3)", color: "var(--gray-11)", fontSize: "var(--font-size-3)" }}>
-              {MAP_EMPTY_STATE_DESCRIPTION}
-            </p>
-            <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", marginTop: "var(--space-4)", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => { void handleDemoBatchSelect(); }}
-                disabled={isDemoBatchLoading}
-                style={{
-                  padding: "var(--space-2) var(--space-4)",
-                  borderRadius: "var(--radius-3)",
-                  border: "none",
-                  background: "var(--accent-9)",
-                  color: "var(--accent-contrast)",
-                  fontWeight: 600,
-                  fontSize: "var(--font-size-2)",
-                  cursor: isDemoBatchLoading ? "wait" : "pointer",
-                  opacity: isDemoBatchLoading ? 0.8 : 1,
-                }}
-              >
-                See Demo Data
-              </button>
-              <button
-                type="button"
-                onClick={() => openAppRouteInNewTab(APP_ROUTES.pairingGuide)}
-                style={{
-                  padding: "var(--space-2) var(--space-4)",
-                  borderRadius: "var(--radius-3)",
-                  border: "1px solid var(--gray-a7)",
-                  background: "transparent",
-                  color: "var(--gray-12)",
-                  fontWeight: 500,
-                  fontSize: "var(--font-size-2)",
-                  cursor: "pointer",
-                }}
-              >
-                Pair a node
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* ---- Floating controls panel (top-right) ---- */}
       <div

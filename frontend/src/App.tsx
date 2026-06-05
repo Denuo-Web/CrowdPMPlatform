@@ -1,7 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useState } from "react";
 import type { UserThemeSettings } from "@crowdpm/types";
 import type { AuthMode } from "./components/AuthDialog";
-import { APP_ROUTES, getAppTabFromPath, getRouteForAppTab, isActivationRoute, type RoutedAppTab } from "./lib/appRoutes";
+import {
+  APP_ROUTES,
+  getAppTabFromPath,
+  getDemoMapRoute,
+  getRouteForAppTab,
+  isActivationRoute,
+  isDemoMapSearch,
+  type RoutedAppTab,
+} from "./lib/appRoutes";
 import { logWarning } from "./lib/logger";
 import { pushAppLocation, replaceAppLocation, replaceCurrentUrl, useBrowserLocation } from "./lib/locationStore";
 import { useAuth } from "./providers/AuthProvider";
@@ -90,6 +98,7 @@ export default function App() {
     : (preferredTab === "admin" && !canAccessAdmin ? "home" : preferredTab);
   const isThemeModalOpen = isThemeModalRequested || Boolean(themeCheckoutNotice);
   const activeTheme = user ? themeDraft ?? settings.theme : settings.theme;
+  const shouldLoadDemoBatch = activeTab === "map" && isDemoMapSearch(location.search);
   const isDarkTheme = activeTheme.appearance === "dark";
   const mapHeaderBackground = activeTab === "map"
     ? isDarkTheme
@@ -111,6 +120,14 @@ export default function App() {
       pushAppLocation(targetRoute);
     }
   }, [location.pathname]);
+
+  const openDemoMap = useCallback(() => {
+    setRequestedTab("map");
+    const targetRoute = getDemoMapRoute();
+    if (`${location.pathname}${location.search}`.toLowerCase() !== targetRoute.toLowerCase()) {
+      pushAppLocation(targetRoute);
+    }
+  }, [location.pathname, location.search]);
 
   const closeThemeModal = useCallback(() => {
     setThemeModalRequested(false);
@@ -228,6 +245,13 @@ export default function App() {
     replaceAppLocation(APP_ROUTES.dashboard);
   }, [subscriptionCheckoutNotice, subscriptionCheckoutSessionId]);
 
+  const handleDemoBatchRequestHandled = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname.toLowerCase() !== APP_ROUTES.map) return;
+    if (!isDemoMapSearch(window.location.search)) return;
+    replaceAppLocation(APP_ROUTES.map);
+  }, []);
+
   return (
     <Theme
       appearance={activeTheme.appearance}
@@ -275,11 +299,14 @@ export default function App() {
         dashboardRefreshToken={dashboardRefreshToken}
         subscriptionCheckoutNotice={subscriptionCheckoutNotice}
         subscriptionCheckoutSessionId={subscriptionCheckoutSessionId}
+        shouldLoadDemoBatch={shouldLoadDemoBatch}
         onNavigate={navigateToTab}
         onProtectedTabClick={handleProtectedTabClick}
+        onExploreDemoMap={openDemoMap}
         onOpenActivation={openActivationModal}
         onOpenThemeModal={openThemeModal}
         onSubscriptionCheckoutHandled={handleSubscriptionCheckoutHandled}
+        onDemoBatchRequestHandled={handleDemoBatchRequestHandled}
         onOpenTeamModal={() => setTeamModalOpen(true)}
         onOpenAuth={openAuthDialog}
       />
