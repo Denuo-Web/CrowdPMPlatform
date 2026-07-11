@@ -154,7 +154,6 @@ function sendStartupError(res: ResponseLike, err: unknown): void {
 
 export const crowdpmApi = https.onRequest({
   ...crowdpmApiRuntimeOptions,
-  secrets: ["DEVICE_TOKEN_PRIVATE_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
 }, async (req, res) => {
   try {
     const requestWithRawBody = req as RequestWithRawBody;

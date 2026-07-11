@@ -34,7 +34,7 @@ Important values:
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
 - `FIRST_SUPER_ADMIN_EMAIL`, `FIRST_SUPER_ADMIN_PASSWORD`, `FIRST_SUPER_ADMIN_DISPLAY_NAME`: local Auth emulator super-admin seed user.
 
-The code reads these values from `process.env`. In deployed Firebase Functions, `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` are expected to come from Secret Manager via each function's `secrets` binding, while the remaining runtime values can come from dotenv-backed env files.
+The code reads these values from `process.env`. In deployed Firebase Functions, CI writes `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into the generated `functions/.env.$FIREBASE_PROJECT_ID` file from GitHub Actions secrets. The generated env file is not committed.
 
 The public node page currently uses `POST /v1/node-reservation-pledges` to collect non-binding waitlist interest without payment. Submissions are stored in Firestore `nodeReservationPledges` records deduplicated by normalized email.
 
@@ -63,7 +63,7 @@ To seed only specific entries:
 pnpm --filter crowdpm-functions payments:seed-catalog -- --only nodeHardware
 ```
 
-To seed a deployed Firebase project, provide credentials with Firestore access plus a live `STRIPE_SECRET_KEY`. Cloud Function Secret Manager bindings are not visible to this local script, so export the live key or load it from an env file explicitly:
+To seed a deployed Firebase project, provide credentials with Firestore access plus a live `STRIPE_SECRET_KEY`. Deployed function environment variables are not visible to this local script, so export the live key or load it from an env file explicitly:
 
 ```bash
 FIREBASE_PROJECT_ID=crowdpmplatform STRIPE_SECRET_KEY=sk_live_... \

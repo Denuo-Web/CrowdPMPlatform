@@ -9,7 +9,7 @@ This guide covers the single deployed Firebase environment. Use explicit project
 - Clean `main` checkout at the commit being released.
 - CI green or equivalent local checks passing: `pnpm lint`, `pnpm typecheck`, `pnpm --filter crowdpm-functions test`, and `pnpm build`.
 - Frontend environment values ready for the deployed Firebase project.
-- Functions runtime configuration ready, especially the Firebase secrets used by deployed functions.
+- Functions runtime configuration ready, especially the GitHub Actions secrets used to generate the deployed functions env file.
 - Stripe runtime values ready for node checkout: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and a public app base URL.
 
 ```bash
@@ -50,7 +50,7 @@ The functions code reads runtime values from `process.env`.
 
 The repository and CI are pinned to Node.js 24.15.0, while the Firebase Functions runtime remains on the `nodejs24` major runtime. Do not deploy a Functions runtime with Node.js 22 while building or testing on Node.js 24.15.0.
 
-Required deployed Firebase secrets:
+Required deployed functions secrets in GitHub Actions:
 
 - `DEVICE_TOKEN_PRIVATE_KEY`: Ed25519 PKCS8 PEM used to sign device registration and access tokens.
 - `STRIPE_SECRET_KEY`: Stripe secret key for creating node checkout sessions.
@@ -72,7 +72,7 @@ Common optional values:
 - `FIRST_SUPER_ADMIN_DISPLAY_NAME`: optional display name for a created bootstrap user.
 - `PUBLIC_APP_BASE_URL`
 
-Keep secrets out of git. Deployed functions use Firebase Secret Manager for `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. The CI workflow syncs those three secrets from GitHub Actions into Firebase, then writes only non-secret runtime env vars into `functions/.env.$FIREBASE_PROJECT_ID`. Keep project-specific `.env.*` files local or in the deployment secret store.
+Keep secrets out of git. Deployed functions read `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` from runtime environment variables generated from GitHub Actions secrets during CI. The workflow writes them into `functions/.env.$FIREBASE_PROJECT_ID` only inside the deploy runner; project-specific `.env.*` files must stay local or in the deployment secret store.
 
 ## Pre-Launch Release Gates
 
@@ -97,9 +97,6 @@ pnpm lint
 pnpm typecheck
 pnpm --filter crowdpm-functions test
 pnpm build
-printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
-printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
-printf '%s' "$STRIPE_WEBHOOK_SECRET" | firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project "$FIREBASE_PROJECT_ID" --data-file=-
 firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID"
 ```
 
@@ -123,15 +120,18 @@ The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from 
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `FIREBASE_WORKLOAD_IDENTITY_PROVIDER` plus `FIREBASE_SERVICE_ACCOUNT_EMAIL`
 
-For functions runtime config, the workflow now follows one model:
+For functions runtime config, the workflow follows one model:
 
-- GitHub Actions secrets are the source of truth for Firebase function secrets.
-- CI syncs `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into Firebase Secret Manager.
-- CI writes `functions/.env.$FIREBASE_PROJECT_ID` only for non-secret function env vars.
+- GitHub Actions secrets are the source of truth for deployed function secrets.
+- CI writes `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into `functions/.env.$FIREBASE_PROJECT_ID` on the deploy runner.
+- CI deletes the retired Firebase Secret Manager secrets after a successful functions deploy so old active versions stop billing.
 - Frontend build config is resolved from GitHub secrets or variables.
 
 The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 
+- `DEVICE_TOKEN_PRIVATE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 - `DEVICE_ACTIVATION_URL`
 - `DEVICE_VERIFICATION_URI`
 - `DEVICE_TOKEN_ISSUER`
@@ -141,7 +141,13 @@ The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 - `CORS_ALLOWED_ORIGINS`
 - `PUBLIC_APP_BASE_URL`
 
-The three function secrets must exist in Firebase Secret Manager and are referenced by deployed functions through the `secrets` option.
+Do not run `firebase functions:secrets:set` for this deployment model. If the retired secrets still exist after a manual deploy, delete them to stop active-version billing:
+
+```bash
+for secret in DEVICE_TOKEN_PRIVATE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+  gcloud secrets delete "$secret" --project "$FIREBASE_PROJECT_ID" --quiet
+done
+```
 
 ## Post-Deploy Validation
 
