@@ -322,26 +322,47 @@ jobs:
           VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
         run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
 
-      - name: Remove retired Cloud Run secret env vars
+      - name: Remove retired Cloud Run secret refs
         env:
           FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: |
-          remove_retired_secret_env_vars() {
+          remove_retired_secret_refs() {
             service="$1"
             vars="$2"
             if ! gcloud run services describe "$service" --project "$FIREBASE_PROJECT_ID" --region us-central1 >/dev/null 2>&1; then
               echo "$service does not exist; skipping."
               return 0
             fi
+
+            if ! gcloud run services describe "$service" \
+              --project "$FIREBASE_PROJECT_ID" \
+              --region us-central1 \
+              --format=json \
+              | node -e '
+                  const names = new Set(process.argv[1].split(","));
+                  let input = "";
+                  process.stdin.on("data", (chunk) => { input += chunk; });
+                  process.stdin.on("end", () => {
+                    const service = JSON.parse(input);
+                    const env = service?.spec?.template?.spec?.containers?.[0]?.env ?? [];
+                    const hasRetiredSecretRef = env.some((entry) => names.has(entry.name) && entry.valueFrom);
+                    process.exit(hasRetiredSecretRef ? 0 : 1);
+                  });
+                ' "$vars"
+            then
+              echo "$service has no retired secret refs; skipping."
+              return 0
+            fi
+
             gcloud run services update "$service" \
               --project "$FIREBASE_PROJECT_ID" \
               --region us-central1 \
-              --remove-env-vars "$vars" \
+              --remove-secrets "$vars" \
               --quiet
           }
 
-          remove_retired_secret_env_vars crowdpmapi DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
-          remove_retired_secret_env_vars ingestgateway DEVICE_TOKEN_PRIVATE_KEY
+          remove_retired_secret_refs crowdpmapi DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
+          remove_retired_secret_refs ingestgateway DEVICE_TOKEN_PRIVATE_KEY
 
       - name: Delete retired Firebase Secret Manager secrets
         env:
