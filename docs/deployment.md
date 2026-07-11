@@ -124,7 +124,7 @@ For functions runtime config, the workflow follows one model:
 
 - GitHub Actions secrets are the source of truth for deployed function secrets.
 - CI writes `FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY`, `FUNCTIONS_STRIPE_SECRET_KEY`, and `FUNCTIONS_STRIPE_WEBHOOK_SECRET` into `functions/.env.$FIREBASE_PROJECT_ID` on the deploy runner.
-- CI removes retired Cloud Run secret environment variable references after a successful functions deploy, then deletes the retired Firebase Secret Manager secrets so old active versions stop billing.
+- CI removes retired Cloud Run secret references after a successful functions deploy, then deletes the retired Firebase Secret Manager secrets so old active versions stop billing.
 - Frontend build config is resolved from GitHub secrets or variables.
 
 The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
@@ -141,18 +141,18 @@ The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 - `CORS_ALLOWED_ORIGINS`
 - `PUBLIC_APP_BASE_URL`
 
-Do not run `firebase functions:secrets:set` for this deployment model. If the retired secrets still exist after a manual deploy, first remove the old Cloud Run secret environment variable references, then delete the Secret Manager secrets to stop active-version billing:
+Do not run `firebase functions:secrets:set` for this deployment model. If the retired secrets still exist after a manual deploy, first remove the old Cloud Run secret references, then delete the Secret Manager secrets to stop active-version billing:
 
 ```bash
 gcloud run services update crowdpmapi \
   --project "$FIREBASE_PROJECT_ID" \
   --region us-central1 \
-  --remove-env-vars DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET \
+  --remove-secrets DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET \
   --quiet
 gcloud run services update ingestgateway \
   --project "$FIREBASE_PROJECT_ID" \
   --region us-central1 \
-  --remove-env-vars DEVICE_TOKEN_PRIVATE_KEY \
+  --remove-secrets DEVICE_TOKEN_PRIVATE_KEY \
   --quiet
 for secret in DEVICE_TOKEN_PRIVATE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
   gcloud secrets delete "$secret" --project "$FIREBASE_PROJECT_ID" --quiet
