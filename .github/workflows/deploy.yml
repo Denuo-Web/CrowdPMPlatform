@@ -165,9 +165,9 @@ jobs:
           }
 
           {
-            write_env DEVICE_TOKEN_PRIVATE_KEY "$DEVICE_TOKEN_PRIVATE_KEY"
-            write_env STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
-            write_env STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
+            write_env FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY "$DEVICE_TOKEN_PRIVATE_KEY"
+            write_env FUNCTIONS_STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
+            write_env FUNCTIONS_STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
             write_env DEVICE_ACTIVATION_URL "$activation_url"
             write_env DEVICE_VERIFICATION_URI "$verification_uri"
             write_env DEVICE_TOKEN_ISSUER "$DEVICE_TOKEN_ISSUER"
@@ -321,6 +321,27 @@ jobs:
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
         run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
+
+      - name: Remove retired Cloud Run secret env vars
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+        run: |
+          remove_retired_secret_env_vars() {
+            service="$1"
+            vars="$2"
+            if ! gcloud run services describe "$service" --project "$FIREBASE_PROJECT_ID" --region us-central1 >/dev/null 2>&1; then
+              echo "$service does not exist; skipping."
+              return 0
+            fi
+            gcloud run services update "$service" \
+              --project "$FIREBASE_PROJECT_ID" \
+              --region us-central1 \
+              --remove-env-vars "$vars" \
+              --quiet
+          }
+
+          remove_retired_secret_env_vars crowdpmapi DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
+          remove_retired_secret_env_vars ingestgateway DEVICE_TOKEN_PRIVATE_KEY
 
       - name: Delete retired Firebase Secret Manager secrets
         env:

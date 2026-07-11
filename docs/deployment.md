@@ -72,7 +72,7 @@ Common optional values:
 - `FIRST_SUPER_ADMIN_DISPLAY_NAME`: optional display name for a created bootstrap user.
 - `PUBLIC_APP_BASE_URL`
 
-Keep secrets out of git. Deployed functions read `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` from runtime environment variables generated from GitHub Actions secrets during CI. The workflow writes them into `functions/.env.$FIREBASE_PROJECT_ID` only inside the deploy runner; project-specific `.env.*` files must stay local or in the deployment secret store.
+Keep secrets out of git. Deployed functions read `FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY`, `FUNCTIONS_STRIPE_SECRET_KEY`, and `FUNCTIONS_STRIPE_WEBHOOK_SECRET` from runtime environment variables generated from GitHub Actions secrets during CI. The unprefixed names remain supported for local env files and older deployments. The workflow writes generated env files only inside the deploy runner; project-specific `.env.*` files must stay local or in the deployment secret store.
 
 ## Pre-Launch Release Gates
 
@@ -123,15 +123,15 @@ The GitHub Actions workflow at `.github/workflows/deploy.yml` also deploys from 
 For functions runtime config, the workflow follows one model:
 
 - GitHub Actions secrets are the source of truth for deployed function secrets.
-- CI writes `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into `functions/.env.$FIREBASE_PROJECT_ID` on the deploy runner.
-- CI deletes the retired Firebase Secret Manager secrets after a successful functions deploy so old active versions stop billing.
+- CI writes `FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY`, `FUNCTIONS_STRIPE_SECRET_KEY`, and `FUNCTIONS_STRIPE_WEBHOOK_SECRET` into `functions/.env.$FIREBASE_PROJECT_ID` on the deploy runner.
+- CI removes retired Cloud Run secret environment variable references after a successful functions deploy, then deletes the retired Firebase Secret Manager secrets so old active versions stop billing.
 - Frontend build config is resolved from GitHub secrets or variables.
 
 The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 
-- `DEVICE_TOKEN_PRIVATE_KEY`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
+- `FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY`
+- `FUNCTIONS_STRIPE_SECRET_KEY`
+- `FUNCTIONS_STRIPE_WEBHOOK_SECRET`
 - `DEVICE_ACTIVATION_URL`
 - `DEVICE_VERIFICATION_URI`
 - `DEVICE_TOKEN_ISSUER`
@@ -141,9 +141,19 @@ The generated `functions/.env.$FIREBASE_PROJECT_ID` file should provide:
 - `CORS_ALLOWED_ORIGINS`
 - `PUBLIC_APP_BASE_URL`
 
-Do not run `firebase functions:secrets:set` for this deployment model. If the retired secrets still exist after a manual deploy, delete them to stop active-version billing:
+Do not run `firebase functions:secrets:set` for this deployment model. If the retired secrets still exist after a manual deploy, first remove the old Cloud Run secret environment variable references, then delete the Secret Manager secrets to stop active-version billing:
 
 ```bash
+gcloud run services update crowdpmapi \
+  --project "$FIREBASE_PROJECT_ID" \
+  --region us-central1 \
+  --remove-env-vars DEVICE_TOKEN_PRIVATE_KEY,STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET \
+  --quiet
+gcloud run services update ingestgateway \
+  --project "$FIREBASE_PROJECT_ID" \
+  --region us-central1 \
+  --remove-env-vars DEVICE_TOKEN_PRIVATE_KEY \
+  --quiet
 for secret in DEVICE_TOKEN_PRIVATE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
   gcloud secrets delete "$secret" --project "$FIREBASE_PROJECT_ID" --quiet
 done

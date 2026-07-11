@@ -50,6 +50,14 @@ function readStringEnv(name: string, fallback: string): string {
   return value ? value : fallback;
 }
 
+function readFirstStringEnv(names: string[], fallback: string): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return fallback;
+}
+
 function readPositiveIntEnv(name: string, fallback: number): number {
   const value = process.env[name];
   if (!value) return fallback;
@@ -80,15 +88,15 @@ export function getPublicAppBaseUrl(): string {
 }
 
 export function getDeviceTokenPrivateKey(): string {
-  return process.env.DEVICE_TOKEN_PRIVATE_KEY ?? "";
+  return readFirstStringEnv(["FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY", "DEVICE_TOKEN_PRIVATE_KEY"], "");
 }
 
 export function getStripeSecretKey(): string {
-  return readStringEnv("STRIPE_SECRET_KEY", "");
+  return readFirstStringEnv(["FUNCTIONS_STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY"], "");
 }
 
 export function getStripeWebhookSecret(): string {
-  return readStringEnv("STRIPE_WEBHOOK_SECRET", "");
+  return readFirstStringEnv(["FUNCTIONS_STRIPE_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"], "");
 }
 
 export function getDeviceTokenIssuer(): string {
