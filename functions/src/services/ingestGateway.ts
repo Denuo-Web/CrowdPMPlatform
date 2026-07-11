@@ -138,7 +138,6 @@ export async function ingestGatewayHandler(
 
 export const ingestGateway = onRequest({
   ...ingestGatewayRuntimeOptions,
-  secrets: ["DEVICE_TOKEN_PRIVATE_KEY"],
 }, async (req, res) => {
   await ingestGatewayHandler(req as RequestWithRawBody, res as unknown as GatewayResponse);
 });

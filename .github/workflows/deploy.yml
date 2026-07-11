@@ -129,17 +129,6 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
         run: firebase projects:list | grep "$FIREBASE_PROJECT_ID"
 
-      - name: Sync Firebase Functions secrets
-        env:
-          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
-          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-        run: |
-          printf '%s' "$DEVICE_TOKEN_PRIVATE_KEY" | firebase functions:secrets:set DEVICE_TOKEN_PRIVATE_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
-          printf '%s' "$STRIPE_SECRET_KEY" | firebase functions:secrets:set STRIPE_SECRET_KEY --project "$FIREBASE_PROJECT_ID" --data-file=-
-          printf '%s' "$STRIPE_WEBHOOK_SECRET" | firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project "$FIREBASE_PROJECT_ID" --data-file=-
-
       - name: Write functions deploy env file
         env:
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || vars.CORS_ALLOWED_ORIGINS }}
@@ -148,10 +137,13 @@ jobs:
           DEVICE_REGISTRATION_TOKEN_TTL_SECONDS: ${{ secrets.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS || vars.DEVICE_REGISTRATION_TOKEN_TTL_SECONDS }}
           DEVICE_TOKEN_AUDIENCE: ${{ secrets.DEVICE_TOKEN_AUDIENCE || vars.DEVICE_TOKEN_AUDIENCE }}
           DEVICE_TOKEN_ISSUER: ${{ secrets.DEVICE_TOKEN_ISSUER || vars.DEVICE_TOKEN_ISSUER }}
+          DEVICE_TOKEN_PRIVATE_KEY: ${{ secrets.DEVICE_TOKEN_PRIVATE_KEY }}
           DEVICE_VERIFICATION_URI: ${{ secrets.DEVICE_VERIFICATION_URI || vars.DEVICE_VERIFICATION_URI }}
           FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
           FRONTEND_URL: ${{ secrets.FRONTEND_URL || vars.FRONTEND_URL }}
           PUBLIC_APP_BASE_URL: ${{ secrets.PUBLIC_APP_BASE_URL || vars.PUBLIC_APP_BASE_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           public_app_base_url="${PUBLIC_APP_BASE_URL%/}"
           if [ -z "$public_app_base_url" ]; then
@@ -163,15 +155,27 @@ jobs:
           verification_uri="${DEVICE_VERIFICATION_URI:-$activation_url}"
           env_file="functions/.env.${FIREBASE_PROJECT_ID}"
 
+          write_env() {
+            key="$1"
+            value="$2"
+            [ -n "$value" ] || return 0
+            value="${value//$'\r'/}"
+            value="${value//$'\n'/\\n}"
+            printf '%s=%s\n' "$key" "$value"
+          }
+
           {
-            printf 'DEVICE_ACTIVATION_URL=%s\n' "$activation_url"
-            printf 'DEVICE_VERIFICATION_URI=%s\n' "$verification_uri"
-            [ -n "$DEVICE_TOKEN_ISSUER" ] && printf 'DEVICE_TOKEN_ISSUER=%s\n' "$DEVICE_TOKEN_ISSUER"
-            [ -n "$DEVICE_TOKEN_AUDIENCE" ] && printf 'DEVICE_TOKEN_AUDIENCE=%s\n' "$DEVICE_TOKEN_AUDIENCE"
-            [ -n "$DEVICE_ACCESS_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_ACCESS_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_ACCESS_TOKEN_TTL_SECONDS"
-            [ -n "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS" ] && printf 'DEVICE_REGISTRATION_TOKEN_TTL_SECONDS=%s\n' "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS"
-            [ -n "$CORS_ALLOWED_ORIGINS" ] && printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
-            printf 'PUBLIC_APP_BASE_URL=%s\n' "$public_app_base_url"
+            write_env DEVICE_TOKEN_PRIVATE_KEY "$DEVICE_TOKEN_PRIVATE_KEY"
+            write_env STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
+            write_env STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
+            write_env DEVICE_ACTIVATION_URL "$activation_url"
+            write_env DEVICE_VERIFICATION_URI "$verification_uri"
+            write_env DEVICE_TOKEN_ISSUER "$DEVICE_TOKEN_ISSUER"
+            write_env DEVICE_TOKEN_AUDIENCE "$DEVICE_TOKEN_AUDIENCE"
+            write_env DEVICE_ACCESS_TOKEN_TTL_SECONDS "$DEVICE_ACCESS_TOKEN_TTL_SECONDS"
+            write_env DEVICE_REGISTRATION_TOKEN_TTL_SECONDS "$DEVICE_REGISTRATION_TOKEN_TTL_SECONDS"
+            write_env CORS_ALLOWED_ORIGINS "$CORS_ALLOWED_ORIGINS"
+            write_env PUBLIC_APP_BASE_URL "$public_app_base_url"
           } > "$env_file"
 
       - name: Lint
@@ -317,6 +321,24 @@ jobs:
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || vars.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID || vars.VITE_GOOGLE_MAP_ID }}
         run: firebase deploy --only hosting,functions --project "$FIREBASE_PROJECT_ID" --force
+
+      - name: Delete retired Firebase Secret Manager secrets
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.deploy_config.outputs.project_id }}
+        run: |
+          for secret in DEVICE_TOKEN_PRIVATE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+            describe_error="$(mktemp)"
+            if gcloud secrets describe "$secret" --project "$FIREBASE_PROJECT_ID" >/dev/null 2>"$describe_error"; then
+              gcloud secrets delete "$secret" --project "$FIREBASE_PROJECT_ID" --quiet
+            elif grep -q "NOT_FOUND" "$describe_error"; then
+              echo "$secret does not exist in Secret Manager; skipping."
+            else
+              cat "$describe_error" >&2
+              rm -f "$describe_error"
+              exit 1
+            fi
+            rm -f "$describe_error"
+          done
 
       - name: Bootstrap first super admin
         env:
