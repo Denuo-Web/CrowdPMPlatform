@@ -34,7 +34,7 @@ Important values:
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for `checkout.session.completed`.
 - `FIRST_SUPER_ADMIN_EMAIL`, `FIRST_SUPER_ADMIN_PASSWORD`, `FIRST_SUPER_ADMIN_DISPLAY_NAME`: local Auth emulator super-admin seed user.
 
-The code reads these values from `process.env`. In deployed Firebase Functions, CI writes `DEVICE_TOKEN_PRIVATE_KEY`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET` into the generated `functions/.env.$FIREBASE_PROJECT_ID` file from GitHub Actions secrets. The generated env file is not committed.
+The code reads these values from `process.env`. In deployed Firebase Functions, CI writes `FUNCTIONS_DEVICE_TOKEN_PRIVATE_KEY`, `FUNCTIONS_STRIPE_SECRET_KEY`, and `FUNCTIONS_STRIPE_WEBHOOK_SECRET` into the generated `functions/.env.$FIREBASE_PROJECT_ID` file from GitHub Actions secrets. The generated env file is not committed. The unprefixed names remain supported for local env files and older deployments.
 
 The public node page currently uses `POST /v1/node-reservation-pledges` to collect non-binding waitlist interest without payment. Submissions are stored in Firestore `nodeReservationPledges` records deduplicated by normalized email.
 
